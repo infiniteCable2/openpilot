@@ -36,7 +36,7 @@ class CarState(CarStateBase):
     if self.CP.flags & VolkswagenFlags.PQ:
       return self.update_pq(pt_cp, cam_cp, ext_cp, trans_type)
     elif self.CP.flags & VolkswagenFlags.MEB:
-      return self.update_meb(pt_cp, cam_cp, ext_cp, trans_type))
+      return self.update_meb(pt_cp, cam_cp, ext_cp, trans_type)
 
     ret = car.CarState.new_message()
 
