@@ -1,12 +1,12 @@
 from cereal import car
 import cereal.messaging as messaging
 from opendbc.can.packer import CANPacker
-from openpilot.common.numpy_fast import clip
+from openpilot.common.numpy_fast import clip, interp
 from openpilot.common.conversions import Conversions as CV
 from openpilot.common.params import Params
-from openpilot.selfdrive.car import DT_CTRL, apply_driver_steer_torque_limits
+from openpilot.selfdrive.car import DT_CTRL, apply_driver_steer_torque_limits, apply_std_steer_angle_limits
 from openpilot.selfdrive.car.interfaces import CarControllerBase
-from openpilot.selfdrive.car.volkswagen import mqbcan, pqcan
+from openpilot.selfdrive.car.volkswagen import mqbcan, pqcan, mebcan
 from openpilot.selfdrive.car.volkswagen.values import CANBUS, CarControllerParams, VolkswagenFlags
 from openpilot.selfdrive.controls.lib.drive_helpers import VOLKSWAGEN_V_CRUISE_MIN
 
@@ -19,7 +19,12 @@ class CarController(CarControllerBase):
   def __init__(self, dbc_name, CP, VM):
     super().__init__(dbc_name, CP, VM)
     self.CCP = CarControllerParams(CP)
-    self.CCS = pqcan if CP.flags & VolkswagenFlags.PQ else mqbcan
+    if CP.flags & VolkswagenFlags.PQ:
+      self.CCS = pqcan
+    elif CP.flags & VolkswagenFlags.MEB:
+      self.CCS = mebcan
+    else:
+      self.CCS = mqbcan
     self.packer_pt = CANPacker(dbc_name)
     self.ext_bus = CANBUS.pt if CP.networkLocation == car.CarParams.NetworkLocation.fwdCamera else CANBUS.cam
 
@@ -60,6 +65,15 @@ class CarController(CarControllerBase):
     self.steady_speed = 0
     self.acc_type = -1
     self.send_count = 0
+    
+    self.apply_angle_last = 0
+    self.lat_active_prev = False
+    self.steering_power = 0
+    self.long_heartbeat = 0
+    self.long_active_prev = False
+    self.accel_last = 0
+    self.long_overwrite_prev = False
+    self.acc_hold_type_prev = 0
 
   def update(self, CC, CS, now_nanos):
     if not self.CP.pcmCruiseSpeed:
@@ -104,28 +118,83 @@ class CarController(CarControllerBase):
       # MQB racks reset the uninterrupted steering timer after a single frame
       # of HCA disabled; this is done whenever output happens to be zero.
 
-      if CC.latActive:
-        new_steer = int(round(actuators.steer * self.CCP.STEER_MAX))
-        apply_steer = apply_driver_steer_torque_limits(new_steer, self.apply_steer_last, CS.out.steeringTorque, self.CCP)
-        self.hca_frame_timer_running += self.CCP.STEER_STEP
-        if self.apply_steer_last == apply_steer:
-          self.hca_frame_same_torque += self.CCP.STEER_STEP
-          if self.hca_frame_same_torque > self.CCP.STEER_TIME_STUCK_TORQUE / DT_CTRL:
-            apply_steer -= (1, -1)[apply_steer < 0]
-            self.hca_frame_same_torque = 0
+      if self.CP.flags & VolkswagenFlags.MEB:
+        # Logic to avoid HCA refused state
+        #   * steering power as counter near zero before standstill OP lane assist deactivation
+        # MEB rack can be used continously without found time limits yet
+        # Steering power counter is used to:
+        #   * prevent sudden fluctuations at low speeds
+        #   * avoid HCA refused
+        #   * easy user intervention
+        #   * keep it near maximum regarding speed to get full steering power in shortest time
+
+        if CC.latActive:
+          hca_enabled          = True
+          self.lat_active_prev = True
+          #current_curvature    = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1) # TODO verify sign (clockwise is negative)
+          #apply_curvature      = apply_meb_curvature_limits(actuators.curvature, self.apply_curvature_last, current_curvature, CS.out.vEgoRaw, self.CCP)
+          apply_angle          = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw, self.CCP)
+          apply_angle          = clip(apply_angle, CS.out.steeringAngleDeg - self.CCP.ANGLE_ERROR, CS.out.steeringAngleDeg + self.CCP.ANGLE_ERROR)
+
+          # steering power as lazy counter
+          steering_power_min_by_speed       = interp(CS.out.vEgoRaw, [0, self.CCP.STEERING_POWER_MAX_BY_SPEED], [self.CCP.STEERING_POWER_MIN, self.CCP.STEERING_POWER_MAX])
+          steering_angle_diff               = abs(apply_angle - CS.out.steeringAngleDeg)
+          steering_power_target_angle       = steering_power_min_by_speed + self.CCP.ANGLE_POWER_FACTOR * steering_angle_diff + abs(apply_angle)
+          steering_power_target             = clip(steering_power_target_angle, self.CCP.STEERING_POWER_MIN, self.CCP.STEERING_POWER_MAX)
+
+          if self.steering_power < self.CCP.STEERING_POWER_MIN:  # OP lane assist just activated
+            self.steering_power = min(self.steering_power + self.CCP.STEERING_POWER_STEPS, self.CCP.STEERING_POWER_MIN)
+
+          elif CS.out.steeringPressed and self.steering_power > self.CCP.STEERING_POWER_USER: # user action results in decreasing the steering power
+            self.steering_power = max(self.steering_power - self.CCP.STEERING_POWER_STEPS, self.CCP.STEERING_POWER_USER)
+
+          elif self.steering_power < self.CCP.STEERING_POWER_MAX: # following desired target
+            if self.steering_power < steering_power_target:
+              self.steering_power = min(self.steering_power + self.CCP.STEERING_POWER_STEPS, steering_power_target)
+            elif self.steering_power > steering_power_target:
+              self.steering_power = max(self.steering_power - self.CCP.STEERING_POWER_STEPS, steering_power_target)
+
         else:
-          self.hca_frame_same_torque = 0
-        hca_enabled = abs(apply_steer) > 0
+          if self.lat_active_prev and self.steering_power > 0: # monotonously decrement power to zero before disabling lane assist to prevent EPS fault
+            hca_enabled            = True
+            #current_curvature      = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1)
+            #apply_curvature        = current_curvature
+            apply_angle            = CS.out.steeringAngleDeg
+            self.steering_power    = max(self.steering_power - self.CCP.STEERING_POWER_STEPS, 0)
+          else:
+            hca_enabled           = False
+            self.lat_active_prev  = False
+            self.steering_power   = 0
+            #apply_curvature       = 0.
+            apply_angle           = 0
+
+        #self.apply_curvature_last = apply_curvature
+        self.apply_angle_last = clip(apply_angle, -self.CCP.ANGLE_MAX, self.CCP.ANGLE_MAX)
+        can_sends.append(self.CCS.create_steering_control_curvature(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power))
+
       else:
-        hca_enabled = False
-        apply_steer = 0
+        if CC.latActive:
+          new_steer = int(round(actuators.steer * self.CCP.STEER_MAX))
+          apply_steer = apply_driver_steer_torque_limits(new_steer, self.apply_steer_last, CS.out.steeringTorque, self.CCP)
+          self.hca_frame_timer_running += self.CCP.STEER_STEP
+          if self.apply_steer_last == apply_steer:
+            self.hca_frame_same_torque += self.CCP.STEER_STEP
+            if self.hca_frame_same_torque > self.CCP.STEER_TIME_STUCK_TORQUE / DT_CTRL:
+              apply_steer -= (1, -1)[apply_steer < 0]
+              self.hca_frame_same_torque = 0
+          else:
+            self.hca_frame_same_torque = 0
+          hca_enabled = abs(apply_steer) > 0
+        else:
+          hca_enabled = False
+          apply_steer = 0
 
-      if not hca_enabled:
-        self.hca_frame_timer_running = 0
+        if not hca_enabled:
+          self.hca_frame_timer_running = 0
 
-      self.eps_timer_soft_disable_alert = self.hca_frame_timer_running > self.CCP.STEER_TIME_ALERT / DT_CTRL
-      self.apply_steer_last = apply_steer
-      can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_steer, hca_enabled))
+        self.eps_timer_soft_disable_alert = self.hca_frame_timer_running > self.CCP.STEER_TIME_ALERT / DT_CTRL
+        self.apply_steer_last = apply_steer
+        can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_steer, hca_enabled))
 
       if self.CP.flags & VolkswagenFlags.STOCK_HCA_PRESENT:
         # Pacify VW Emergency Assist driver inactivity detection by changing its view of driver steering input torque
@@ -139,31 +208,81 @@ class CarController(CarControllerBase):
     # **** Acceleration Controls ******************************************** #
 
     if self.frame % self.CCP.ACC_CONTROL_STEP == 0 and self.CP.openpilotLongitudinalControl:
-      acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
       accel = clip(actuators.accel, self.CCP.ACCEL_MIN, self.CCP.ACCEL_MAX) if CC.longActive else 0
+      self.accel_last = accel
       stopping = actuators.longControlState == LongCtrlState.stopping
       starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < self.CP.vEgoStopping)
-      can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, CANBUS.pt, CS.acc_type, CC.longActive, accel,
-                                                         acc_control, stopping, starting, CS.esp_hold_confirmation))
+      
+      if self.CP.flags & VolkswagenFlags.MEB:
+        just_disabled = True if self.long_active_prev and not CC.enabled else False
+        self.long_active_prev = CC.enabled
+        just_overwritten = True if self.long_overwrite_prev and not CC.cruiseControl.override else False
+        self.long_overwrite_prev = CC.cruiseControl.override
+        current_speed = CS.out.vEgo * CV.MS_TO_KPH
+        reversing = CS.out.gearShifter in [structs.CarState.GearShifter.reverse]
+        override_starting = CC.cruiseControl.override and CS.out.vEgo < self.CP.vEgoStarting
+        override_starting_limit = True if CS.out.vEgo > self.CP.vEgoStarting else False
+
+        acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled, just_disabled, CS.esp_hold_confirmation,
+                                                 CC.cruiseControl.override, override_starting, override_starting_limit)
+        acc_hold_type = self.CCS.acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled, just_disabled, starting,
+                                               stopping, CS.esp_hold_confirmation, CC.cruiseControl.override, just_overwritten, override_starting,
+                                               override_starting_limit, self.acc_hold_type_prev)
+        self.acc_hold_type_prev = acc_hold_type
+        required_jerk = min(3, abs(accel - CS.out.aEgo) * 50) ## pfeiferj:openpilot:pfeifer-hkg-long-control-tune
+        lower_jerk = required_jerk
+        upper_jerk = required_jerk
+
+        if CS.out.aEgo < accel:
+          lower_jerk = 0
+        else:
+          upper_jerk = 0
+
+        can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, CANBUS.pt, CS.acc_type, CC.enabled, accel, acc_control, acc_hold_type,
+                                                           stopping, starting, lower_jerk, upper_jerk, CS.esp_hold_confirmation, CC.cruiseControl.override, current_speed, reversing))
+
+      else:
+        acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
+        can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, CANBUS.pt, CS.acc_type, CC.longActive, accel,
+                                                           acc_control, stopping, starting, CS.esp_hold_confirmation))
 
     # **** HUD Controls ***************************************************** #
 
     if self.frame % self.CCP.LDW_STEP == 0:
       hud_alert = 0
+      sound_alert = 0
       if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw):
-        hud_alert = self.CCP.LDW_MESSAGES["laneAssistTakeOver"]
+        hud_alert = self.CCP.LDW_MESSAGES["laneAssistTakeOverUrgent"]
+        sound_alert = 1
       can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, CANBUS.pt, CS.ldw_stock_values, CC.latActive,
-                                                       CS.out.steeringPressed, hud_alert, hud_control))
+                                                       CS.out.steeringPressed, hud_alert, hud_control, sound_alert))
 
     if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl:
-      lead_distance = 0
-      if hud_control.leadVisible and self.frame * DT_CTRL > 1.0:  # Don't display lead until we know the scaling factor
-        lead_distance = 512 if CS.upscale_lead_car_signal else 8
-      acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
-      # FIXME: follow the recent displayed-speed updates, also use mph_kmh toggle to fix display rounding problem?
-      set_speed = hud_control.setSpeed * CV.MS_TO_KPH
-      can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, CANBUS.pt, acc_hud_status, set_speed,
-                                                       lead_distance, hud_control.leadDistanceBars))
+      if self.CP.flags & VolkswagenFlags.MEB:
+        if self.long_heartbeat != 221:
+          self.long_heartbeat = 221
+        elif self.long_heartbeat == 221:
+          self.long_heartbeat = 360
+
+        distance = 50 # TODO get distance from model
+        desired_gap = min(CS.out.vEgo, 100) # TODO get desired gap from OP
+        override_starting = CC.cruiseControl.override and CS.out.vEgo < self.CP.vEgoStarting
+        override_starting_limit = True if CS.out.vEgo > self.CP.vEgoStarting else False
+
+        acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled, CS.esp_hold_confirmation, CC.cruiseControl.override,
+                                                       override_starting, override_starting_limit)
+        can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, CANBUS.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH, hud_control.leadVisible,
+                                                         hud_control.leadDistanceBars, desired_gap, distance, self.long_heartbeat, CS.esp_hold_confirmation))
+
+      else:
+        lead_distance = 0
+        if hud_control.leadVisible and self.frame * DT_CTRL > 1.0:  # Don't display lead until we know the scaling factor
+          lead_distance = 512 if CS.upscale_lead_car_signal else 8
+        acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
+        # FIXME: follow the recent displayed-speed updates, also use mph_kmh toggle to fix display rounding problem?
+        set_speed = hud_control.setSpeed * CV.MS_TO_KPH
+        can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, CANBUS.pt, acc_hud_status, set_speed,
+                                                         lead_distance, hud_control.leadDistanceBars))
 
     # **** Stock ACC Button Controls **************************************** #
 
@@ -196,6 +315,8 @@ class CarController(CarControllerBase):
     new_actuators = actuators.as_builder()
     new_actuators.steer = self.apply_steer_last / self.CCP.STEER_MAX
     new_actuators.steerOutputCan = self.apply_steer_last
+    new_actuators.steeringAngleDeg = self.apply_angle_last
+    new_actuators.accel = self.accel_last
 
     self.gra_acc_counter_last = CS.gra_stock_values["COUNTER"]
     self.v_set_dis_prev = self.v_set_dis

@@ -48,6 +48,20 @@ class CarInterface(CarInterfaceBase):
       #   https://blog.willemmelching.nl/carhacking/2022/01/02/vw-part1/
       # Panda ALLOW_DEBUG firmware required.
       ret.dashcamOnly = True
+      
+    elif ret.flags & VolkswagenFlags.MEB: # TODO
+      # Set global MEB parameters
+      ret.safetyConfigs = [get_safety_config(car.CarParams.SafetyModel.volkswagenMeb)]
+      ret.enableBsm        = True
+      ret.transmissionType = TransmissionType.direct
+      ret.steerControlType = car.CarParams.SteerControlType.angle
+      ret.radarUnavailable = False
+      #ret.flags |= VolkswagenFlags.STOCK_HCA_PRESENT.value
+
+      if any(msg in fingerprint[1] for msg in (0x520, 0x86, 0xFD, 0x13D)):  # Airbag_02, LWI_01, ESP_21, MEB_EPS_01
+        ret.networkLocation = NetworkLocation.gateway
+      else:
+        ret.networkLocation = NetworkLocation.fwdCamera
 
     else:
       # Set global MQB parameters
@@ -75,6 +89,9 @@ class CarInterface(CarInterfaceBase):
     if ret.flags & VolkswagenFlags.PQ:
       ret.steerActuatorDelay = 0.2
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+    elif ret.flags & VolkswagenFlags.MEB:
+      ret.steerLimitTimer = 1.2
+      ret.steerActuatorDelay = 0.6
     else:
       ret.steerActuatorDelay = 0.1
       ret.lateralTuning.pid.kpBP = [0.]
@@ -84,6 +101,13 @@ class CarInterface(CarInterfaceBase):
       ret.lateralTuning.pid.kiV = [0.2]
 
     # Global longitudinal tuning defaults, can be overridden per-vehicle
+
+    if ret.flags & VolkswagenFlags.MEB:
+      ret.longitudinalActuatorDelay = 1.0
+      #ret.longitudinalTuning.kpBP = [0., 5., 35.]
+      #ret.longitudinalTuning.kpV  = [0., 0.1, 0.4]
+      ret.longitudinalTuning.kiBP = [0., 5., 35.]
+      ret.longitudinalTuning.kiV  = [2.6, 2, 1.8]
 
     ret.experimentalLongitudinalAvailable = ret.networkLocation == NetworkLocation.gateway or docs
     if experimental_long:
