@@ -3,7 +3,7 @@ import math
 from cereal import car
 from opendbc.can.parser import CANParser
 from openpilot.selfdrive.car.interfaces import RadarInterfaceBase
-from openpilot.selfdrive.car.common.conversions import Conversions as CV
+from openpilot.common.conversions import Conversions as CV
 from openpilot.selfdrive.car.volkswagen.values import DBC, VolkswagenFlags
 
 RADAR_ADDR = 0x24F
