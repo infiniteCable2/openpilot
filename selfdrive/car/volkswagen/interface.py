@@ -145,7 +145,7 @@ class CarInterface(CarInterfaceBase):
 
     if ret.cruiseState.available:
       if not self.CP.pcmCruiseSpeed:
-        if any(b.type in (ButtonType.cancel) and not b.pressed for b in self.CS.button_events):
+        if any(b.type in (ButtonType.resumeCruise, ButtonType.setCruise) and b.pressed for b in self.CS.button_events):
           self.CS.accEnabled = True
 
     if ret.cruiseState.available:
