@@ -214,7 +214,7 @@ class CarController(CarControllerBase):
       starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < self.CP.vEgoStopping)
       
       if self.CP.flags & VolkswagenFlags.MEB:
-        just_disabled = True if self.long_active_prev and not CC.enabled else False
+        just_disabled = True if self.long_active_prev and not (CC.enabled and CS.out.cruiseState.enabled) else False
         self.long_active_prev = CC.enabled
         just_overwritten = True if self.long_overwrite_prev and not CC.cruiseControl.override else False
         self.long_overwrite_prev = CC.cruiseControl.override
@@ -223,9 +223,9 @@ class CarController(CarControllerBase):
         override_starting = CC.cruiseControl.override and CS.out.vEgo < self.CP.vEgoStarting
         override_starting_limit = True if CS.out.vEgo > self.CP.vEgoStarting else False
 
-        acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled, just_disabled, CS.esp_hold_confirmation,
+        acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, just_disabled, CS.esp_hold_confirmation,
                                                  CC.cruiseControl.override, override_starting, override_starting_limit)
-        acc_hold_type = self.CCS.acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled, just_disabled, starting,
+        acc_hold_type = self.CCS.acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, just_disabled, starting,
                                                stopping, CS.esp_hold_confirmation, CC.cruiseControl.override, just_overwritten, override_starting,
                                                override_starting_limit, self.acc_hold_type_prev)
         self.acc_hold_type_prev = acc_hold_type
