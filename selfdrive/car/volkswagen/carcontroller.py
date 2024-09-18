@@ -9,6 +9,7 @@ from openpilot.selfdrive.car.interfaces import CarControllerBase
 from openpilot.selfdrive.car.volkswagen import mqbcan, pqcan, mebcan
 from openpilot.selfdrive.car.volkswagen.values import CANBUS, CarControllerParams, VolkswagenFlags
 from openpilot.selfdrive.controls.lib.drive_helpers import VOLKSWAGEN_V_CRUISE_MIN
+from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import get_T_FOLLOW
 
 VisualAlert = car.CarControl.HUDControl.VisualAlert
 LongCtrlState = car.CarControl.Actuators.LongControlState
@@ -287,7 +288,7 @@ class CarController(CarControllerBase):
         elif self.long_heartbeat == 221:
           self.long_heartbeat = 360
 
-        desired_gap = min(CS.out.vEgo, 100) # TODO get desired gap from OP
+        desired_gap = CS.out.vEgo * get_T_FOLLOW(hud_control.leadDistanceBars - 1)
         override_starting = CC.cruiseControl.override and CS.out.vEgo < self.CP.vEgoStarting
         override_starting_limit = True if CS.out.vEgo > self.CP.vEgoStarting else False
 
