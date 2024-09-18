@@ -235,7 +235,7 @@ class CarController(CarControllerBase):
       
       if self.CP.flags & VolkswagenFlags.MEB:
         just_disabled = True if self.long_active_prev and not (CC.enabled and CS.out.cruiseState.enabled) else False
-        self.long_active_prev = CC.enabled
+        self.long_active_prev = CC.enabled and CS.out.cruiseState.enabled
         just_overwritten = True if self.long_overwrite_prev and not CC.cruiseControl.override else False
         self.long_overwrite_prev = CC.cruiseControl.override
         current_speed = CS.out.vEgo * CV.MS_TO_KPH
