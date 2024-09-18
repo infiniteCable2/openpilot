@@ -65,6 +65,7 @@ class CarController(CarControllerBase):
     self.steady_speed = 0
     self.acc_type = -1
     self.send_count = 0
+    self.lead_distance = 0
     
     self.apply_angle_last = 0
     self.lat_active_prev = False
@@ -75,8 +76,19 @@ class CarController(CarControllerBase):
     self.long_overwrite_prev = False
     self.acc_hold_type_prev = 0
 
+  def calculate_lead_distance(self, hud_control: car.CarControl.HUDControl) -> float:
+    lead_one = self.sm["radarState"].leadOne
+    lead_two = self.sm["radarState"].leadTwo
+
+    if lead_one.status and (not lead_two.status or lead_one.dRel < lead_two.dRel):
+      return lead_one.dRel
+    if lead_two.status:
+      return lead_two.dRel
+
+    return 19 if hud_control.leadVisible else 0
+
   def update(self, CC, CS, now_nanos):
-    if not self.CP.pcmCruiseSpeed:
+    if not self.CP.pcmCruiseSpeed or (self.CP.openpilotLongitudinalControl and self.frame % 5 == 0):
       self.sm.update(0)
 
       if self.sm.updated['longitudinalPlanSP']:
@@ -134,7 +146,8 @@ class CarController(CarControllerBase):
           #current_curvature    = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1) # TODO verify sign (clockwise is negative)
           #apply_curvature      = apply_meb_curvature_limits(actuators.curvature, self.apply_curvature_last, current_curvature, CS.out.vEgoRaw, self.CCP)
           apply_angle          = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw, self.CCP)
-          apply_angle          = clip(apply_angle, CS.out.steeringAngleDeg - self.CCP.ANGLE_ERROR, CS.out.steeringAngleDeg + self.CCP.ANGLE_ERROR)
+          if CS.out.steeringPressed:
+            apply_angle        = clip(apply_angle, CS.out.steeringAngleDeg - self.CCP.ANGLE_ERROR, CS.out.steeringAngleDeg + self.CCP.ANGLE_ERROR)
 
           # steering power as lazy counter
           steering_power_min_by_speed       = interp(CS.out.vEgoRaw, [0, self.CCP.STEERING_POWER_MAX_BY_SPEED], [self.CCP.STEERING_POWER_MIN, self.CCP.STEERING_POWER_MAX])
@@ -257,6 +270,10 @@ class CarController(CarControllerBase):
       can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, CANBUS.pt, CS.ldw_stock_values, CC.latActive,
                                                        CS.out.steeringPressed, hud_alert, hud_control, sound_alert))
 
+    # Parse lead distance from radarState and display the corresponding distance in the car's cluster
+    if self.CP.openpilotLongitudinalControl and self.sm.updated['radarState'] and self.frame % 5 == 0:
+      self.lead_distance = self.calculate_lead_distance(hud_control)
+
     if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl:
       if self.CP.flags & VolkswagenFlags.MEB:
         if self.long_heartbeat != 221:
@@ -264,15 +281,14 @@ class CarController(CarControllerBase):
         elif self.long_heartbeat == 221:
           self.long_heartbeat = 360
 
-        distance = 50 # TODO get distance from model
         desired_gap = min(CS.out.vEgo, 100) # TODO get desired gap from OP
         override_starting = CC.cruiseControl.override and CS.out.vEgo < self.CP.vEgoStarting
         override_starting_limit = True if CS.out.vEgo > self.CP.vEgoStarting else False
 
-        acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled, CS.esp_hold_confirmation, CC.cruiseControl.override,
+        acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, CS.esp_hold_confirmation, CC.cruiseControl.override,
                                                        override_starting, override_starting_limit)
         can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, CANBUS.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH, hud_control.leadVisible,
-                                                         hud_control.leadDistanceBars, desired_gap, distance, self.long_heartbeat, CS.esp_hold_confirmation))
+                                                         hud_control.leadDistanceBars, desired_gap, self.lead_distance, self.long_heartbeat, CS.esp_hold_confirmation))
 
       else:
         lead_distance = 0
