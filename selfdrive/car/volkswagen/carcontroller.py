@@ -34,8 +34,14 @@ class CarController(CarControllerBase):
     self.hca_frame_timer_running = 0
     self.hca_frame_same_torque = 0
     self.last_button_frame = 0
-
-    self.sm = messaging.SubMaster(['longitudinalPlanSP'])
+    
+    sub_services = ['longitudinalPlanSP']
+    if CP.openpilotLongitudinalControl:
+      sub_services.append('radarState')
+    # TODO: Always true, prep for future conditional refactoring
+    if sub_services:
+      self.sm = messaging.SubMaster(sub_services)
+    
     self.param_s = Params()
     self.last_speed_limit_sign_tap_prev = False
     self.speed_limit = 0.
