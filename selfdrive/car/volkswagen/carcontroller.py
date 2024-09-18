@@ -219,7 +219,7 @@ class CarController(CarControllerBase):
         just_overwritten = True if self.long_overwrite_prev and not CC.cruiseControl.override else False
         self.long_overwrite_prev = CC.cruiseControl.override
         current_speed = CS.out.vEgo * CV.MS_TO_KPH
-        reversing = CS.out.gearShifter in [structs.CarState.GearShifter.reverse]
+        reversing = CS.out.gearShifter in [car.CarState.GearShifter.reverse]
         override_starting = CC.cruiseControl.override and CS.out.vEgo < self.CP.vEgoStarting
         override_starting_limit = True if CS.out.vEgo > self.CP.vEgoStarting else False
 
