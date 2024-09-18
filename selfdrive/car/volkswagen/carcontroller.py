@@ -289,13 +289,14 @@ class CarController(CarControllerBase):
           self.long_heartbeat = 360
 
         desired_gap = CS.out.vEgo * get_T_FOLLOW(hud_control.leadDistanceBars - 1)
+        distance = min(abs(self.lead_distance), 100)
         override_starting = CC.cruiseControl.override and CS.out.vEgo < self.CP.vEgoStarting
         override_starting_limit = True if CS.out.vEgo > self.CP.vEgoStarting else False
 
         acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, CS.esp_hold_confirmation, CC.cruiseControl.override,
                                                        override_starting, override_starting_limit)
         can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, CANBUS.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH, hud_control.leadVisible,
-                                                         hud_control.leadDistanceBars, desired_gap, self.lead_distance, self.long_heartbeat, CS.esp_hold_confirmation))
+                                                         hud_control.leadDistanceBars, desired_gap, distance, self.long_heartbeat, CS.esp_hold_confirmation))
 
       else:
         lead_distance = 0
