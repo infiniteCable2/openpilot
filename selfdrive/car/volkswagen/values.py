@@ -102,7 +102,7 @@ class CarControllerParams:
         Button(car.CarState.ButtonEvent.Type.decelCruise, "GRA_ACC_01", "GRA_Tip_Runter", [1]),
         #Button(car.CarState.ButtonEvent.Type.cancel, "GRA_ACC_01", "GRA_Abbrechen", [1]), # there is no physical cancel button
         Button(car.CarState.ButtonEvent.Type.cancel, "GRA_ACC_01", "GRA_Hauptschalter", [1]), # main button cancels ACC operation when ACC active
-        Button(car.CarState.ButtonEvent.Type.gapAdjustCruise, "GRA_ACC_01", "GRA_Verstellung_Zeitluecke", [1]),
+        Button(car.CarState.ButtonEvent.Type.gapAdjustCruise, "GRA_ACC_01", "GRA_Verstellung_Zeitluecke", [3]),
       ]
 
       self.LDW_MESSAGES = {
