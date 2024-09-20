@@ -91,7 +91,7 @@ def acc_hold_type(main_switch_on, acc_faulted, long_active, just_disabled, start
   # WRONG USAGE (ESPECIALLY OVERRIDING STATES) RESULTS IN CAR SHUTTING OFF AT LOW SPEEDS <~ 3km/h
   # TODO: CLEANUP -> find working state with minimum complexity
 
-  if acc_faulted or not long_active
+  if acc_faulted or not long_active:
     acc_hold_type = 0 # no hold request
   elif just_disabled or just_overwritten:
     acc_hold_type = 5 # cancel hold management after specifc events
