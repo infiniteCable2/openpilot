@@ -74,10 +74,11 @@ def acc_control_value(main_switch_on, acc_faulted, long_active, just_disabled, e
     acc_control = 6 # error state
   elif just_disabled:
     acc_control = 5 # disabling controls
-  elif override:
-    acc_control = 3 if esp_hold else 4 # startup while overriding is a starting condition
   elif long_active:
-    acc_control = 3 # active long control state
+    if override:
+      acc_control = 3 if esp_hold else 4 # startup while overriding is a starting condition
+    else:
+      acc_control = 3 # active long control state
   elif main_switch_on:
     acc_control = 2 # long control ready
   else:
@@ -90,7 +91,7 @@ def acc_hold_type(main_switch_on, acc_faulted, long_active, just_disabled, start
   # WRONG USAGE (ESPECIALLY OVERRIDING STATES) RESULTS IN CAR SHUTTING OFF AT LOW SPEEDS <~ 3km/h
   # TODO: CLEANUP -> find working state with minimum complexity
 
-  if acc_faulted or not long_active:
+  if acc_faulted or not long_active
     acc_hold_type = 0 # no hold request
   elif just_disabled or just_overwritten:
     acc_hold_type = 5 # cancel hold management after specifc events
@@ -169,10 +170,11 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
 def acc_hud_status_value(main_switch_on, acc_faulted, long_active, esp_hold, override, override_starting, override_starting_limit):
   if acc_faulted:
     acc_hud_control = 6 # error state
-  elif override and long_active:
-    acc_hud_control = 3 if esp_hold else 4 # startup while overriding is a starting condition and shown as default active
   elif long_active:
-    acc_hud_control = 3 # active
+    if override:
+      acc_hud_control = 3 if esp_hold else 4 # startup while overriding is a starting condition and shown as default active
+    else:
+      acc_hud_control = 3 # active
   elif main_switch_on:
     acc_hud_control = 2 # inactive
   else:
