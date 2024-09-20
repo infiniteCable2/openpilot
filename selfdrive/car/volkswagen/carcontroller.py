@@ -244,9 +244,9 @@ class CarController(CarControllerBase):
         override_starting_limit = True if CS.out.vEgo > self.CP.vEgoStarting else False
 
         acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, just_disabled, CS.esp_hold_confirmation,
-                                                 CC.cruiseControl.override and CS.out.cruiseState.enabled, override_starting, override_starting_limit)
+                                                 CC.cruiseControl.override, override_starting, override_starting_limit)
         acc_hold_type = self.CCS.acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, just_disabled, starting,
-                                               stopping, CS.esp_hold_confirmation, CC.cruiseControl.override and CS.out.cruiseState.enabled, just_overwritten, override_starting,
+                                               stopping, CS.esp_hold_confirmation, CC.cruiseControl.override, just_overwritten, override_starting,
                                                override_starting_limit, self.acc_hold_type_prev)
         self.acc_hold_type_prev = acc_hold_type
         required_jerk = min(3, abs(accel - CS.out.aEgo) * 50) ## pfeiferj:openpilot:pfeifer-hkg-long-control-tune
@@ -258,8 +258,8 @@ class CarController(CarControllerBase):
         else:
           upper_jerk = 0
 
-        can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, CANBUS.pt, CS.acc_type, CC.enabled, accel, acc_control, acc_hold_type,
-                                                           stopping, starting, lower_jerk, upper_jerk, CS.esp_hold_confirmation, CC.cruiseControl.override and CS.out.cruiseState.enabled, current_speed, reversing))
+        can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, CANBUS.pt, CS.acc_type, CC.enabled and CS.out.cruiseState.enabled, accel, acc_control, acc_hold_type,
+                                                           stopping, starting, lower_jerk, upper_jerk, CS.esp_hold_confirmation, CC.cruiseControl.override, current_speed, reversing))
 
       else:
         acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
@@ -294,7 +294,7 @@ class CarController(CarControllerBase):
         override_starting_limit = True if CS.out.vEgo > self.CP.vEgoStarting else False
 
         acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, CS.esp_hold_confirmation,
-                                                       CC.cruiseControl.override and CS.out.cruiseState.enabled, override_starting, override_starting_limit)
+                                                       CC.cruiseControl.override, override_starting, override_starting_limit)
         can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, CANBUS.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH, hud_control.leadVisible,
                                                          hud_control.leadDistanceBars, desired_gap, distance, self.long_heartbeat, CS.esp_hold_confirmation))
 
