@@ -237,8 +237,8 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "Zeitluecke_3_Signal":     get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 3
     "Zeitluecke_4_Signal":     get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 4
     "Zeitluecke_5_Signal":     get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 5
-    "ACC_Anzeige_Zeitluecke":  change_distance_bar,
-    "Unknown_05":              1 if acc_control == LONG_ACTIVE else 0, # candidate continuously display time gap
+    "ACC_Anzeige_Zeitluecke":  change_distance_bar, # show distance bar selection
+    "Zeitluecke_Farbe":        1 if acc_control in (2, 3, 4) else 0, # yellow (1) or white (0) time gap
     "SET_ME_0X1":              0x1, # unknown
     "SET_ME_0X3FF":            0x3FF, # unknown
     "SET_ME_0XFFFF":           0xFFFF, # unknown
