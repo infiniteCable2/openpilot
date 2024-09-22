@@ -283,9 +283,11 @@ class CarController(CarControllerBase):
 
         desired_gap = max(1, CS.out.vEgo * get_T_FOLLOW(hud_control.leadDistanceBars))
         distance = min(self.lead_distance, 100)
+        
         change_distance_bar = False
         if hud_control.leadDistanceBars != self.lead_distance_bars_last:
           self.lead_distance_bar_timer = 0
+        self.lead_distance_bars_last = hud_control.leadDistanceBars
         if self.lead_distance_bar_timer <= 3:
           change_distance_bar = True
           
