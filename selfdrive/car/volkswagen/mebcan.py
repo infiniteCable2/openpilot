@@ -195,20 +195,20 @@ def get_desired_gap(distance_bars, desired_gap):
   # mapping desired gap to correct signal of corresponding distance bar
   gap = 0
 
-  if desired_gap == 1:
+  if distance_bars == 1:
     gap = desired_gap 
-  elif desired_gap == 2:
+  elif distance_barsp == 2:
     gap = desired_gap
-  elif desired_gap == 3:
+  elif distance_bars == 3:
     gap = desired_gap
-  elif desired_gap == 4:
+  elif distance_bars == 4:
     gap = desired_gap
-  elif desired_gap == 5:
+  elif distance_bars == 5:
     gap = desired_gap
 
   return gap
 
-def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, distance_bars, desired_gap, distance, heartbeat, esp_hold):  
+def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, distance_bars, change_distance_bar, desired_gap, distance, heartbeat, esp_hold):  
   LONG_ACTIVE = 3
 
   values = {
@@ -237,7 +237,7 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "Zeitluecke_3_Signal":     get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 3
     "Zeitluecke_4_Signal":     get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 4
     "Zeitluecke_5_Signal":     get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 5
-    #"ACC_Anzeige_Zeitluecke": 
+    "ACC_Anzeige_Zeitluecke":  change_distance_bar,
     "Unknown_05":              1 if acc_control == LONG_ACTIVE else 0, # candidate continuously display time gap
     "SET_ME_0X1":              0x1, # unknown
     "SET_ME_0X3FF":            0x3FF, # unknown
