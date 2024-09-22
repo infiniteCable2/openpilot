@@ -238,7 +238,7 @@ class CarController(CarControllerBase):
         acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, CS.esp_hold_confirmation,
                                                  CC.cruiseControl.override)
         acc_hold_type = self.CCS.acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, starting,
-                                               stopping, CS.esp_hold_confirmation, CC.cruiseControl.override, self.acc_hold_type_prev)
+                                               stopping, CS.esp_hold_confirmation, CC.cruiseControl.override)
         required_jerk = min(3, abs(accel - CS.out.aEgo) * 50) ## pfeiferj:openpilot:pfeifer-hkg-long-control-tune
         lower_jerk = required_jerk
         upper_jerk = required_jerk
