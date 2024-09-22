@@ -74,6 +74,7 @@ class CarController(CarControllerBase):
     self.send_count = 0
     self.lead_distance = 0
     self.lead_distance_bars_last = None
+    self.lead_distance_bar_timer = 0
     
     self.apply_angle_last = 0
     self.lat_active_prev = False
@@ -279,6 +280,9 @@ class CarController(CarControllerBase):
     if self.CP.openpilotLongitudinalControl and self.sm.updated['radarState'] and self.frame % 5 == 0:
       self.lead_distance = self.calculate_lead_distance(hud_control)
 
+    if self.frame % 100 == 0 and self.lead_distance_bar_timer < 4:
+      self.lead_distance_bar_timer += 1
+
     if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl:
       if self.CP.flags & VolkswagenFlags.MEB:
         if self.long_heartbeat != 221:
@@ -290,6 +294,8 @@ class CarController(CarControllerBase):
         distance = min(self.lead_distance, 100)
         change_distance_bar = False
         if hud_control.leadDistanceBars != self.lead_distance_bars_last:
+          self.lead_distance_bar_timer = 0
+        if self.lead_distance_bar_timer < 4:
           change_distance_bar = True
           
         acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, CS.esp_hold_confirmation,
