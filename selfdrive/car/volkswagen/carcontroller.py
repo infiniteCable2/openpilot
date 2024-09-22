@@ -286,7 +286,7 @@ class CarController(CarControllerBase):
         elif self.long_heartbeat == 221:
           self.long_heartbeat = 360
 
-        desired_gap = CS.out.vEgo * 1 #get_T_FOLLOW(hud_control.leadDistanceBars - 1)
+        desired_gap = CS.out.vEgo * get_T_FOLLOW(hud_control.leadDistanceBars)
         distance = min(self.lead_distance, 100)
         change_distance_bar = False
         if hud_control.leadDistanceBars != self.lead_distance_bars_last:
