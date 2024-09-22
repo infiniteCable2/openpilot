@@ -76,7 +76,7 @@ def create_acc_buttons_control(packer, bus, gra_stock_values, frame=0, buttons=0
   return packer.make_can_msg("GRA_ACC_01", bus, values)
 
 
-def acc_control_value(main_switch_on, acc_faulted, long_active, just_disabled, esp_hold, override, override_starting, override_starting_limit):
+def acc_control_value(main_switch_on, acc_faulted, long_active, just_disabled, esp_hold, override):
 
   if acc_faulted:
     acc_control = 6 # error state
@@ -95,7 +95,7 @@ def acc_control_value(main_switch_on, acc_faulted, long_active, just_disabled, e
   return acc_control
 
 
-def acc_hold_type(main_switch_on, acc_faulted, long_active, just_disabled, starting, stopping, esp_hold, override, just_overwritten, override_starting, override_starting_limit, acc_hold_type_prev):
+def acc_hold_type(main_switch_on, acc_faulted, long_active, just_disabled, starting, stopping, esp_hold, override, just_overwritten, acc_hold_type_prev):
   # warning: car is reacting to hold mechanic even with long control off
   # TODO: CLEANUP -> find working state with minimum complexity
 
@@ -175,7 +175,7 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
   return commands
 
 
-def acc_hud_status_value(main_switch_on, acc_faulted, long_active, esp_hold, override, override_starting, override_starting_limit):
+def acc_hud_status_value(main_switch_on, acc_faulted, long_active, esp_hold, override):
   if acc_faulted:
     acc_hud_control = 6 # error state
   elif long_active:
