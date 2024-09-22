@@ -73,6 +73,7 @@ class CarController(CarControllerBase):
     self.acc_type = -1
     self.send_count = 0
     self.lead_distance = 0
+    self.lead_distance_bars_last = None
     
     self.apply_angle_last = 0
     self.lat_active_prev = False
@@ -240,14 +241,11 @@ class CarController(CarControllerBase):
         self.long_overwrite_prev = CC.cruiseControl.override
         current_speed = CS.out.vEgo * CV.MS_TO_KPH
         reversing = CS.out.gearShifter in [car.CarState.GearShifter.reverse]
-        override_starting = CC.cruiseControl.override and CS.out.vEgo < self.CP.vEgoStarting
-        override_starting_limit = True if CS.out.vEgo > self.CP.vEgoStarting else False
 
         acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, just_disabled, CS.esp_hold_confirmation,
-                                                 CC.cruiseControl.override, override_starting, override_starting_limit)
+                                                 CC.cruiseControl.override)
         acc_hold_type = self.CCS.acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, just_disabled, starting,
-                                               stopping, CS.esp_hold_confirmation, CC.cruiseControl.override, just_overwritten, override_starting,
-                                               override_starting_limit, self.acc_hold_type_prev)
+                                               stopping, CS.esp_hold_confirmation, CC.cruiseControl.override, just_overwritten, self.acc_hold_type_prev)
         self.acc_hold_type_prev = acc_hold_type
         required_jerk = min(3, abs(accel - CS.out.aEgo) * 50) ## pfeiferj:openpilot:pfeifer-hkg-long-control-tune
         lower_jerk = required_jerk
@@ -288,15 +286,16 @@ class CarController(CarControllerBase):
         elif self.long_heartbeat == 221:
           self.long_heartbeat = 360
 
-        desired_gap = CS.out.vEgo * get_T_FOLLOW(hud_control.leadDistanceBars - 1)
-        distance = min(abs(self.lead_distance), 100)
-        override_starting = CC.cruiseControl.override and CS.out.vEgo < self.CP.vEgoStarting
-        override_starting_limit = True if CS.out.vEgo > self.CP.vEgoStarting else False
-
+        desired_gap = CS.out.vEgo * 1 #get_T_FOLLOW(hud_control.leadDistanceBars - 1)
+        distance = min(self.lead_distance, 100)
+        change_distance_bar = False
+        if hud_control.leadDistanceBars != self.lead_distance_bars_last:
+          change_distance_bar = True
+          
         acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, CS.esp_hold_confirmation,
-                                                       CC.cruiseControl.override, override_starting, override_starting_limit)
+                                                       CC.cruiseControl.override)
         can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, CANBUS.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH, hud_control.leadVisible,
-                                                         hud_control.leadDistanceBars, desired_gap, distance, self.long_heartbeat, CS.esp_hold_confirmation))
+                                                         hud_control.leadDistanceBars, change_distance_bar, desired_gap, distance, self.long_heartbeat, CS.esp_hold_confirmation))
 
       else:
         lead_distance = 0
@@ -341,6 +340,7 @@ class CarController(CarControllerBase):
     new_actuators.steerOutputCan = self.apply_steer_last
     new_actuators.steeringAngleDeg = self.apply_angle_last
     new_actuators.accel = self.accel_last
+    self.lead_distance_bars_last = hud_control.leadDistanceBars
 
     self.gra_acc_counter_last = CS.gra_stock_values["COUNTER"]
     self.v_set_dis_prev = self.v_set_dis
