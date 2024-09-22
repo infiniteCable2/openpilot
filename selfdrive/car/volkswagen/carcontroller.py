@@ -80,10 +80,7 @@ class CarController(CarControllerBase):
     self.lat_active_prev = False
     self.steering_power = 0
     self.long_heartbeat = 0
-    self.long_active_prev = False
     self.accel_last = 0
-    self.long_overwrite_prev = False
-    self.acc_hold_type_prev = 0
 
   def calculate_lead_distance(self, hud_control: car.CarControl.HUDControl) -> float:
     lead_one = self.sm["radarState"].leadOne
@@ -236,18 +233,12 @@ class CarController(CarControllerBase):
       starting = actuators.longControlState == LongCtrlState.pid and (CS.esp_hold_confirmation or CS.out.vEgo < self.CP.vEgoStopping)
       
       if self.CP.flags & VolkswagenFlags.MEB:
-        just_disabled = True if self.long_active_prev and not (CC.enabled and CS.out.cruiseState.enabled) else False
-        self.long_active_prev = CC.enabled and CS.out.cruiseState.enabled
-        just_overwritten = True if self.long_overwrite_prev and not CC.cruiseControl.override else False
-        self.long_overwrite_prev = CC.cruiseControl.override
         current_speed = CS.out.vEgo * CV.MS_TO_KPH
         reversing = CS.out.gearShifter in [car.CarState.GearShifter.reverse]
-
-        acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, just_disabled, CS.esp_hold_confirmation,
+        acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, CS.esp_hold_confirmation,
                                                  CC.cruiseControl.override)
-        acc_hold_type = self.CCS.acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, just_disabled, starting,
-                                               stopping, CS.esp_hold_confirmation, CC.cruiseControl.override, just_overwritten, self.acc_hold_type_prev)
-        self.acc_hold_type_prev = acc_hold_type
+        acc_hold_type = self.CCS.acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled starting,
+                                               stopping, CS.esp_hold_confirmation, CC.cruiseControl.override, self.acc_hold_type_prev)
         required_jerk = min(3, abs(accel - CS.out.aEgo) * 50) ## pfeiferj:openpilot:pfeifer-hkg-long-control-tune
         lower_jerk = required_jerk
         upper_jerk = required_jerk
@@ -280,7 +271,7 @@ class CarController(CarControllerBase):
     if self.CP.openpilotLongitudinalControl and self.sm.updated['radarState'] and self.frame % 5 == 0:
       self.lead_distance = self.calculate_lead_distance(hud_control)
 
-    if self.frame % 100 == 0 and self.lead_distance_bar_timer < 4:
+    if self.frame % 100 == 0 and self.lead_distance_bar_timer < 3:
       self.lead_distance_bar_timer += 1
 
     if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl:
@@ -295,7 +286,7 @@ class CarController(CarControllerBase):
         change_distance_bar = False
         if hud_control.leadDistanceBars != self.lead_distance_bars_last:
           self.lead_distance_bar_timer = 0
-        if self.lead_distance_bar_timer < 4:
+        if self.lead_distance_bar_timer <= 3:
           change_distance_bar = True
           
         acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, CS.esp_hold_confirmation,
