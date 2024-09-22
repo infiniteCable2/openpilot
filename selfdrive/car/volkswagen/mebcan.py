@@ -77,8 +77,7 @@ def create_acc_buttons_control(packer, bus, gra_stock_values, frame=0, buttons=0
 
 
 def acc_control_value(main_switch_on, acc_faulted, long_active, just_disabled, esp_hold, override, override_starting, override_starting_limit):
-  # WRONG USAGE (ESPECIALLY OVERRIDING STATES) RESULTS IN CAR SHUTTING OFF AT LOW SPEEDS <~ 3km/h
-  # ja, man kann ein E-Auto abwürgen ;)
+
   if acc_faulted:
     acc_control = 6 # error state
   elif just_disabled:
@@ -97,7 +96,7 @@ def acc_control_value(main_switch_on, acc_faulted, long_active, just_disabled, e
 
 
 def acc_hold_type(main_switch_on, acc_faulted, long_active, just_disabled, starting, stopping, esp_hold, override, just_overwritten, override_starting, override_starting_limit, acc_hold_type_prev):
-  # WRONG USAGE (ESPECIALLY OVERRIDING STATES) RESULTS IN CAR SHUTTING OFF AT LOW SPEEDS <~ 3km/h
+  # warning: car is reacting to hold mechanic even with long control off
   # TODO: CLEANUP -> find working state with minimum complexity
 
   if acc_faulted or not long_active:
@@ -239,7 +238,7 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "Zeitluecke_4_Signal":     get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 4
     "Zeitluecke_5_Signal":     get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 5
     #"ACC_Anzeige_Zeitluecke": 
-    "Unknown_05":              1 if acc_control == LONG_ACTIVE else 0, # candidate continously display time gap
+    "Unknown_05":              1 if acc_control == LONG_ACTIVE else 0, # candidate continuously display time gap
     "SET_ME_0X1":              0x1, # unknown
     "SET_ME_0X3FF":            0x3FF, # unknown
     "SET_ME_0XFFFF":           0xFFFF, # unknown
