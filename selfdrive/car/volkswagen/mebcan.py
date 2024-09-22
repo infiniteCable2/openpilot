@@ -197,7 +197,7 @@ def get_desired_gap(distance_bars, desired_gap):
 
   if distance_bars == 1:
     gap = desired_gap 
-  elif distance_barsp == 2:
+  elif distance_bars == 2:
     gap = desired_gap
   elif distance_bars == 3:
     gap = desired_gap
