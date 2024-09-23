@@ -199,6 +199,7 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
   OVERRIDE    = 4
   LONG_ACTIVE = 3
   AVAILABLE   = 2
+  DEACTIVATED = 0
 
   values = {
     #"STA_Primaeranz": acc_hud_status,
@@ -226,7 +227,7 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "Zeitluecke_3":            get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 3
     "Zeitluecke_4":            get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 4
     "Zeitluecke_5":            get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 5
-    "ACC_Anzeige_Zeitluecke":  change_distance_bar, # show distance bar selection
+    "ACC_Anzeige_Zeitluecke":  change_distance_bar if acc_control != DEACTIVATED else 0, # show distance bar selection
     "Zeitluecke_Farbe":        1 if acc_control in (AVAILABLE, LONG_ACTIVE, OVERRIDE) else 0, # yellow (1) or white (0) time gap
     "SET_ME_0X1":              0x1, # unknown
     "SET_ME_0X3FF":            0x3FF, # unknown
