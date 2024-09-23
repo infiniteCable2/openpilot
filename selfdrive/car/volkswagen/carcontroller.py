@@ -271,7 +271,7 @@ class CarController(CarControllerBase):
     if self.CP.openpilotLongitudinalControl and self.sm.updated['radarState'] and self.frame % 5 == 0:
       self.lead_distance = self.calculate_lead_distance(hud_control)
 
-    if self.frame % 100 == 0 and self.lead_distance_bar_timer < 3:
+    if self.frame % 100 == 0 and self.lead_distance_bar_timer <= 3:
       self.lead_distance_bar_timer += 1
 
     if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl:
