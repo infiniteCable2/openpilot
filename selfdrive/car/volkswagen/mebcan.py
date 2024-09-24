@@ -168,7 +168,7 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
   # satisfy car to prevent errors when pressing Travel Assist Button
   # the button does nothing with this
   values_ta = {
-     "Travel_Assist_Status":    2, # ready
+     "Travel_Assist_Status":    0, #2, # ready
      "Travel_Assist_Request":   0, # no request
      "Travel_Assist_Available": 1, # button is illuminated
   }
