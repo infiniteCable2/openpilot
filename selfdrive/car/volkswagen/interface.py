@@ -108,7 +108,7 @@ class CarInterface(CarInterfaceBase):
       #ret.longitudinalTuning.kpBP = [0., 5., 35.]
       #ret.longitudinalTuning.kpV  = [0., 0.1, 0.4]
       ret.longitudinalTuning.kiBP = [0., 5., 35.]
-      ret.longitudinalTuning.kiV  = [1.8, 1.2, 0.6]
+      ret.longitudinalTuning.kiV  = [1.2, 0.8, 0.5]
 
     ret.experimentalLongitudinalAvailable = ret.networkLocation == NetworkLocation.gateway or docs
     if experimental_long:
