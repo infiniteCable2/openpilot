@@ -235,10 +235,10 @@ class CarController(CarControllerBase):
       if self.CP.flags & VolkswagenFlags.MEB:
         current_speed = CS.out.vEgo * CV.MS_TO_KPH
         reversing = CS.out.gearShifter in [car.CarState.GearShifter.reverse]
-        acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, CS.esp_hold_confirmation,
-                                                 CC.cruiseControl.override)
-        acc_hold_type = self.CCS.acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, starting,
-                                               stopping, CS.esp_hold_confirmation, CC.cruiseControl.override)
+        acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled,
+                                                 CS.esp_hold_confirmation, CC.cruiseControl.override)
+        acc_hold_type = self.CCS.acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled,
+                                               starting, stopping, CS.esp_hold_confirmation, CC.cruiseControl.override)
         required_jerk = min(3, abs(accel - CS.out.aEgo) * 50) ## pfeiferj:openpilot:pfeifer-hkg-long-control-tune
         lower_jerk = required_jerk
         upper_jerk = required_jerk
@@ -248,8 +248,9 @@ class CarController(CarControllerBase):
         else:
           upper_jerk = 0
 
-        can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, CANBUS.pt, CS.acc_type, CC.enabled and CS.out.cruiseState.enabled, accel, acc_control, acc_hold_type,
-                                                           stopping, starting, lower_jerk, upper_jerk, CS.esp_hold_confirmation, CC.cruiseControl.override, current_speed, reversing))
+        can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, CANBUS.pt, CS.acc_type, CC.enabled and CS.out.cruiseState.enabled,
+                                                           accel, acc_control, acc_hold_type, stopping, starting, lower_jerk, upper_jerk,
+                                                           CS.esp_hold_confirmation, CC.cruiseControl.override, current_speed, reversing))
 
       else:
         acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
@@ -264,8 +265,12 @@ class CarController(CarControllerBase):
       if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw):
         hud_alert = self.CCP.LDW_MESSAGES["laneAssistTakeOverUrgent"]
         sound_alert = 1
-      can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, CANBUS.pt, CS.ldw_stock_values, CC.latActive,
-                                                       CS.out.steeringPressed, hud_alert, hud_control, sound_alert))
+      if self.CP.flags & VolkswagenFlags.MEB:
+        can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, CANBUS.pt, CS.ldw_stock_values, CC.latActive,
+                                                         CS.out.steeringPressed, hud_alert, hud_control, sound_alert))
+      else:
+        can_sends.append(self.CCS.create_lka_hud_control(self.packer_pt, CANBUS.pt, CS.ldw_stock_values, CC.latActive,
+                                                         CS.out.steeringPressed, hud_alert, hud_control))
 
     # Parse lead distance from radarState and display the corresponding distance in the car's cluster
     if self.CP.openpilotLongitudinalControl and self.sm.updated['radarState'] and self.frame % 5 == 0:
@@ -291,10 +296,11 @@ class CarController(CarControllerBase):
         if self.lead_distance_bar_timer <= 1:
           change_distance_bar = True
           
-        acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled, CS.esp_hold_confirmation,
-                                                       CC.cruiseControl.override)
-        can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, CANBUS.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH, hud_control.leadVisible,
-                                                         hud_control.leadDistanceBars, change_distance_bar, desired_gap, distance, self.long_heartbeat, CS.esp_hold_confirmation))
+        acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled,
+                                                       CS.esp_hold_confirmation, CC.cruiseControl.override)
+        can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, CANBUS.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH,
+                                                         hud_control.leadVisible, hud_control.leadDistanceBars, change_distance_bar,
+                                                         desired_gap, distance, self.long_heartbeat, CS.esp_hold_confirmation))
 
       else:
         lead_distance = 0
