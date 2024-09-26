@@ -276,16 +276,12 @@ class CarController(CarControllerBase):
     if self.CP.openpilotLongitudinalControl and self.sm.updated['radarState'] and self.frame % 5 == 0:
       self.lead_distance = self.calculate_lead_distance(hud_control)
 
-    if self.frame % 100 == 0 and self.lead_distance_bar_timer <= 1:
+    if self.frame % 100 == 0 and self.lead_distance_bar_timer <= 3:
       self.lead_distance_bar_timer += 1
 
     if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl:
       if self.CP.flags & VolkswagenFlags.MEB:
-        if self.long_heartbeat != 221:
-          self.long_heartbeat = 221
-        elif self.long_heartbeat == 221:
-          self.long_heartbeat = 360
-
+        self.long_heartbeat = generate_vw_meb_hud_heartbeat()
         desired_gap = max(1, CS.out.vEgo * get_T_FOLLOW(hud_control.leadDistanceBars))
         distance = min(self.lead_distance, 100)
         
@@ -293,8 +289,7 @@ class CarController(CarControllerBase):
         if hud_control.leadDistanceBars != self.lead_distance_bars_last:
           self.lead_distance_bar_timer = 0
         self.lead_distance_bars_last = hud_control.leadDistanceBars
-        if self.lead_distance_bar_timer <= 1:
-          change_distance_bar = True
+        change_distance_bar = True if self.lead_distance_bar_timer <= 3 else False
           
         acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled,
                                                        CS.esp_hold_confirmation, CC.cruiseControl.override)
@@ -351,6 +346,12 @@ class CarController(CarControllerBase):
     self.v_set_dis_prev = self.v_set_dis
     self.frame += 1
     return new_actuators, can_sends
+
+  def generate_vw_meb_hud_heartbeat(self):
+    if self.long_heartbeat != 221:
+      return 221
+    elif self.long_heartbeat == 221:
+      return 360
 
   # multikyd methods, sunnyhaibin logic
   def get_cruise_buttons_status(self, CS):
