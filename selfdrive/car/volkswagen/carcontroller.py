@@ -281,7 +281,7 @@ class CarController(CarControllerBase):
 
     if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl:
       if self.CP.flags & VolkswagenFlags.MEB:
-        self.long_heartbeat = generate_vw_meb_hud_heartbeat()
+        self.long_heartbeat = self.generate_vw_meb_hud_heartbeat()
         desired_gap = max(1, CS.out.vEgo * get_T_FOLLOW(hud_control.leadDistanceBars))
         distance = min(self.lead_distance, 100)
         
