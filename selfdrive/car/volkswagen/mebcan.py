@@ -99,7 +99,7 @@ def acc_control_value(main_switch_on, acc_faulted, long_active, esp_hold, overri
     acc_control = ACC_CTRL_ERROR # error state
   elif long_active:
     if override:
-      acc_control = ACC_CTRL_ACTIVE if esp_hold else ACC_CTRL_OVERRIDE # startup while overriding is a starting condition
+      acc_control = ACC_CTRL_OVERRIDE #ACC_CTRL_ACTIVE if esp_hold else ACC_CTRL_OVERRIDE # startup while overriding is a starting condition
     else:
       acc_control = ACC_CTRL_ACTIVE # active long control state
   elif main_switch_on:
@@ -116,7 +116,7 @@ def acc_hold_type(main_switch_on, acc_faulted, long_active, starting, stopping, 
   if acc_faulted or not long_active:
     acc_hold_type = ACC_HMS_NO_REQUEST # no hold request
   elif override:
-    acc_hold_type = ACC_HMS_RELEASE if esp_hold else ACC_HMS_NO_REQUEST
+    acc_hold_type = ACC_HMS_NO_REQUEST #ACC_HMS_RELEASE if esp_hold else ACC_HMS_NO_REQUEST
   elif starting:
     acc_hold_type = ACC_HMS_RELEASE # release request and startup
   elif stopping or esp_hold:
@@ -184,7 +184,7 @@ def acc_hud_status_value(main_switch_on, acc_faulted, long_active, esp_hold, ove
     acc_hud_control = ACC_HUD_ERROR # error state
   elif long_active:
     if override:
-      acc_hud_control = ACC_HUD_ACTIVE if esp_hold else ACC_HUD_OVERRIDE # startup while overriding is a starting condition and shown as default active
+      acc_hud_control = ACC_HUD_OVERRIDE #ACC_HUD_ACTIVE if esp_hold else ACC_HUD_OVERRIDE # startup while overriding is a starting condition and shown as default active
     else:
       acc_hud_control = ACC_HUD_ACTIVE # active
   elif main_switch_on:
