@@ -236,9 +236,9 @@ class CarController(CarControllerBase):
         current_speed = CS.out.vEgo * CV.MS_TO_KPH
         reversing = CS.out.gearShifter in [car.CarState.GearShifter.reverse]
         acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled,
-                                                 CS.esp_hold_confirmation, CC.cruiseControl.override)
+                                                 CS.esp_hold_confirmation, CC.cruiseControl.override or CS.out.gasPressed)
         acc_hold_type = self.CCS.acc_hold_type(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled,
-                                               starting, stopping, CS.esp_hold_confirmation, CC.cruiseControl.override)
+                                               starting, stopping, CS.esp_hold_confirmation, CC.cruiseControl.override or CS.out.gasPressed)
         required_jerk = min(3, abs(accel - CS.out.aEgo) * 50) ## pfeiferj:openpilot:pfeifer-hkg-long-control-tune
         lower_jerk = required_jerk
         upper_jerk = required_jerk
@@ -250,7 +250,7 @@ class CarController(CarControllerBase):
 
         can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, CANBUS.pt, CS.acc_type, CC.enabled and CS.out.cruiseState.enabled,
                                                            accel, acc_control, acc_hold_type, stopping, starting, lower_jerk, upper_jerk,
-                                                           CS.esp_hold_confirmation, CC.cruiseControl.override, current_speed, reversing))
+                                                           CS.esp_hold_confirmation, CC.cruiseControl.override or CS.out.gasPressed, current_speed, reversing))
 
       else:
         acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
@@ -292,7 +292,7 @@ class CarController(CarControllerBase):
         change_distance_bar = True if self.lead_distance_bar_timer <= 3 else False
           
         acc_hud_status = self.CCS.acc_hud_status_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.enabled and CS.out.cruiseState.enabled,
-                                                       CS.esp_hold_confirmation, CC.cruiseControl.override)
+                                                       CS.esp_hold_confirmation, CC.cruiseControl.override or CS.out.gasPressed)
         can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, CANBUS.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH,
                                                          hud_control.leadVisible, hud_control.leadDistanceBars, change_distance_bar,
                                                          desired_gap, distance, self.long_heartbeat, CS.esp_hold_confirmation))
