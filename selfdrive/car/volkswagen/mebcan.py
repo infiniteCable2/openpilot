@@ -127,7 +127,7 @@ def acc_hold_type(main_switch_on, acc_faulted, long_active, starting, stopping, 
   return acc_hold_type
 
 
-def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_control, acc_hold_type, stopping, starting, lower_jerk, upper_jerk, esp_hold, override, speed, reversing):
+def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_control, acc_hold_type, stopping, starting, lower_jerk, upper_jerk, esp_hold, override, speed, reversing, travel_assist_available):
   # active longitudinal control disables one pedal driving (regen mode of accelerator) while using overriding mechnism
   commands = []
 
@@ -165,15 +165,16 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
 
   commands.append(packer.make_can_msg("MEB_ACC_02", bus, values))
 
-  # satisfy car to prevent errors when pressing Travel Assist Button
-  # the button does nothing with this
-  values_ta = {
-     "Travel_Assist_Status":    2, # ready
-     "Travel_Assist_Request":   0, # no request
-     "Travel_Assist_Available": 1, # button is illuminated
-  }
+  if travel_assist_available:
+    # satisfy car to prevent errors when pressing Travel Assist Button
+    # testing effects of enabling this while acc enabled
+    values_ta = {
+       "Travel_Assist_Status":    4 if acc_enabled else 2,
+       "Travel_Assist_Request":   4 if acc_enabled else 0,
+       "Travel_Assist_Available": 1, # button is illuminated
+    }
 
-  commands.append(packer.make_can_msg("MEB_Travel_Assist_01", bus, values_ta))
+    commands.append(packer.make_can_msg("MEB_Travel_Assist_01", bus, values_ta))
 
   return commands
 
