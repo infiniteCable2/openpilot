@@ -170,7 +170,7 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
     # testing effects of enabling this while acc enabled
     values_ta = {
        "Travel_Assist_Status":    4 if acc_enabled else 2,
-       "Travel_Assist_Request":   4 if acc_enabled else 0,
+       "Travel_Assist_Request":   0,
        "Travel_Assist_Available": 1, # button is illuminated
     }
 
