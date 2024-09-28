@@ -75,6 +75,8 @@ class CarControllerParams:
     elif CP.flags & VolkswagenFlags.MEB:
       self.LDW_STEP                        = 10    # LDW_02 message frequency 10Hz
       self.ACC_HUD_STEP                    = 6     # MEB_ACC_01 message frequency 16Hz
+      self.STEER_DELTA_UP                  = 4     # Boost: Max HCA reached in 1.50s (STEER_MAX / (50Hz * 1.50))
+      self.STEER_DELTA_DOWN                = 10    # Boost: Min HCA reached in 0.60s (STEER_MAX / (50Hz * 0.60))
       self.STEER_DRIVER_ALLOWANCE          = 80    # Driver intervention threshold 0.6 Nm
       self.BTN_STEP                        = 3
       self.STEERING_POWER_MAX              = 127   # HCA_03 maximum steering power
