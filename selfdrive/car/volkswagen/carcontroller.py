@@ -154,7 +154,7 @@ class CarController(CarControllerBase):
             #apply_curvature = 0.
             apply_angle = 0
 
-        self.steering_power = self.generate_vw_meb_steering_power(self, CS, CC.latActive, apply_angle, self.steering_power)
+        self.steering_power = self.generate_vw_meb_steering_power(CS, CC.latActive, apply_angle, self.steering_power)
         #self.steering_boost = self.generate_vw_meb_steering_boost(self, CS, hca_enabled, apply_angle, self.steering_boost)
         #self.apply_curvature_last = apply_curvature
         self.apply_angle_last = clip(apply_angle, -self.CCP.ANGLE_MAX, self.CCP.ANGLE_MAX)
