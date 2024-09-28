@@ -128,20 +128,17 @@ class CarController(CarControllerBase):
     if self.frame % self.CCP.STEER_STEP == 0:
       if self.CP.flags & VolkswagenFlags.MEB:
         # Logic to avoid HCA refused state
-        #   * steering power as counter near zero before standstill OP lane assist deactivation
+        #   * steering power as counter near zero before lane assist deactivation
         # MEB rack can be used continously without found time limits yet
-        # Steering power counter is used to:
-        #   * prevent sudden fluctuations at low speeds
-        #   * avoid HCA refused
-        #   * easy user intervention
-        #   * keep it near maximum regarding speed to get full steering power in shortest time
 
         if CC.latActive:
           hca_enabled = True
           #current_curvature    = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1) # TODO verify sign (clockwise is negative)
           #apply_curvature      = apply_meb_curvature_limits(actuators.curvature, self.apply_curvature_last, current_curvature, CS.out.vEgoRaw, self.CCP)
           apply_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw, self.CCP)
-          #apply_angle = clip(apply_angle, CS.out.steeringAngleDeg - self.CCP.ANGLE_ERROR, CS.out.steeringAngleDeg + self.CCP.ANGLE_ERROR)
+          apply_angle = clip(apply_angle, -self.CCP.ANGLE_MAX, self.CCP.ANGLE_MAX)
+          if CS.out.steeringPressed:
+            apply_angle = clip(apply_angle, CS.out.steeringAngleDeg - self.CCP.ANGLE_ERROR, CS.out.steeringAngleDeg + self.CCP.ANGLE_ERROR)
             
         else:
           if self.steering_power > 0: # keep HCA alive until steering power has reduced to zero
@@ -157,7 +154,7 @@ class CarController(CarControllerBase):
         self.steering_power = self.generate_vw_meb_steering_power(CS, CC.latActive, apply_angle, self.steering_power)
         #self.steering_boost = self.generate_vw_meb_steering_boost(self, CS, hca_enabled, apply_angle, self.steering_boost)
         #self.apply_curvature_last = apply_curvature
-        self.apply_angle_last = clip(apply_angle, -self.CCP.ANGLE_MAX, self.CCP.ANGLE_MAX)
+        self.apply_angle_last = apply_angle
         can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power))
         #can_sends.append(self.CCS.create_steering_boost_control(self.packer_pt, CANBUS.pt, apply_steer, hca_enabled))
 
@@ -333,7 +330,11 @@ class CarController(CarControllerBase):
     return 0
 
   def generate_vw_meb_steering_power(self, CS, lat_active, apply_angle, steering_power_prev):
-    # steering power as lazy counter
+    # Steering power counter is used to:
+    #   * prevent sudden fluctuations at low speeds
+    #   * avoid HCA refused
+    #   * easy user intervention
+    #   * keep it near maximum regarding speed to get full steering power in shortest time
     if lat_active:
       steering_power_min_by_speed = interp(CS.out.vEgoRaw, [0, self.CCP.STEERING_POWER_MAX_BY_SPEED], [self.CCP.STEERING_POWER_MIN, self.CCP.STEERING_POWER_MAX])
       steering_angle_diff = abs(apply_angle - CS.out.steeringAngleDeg)
