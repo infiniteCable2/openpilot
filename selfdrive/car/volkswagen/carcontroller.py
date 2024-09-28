@@ -145,7 +145,7 @@ class CarController(CarControllerBase):
           if CS.lateral_boost_available: # PoC status
             desired_angle_diff = abs(apply_angle - CS.out.steeringAngleDeg)
             new_steer = interp(desired_angle_diff, [0, 90], [0, self.CCP.STEER_MAX])
-            if apply_angle > self.apply_angle_last:
+            if apply_angle < CS.out.steeringAngleDeg:
               new_steer = new_steer * -1
             steering_boost_max_by_speed = interp(CS.out.vEgoRaw, [0, 15], [self.CCP.STEER_MAX, 0])
             new_steer = clip(new_steer, -steering_boost_max_by_speed, steering_boost_max_by_speed)
