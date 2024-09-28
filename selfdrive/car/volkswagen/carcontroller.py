@@ -126,15 +126,6 @@ class CarController(CarControllerBase):
     # **** Steering Controls ************************************************ #
 
     if self.frame % self.CCP.STEER_STEP == 0:
-      # Logic to avoid HCA state 4 "refused":
-      #   * Don't steer unless HCA is in state 3 "ready" or 5 "active"
-      #   * Don't steer at standstill
-      #   * Don't send > 3.00 Newton-meters torque
-      #   * Don't send the same torque for > 6 seconds
-      #   * Don't send uninterrupted steering for > 360 seconds
-      # MQB racks reset the uninterrupted steering timer after a single frame
-      # of HCA disabled; this is done whenever output happens to be zero.
-
       if self.CP.flags & VolkswagenFlags.MEB:
         # Logic to avoid HCA refused state
         #   * steering power as counter near zero before standstill OP lane assist deactivation
@@ -153,7 +144,7 @@ class CarController(CarControllerBase):
           apply_angle = clip(apply_angle, CS.out.steeringAngleDeg - self.CCP.ANGLE_ERROR, CS.out.steeringAngleDeg + self.CCP.ANGLE_ERROR)
             
         else:
-          if self.steering_power > 0: # monotonously decrement power to zero before disabling lane assist to prevent EPS fault
+          if self.steering_power > 0: # keep HCA alive until steering power has reduced to zero
             hca_enabled = True
             #current_curvature = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1)
             #apply_curvature = current_curvature
@@ -163,12 +154,23 @@ class CarController(CarControllerBase):
             #apply_curvature = 0.
             apply_angle = 0
 
-        self.steering_power = self.generate_vw_meb_steering_power(self, CS, CC.latActive, apply_angle)
+        self.steering_power = self.generate_vw_meb_steering_power(self, CS, CC.latActive, apply_angle, self.steering_power)
+        #self.steering_boost = self.generate_vw_meb_steering_boost(self, CS, CC.latActive, apply_angle, self.steering_boost)
         #self.apply_curvature_last = apply_curvature
         self.apply_angle_last = clip(apply_angle, -self.CCP.ANGLE_MAX, self.CCP.ANGLE_MAX)
         can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power))
+        #can_sends.append(self.CCS.create_steering_boost_control(self.packer_pt, CANBUS.pt, apply_steer, hca_enabled))
 
       else:
+        # Logic to avoid HCA state 4 "refused":
+        #   * Don't steer unless HCA is in state 3 "ready" or 5 "active"
+        #   * Don't steer at standstill
+        #   * Don't send > 3.00 Newton-meters torque
+        #   * Don't send the same torque for > 6 seconds
+        #   * Don't send uninterrupted steering for > 360 seconds
+        # MQB racks reset the uninterrupted steering timer after a single frame
+        # of HCA disabled; this is done whenever output happens to be zero.
+        
         if CC.latActive:
           new_steer = int(round(actuators.steer * self.CCP.STEER_MAX))
           apply_steer = apply_driver_steer_torque_limits(new_steer, self.apply_steer_last, CS.out.steeringTorque, self.CCP)
@@ -259,7 +261,7 @@ class CarController(CarControllerBase):
 
     if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl:
       if self.CP.flags & VolkswagenFlags.MEB:
-        self.long_heartbeat = self.generate_vw_meb_hud_heartbeat()
+        self.long_heartbeat = self.generate_vw_meb_hud_heartbeat(self.long_heartbeat)
         desired_gap = max(1, CS.out.vEgo * get_T_FOLLOW(hud_control.leadDistanceBars))
         distance = min(self.lead_distance, 100)
         
@@ -325,7 +327,10 @@ class CarController(CarControllerBase):
     self.frame += 1
     return new_actuators, can_sends
 
-  def generate_vw_meb_steering_power(self, CS, lat_active, apply_angle):
+  def generate_vw_meb_steering_boost(self, CS, lat_active, apply_angle, steering_boost_prev):
+    return 0
+
+  def generate_vw_meb_steering_power(self, CS, lat_active, apply_angle, steering_power_prev):
     # steering power as lazy counter
     if lat_active:
       steering_power_min_by_speed = interp(CS.out.vEgoRaw, [0, self.CCP.STEERING_POWER_MAX_BY_SPEED], [self.CCP.STEERING_POWER_MIN, self.CCP.STEERING_POWER_MAX])
@@ -333,27 +338,32 @@ class CarController(CarControllerBase):
       steering_power_target_angle = steering_power_min_by_speed + self.CCP.ANGLE_POWER_FACTOR * steering_angle_diff + abs(apply_angle)
       steering_power_target = clip(steering_power_target_angle, self.CCP.STEERING_POWER_MIN, self.CCP.STEERING_POWER_MAX)
 
-      if self.steering_power < self.CCP.STEERING_POWER_MIN:  # OP lane assist just activated
-        self.steering_power = min(self.steering_power + self.CCP.STEERING_POWER_STEPS, self.CCP.STEERING_POWER_MIN)
+      if steering_power_prev < self.CCP.STEERING_POWER_MIN:  # OP lane assist just activated
+        steering_power = min(steering_power_prev + self.CCP.STEERING_POWER_STEPS, self.CCP.STEERING_POWER_MIN)
 
-      elif CS.out.steeringPressed and self.steering_power > self.CCP.STEERING_POWER_USER: # user action results in decreasing the steering power
-        self.steering_power = max(self.steering_power - self.CCP.STEERING_POWER_STEPS, self.CCP.STEERING_POWER_USER)
+      elif CS.out.steeringPressed and steering_power_prev > self.CCP.STEERING_POWER_USER: # user action results in decreasing the steering power
+        steering_power = max(steering_power_prev - self.CCP.STEERING_POWER_STEPS, self.CCP.STEERING_POWER_USER)
 
-      elif self.steering_power < self.CCP.STEERING_POWER_MAX: # following desired target
-        if self.steering_power < steering_power_target:
-          self.steering_power = min(self.steering_power + self.CCP.STEERING_POWER_STEPS, steering_power_target)
-        elif self.steering_power > steering_power_target:
-          self.steering_power = max(self.steering_power - self.CCP.STEERING_POWER_STEPS, steering_power_target)
-    else:
-      if self.steering_power > 0: # monotonously decrement power to zero before disabling lane assist to prevent EPS fault
-        self.steering_power = max(self.steering_power - self.CCP.STEERING_POWER_STEPS, 0)
+      elif steering_power_prev < self.CCP.STEERING_POWER_MAX: # following desired target
+        if steering_power_prev < steering_power_target:
+          steering_power = min(steering_power_prev + self.CCP.STEERING_POWER_STEPS, steering_power_target)
+        elif steering_power_prev > steering_power_target:
+          steering_power = max(steering_power_prev - self.CCP.STEERING_POWER_STEPS, steering_power_target)
       else:
-        self.steering_power = 0
+        steering_power = steering_power_prev
+        
+    else:
+      if steering_power_prev > 0: # monotonously decrement power to zero before disabling lane assist to prevent EPS fault
+        steering_power = max(steering_power_prev - self.CCP.STEERING_POWER_STEPS, 0)
+      else:
+        steering_power = 0
+        
+    return steering_power
 
-  def generate_vw_meb_hud_heartbeat(self):
-    if self.long_heartbeat != 221:
+  def generate_vw_meb_hud_heartbeat(self, long_heartbeat_prev):
+    if long_heartbeat_prev != 221:
       return 221
-    elif self.long_heartbeat == 221:
+    elif long_heartbeat_prev == 221:
       return 360
 
   # multikyd methods, sunnyhaibin logic
