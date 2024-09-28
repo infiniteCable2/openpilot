@@ -250,7 +250,8 @@ class CarController(CarControllerBase):
 
         can_sends.extend(self.CCS.create_acc_accel_control(self.packer_pt, CANBUS.pt, CS.acc_type, CC.enabled and CS.out.cruiseState.enabled,
                                                            accel, acc_control, acc_hold_type, stopping, starting, lower_jerk, upper_jerk,
-                                                           CS.esp_hold_confirmation, CC.cruiseControl.override or CS.out.gasPressed, current_speed, reversing))
+                                                           CS.esp_hold_confirmation, CC.cruiseControl.override or CS.out.gasPressed, current_speed,
+                                                           reversing, CS.travel_assist_available))
 
       else:
         acc_control = self.CCS.acc_control_value(CS.out.cruiseState.available, CS.out.accFaulted, CC.longActive)
