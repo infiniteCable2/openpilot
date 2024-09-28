@@ -155,7 +155,7 @@ class CarController(CarControllerBase):
             apply_angle = 0
 
         self.steering_power = self.generate_vw_meb_steering_power(self, CS, CC.latActive, apply_angle, self.steering_power)
-        #self.steering_boost = self.generate_vw_meb_steering_boost(self, CS, CC.latActive, apply_angle, self.steering_boost)
+        #self.steering_boost = self.generate_vw_meb_steering_boost(self, CS, hca_enabled, apply_angle, self.steering_boost)
         #self.apply_curvature_last = apply_curvature
         self.apply_angle_last = clip(apply_angle, -self.CCP.ANGLE_MAX, self.CCP.ANGLE_MAX)
         can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power))
@@ -328,6 +328,8 @@ class CarController(CarControllerBase):
     return new_actuators, can_sends
 
   def generate_vw_meb_steering_boost(self, CS, lat_active, apply_angle, steering_boost_prev):
+    # TODO: use HCA_01 at the same time to boost steering angle change, if we don't reach defined angle limits
+    # this is especially relevant at low speeds 0 - 10 m/s
     return 0
 
   def generate_vw_meb_steering_power(self, CS, lat_active, apply_angle, steering_power_prev):
