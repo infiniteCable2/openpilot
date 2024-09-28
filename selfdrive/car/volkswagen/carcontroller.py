@@ -189,7 +189,7 @@ class CarController(CarControllerBase):
 
         #self.apply_curvature_last = apply_curvature
         self.apply_angle_last = clip(apply_angle, -self.CCP.ANGLE_MAX, self.CCP.ANGLE_MAX)
-        can_sends.append(self.CCS.create_steering_control_curvature(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power))
+        can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power))
 
       else:
         if CC.latActive:
