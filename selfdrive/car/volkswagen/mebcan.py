@@ -17,7 +17,7 @@ ACC_HUD_ENABLED  = 2
 ACC_HUD_DISABLED = 0
 
 
-def create_steering_control_curvature(packer, bus, apply_curvature, lkas_enabled, power):
+def create_steering_control(packer, bus, apply_curvature, lkas_enabled, power):
   # active lateral control deactivates active steering wheel centering 
   values = {
     #"Curvature": abs(apply_curvature) * 1000, # in 1/mm
@@ -31,7 +31,7 @@ def create_steering_control_curvature(packer, bus, apply_curvature, lkas_enabled
   return packer.make_can_msg("HCA_03", bus, values)
 
 
-def create_steering_control(packer, bus, apply_steer, lkas_enabled):
+def create_steering_boost_control(packer, bus, apply_steer, lkas_enabled):
   values = {
     "HCA_01_LM_Offset": abs(apply_steer),
     "HCA_01_Request": lkas_enabled,
