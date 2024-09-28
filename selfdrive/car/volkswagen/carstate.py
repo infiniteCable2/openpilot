@@ -292,11 +292,11 @@ class CarState(CarStateBase):
     ret.yawRate = pt_cp.vl["MEB_ABS_01"]["Yaw_Rate"] * CV.DEG_TO_RAD
 
     # Update MEB HCA status
-    hca_status = self.CCP.hca_status_values.get(pt_cp.vl["MEB_EPS_01"]["LatCon_HCA_Status"]) # MEB HCA status (HCA_03)
+    hca_status = self.CCP.hca_status_values.get(pt_cp.vl["MEB_EPS_01"]["LatCon_HCA_Status"]) # HCA_03
     ret.steerFaultTemporary, ret.steerFaultPermanent = self.update_hca_state(hca_status)
 
     # Update MQB HCA status used as boost
-    hca_status_boost = self.CCP.hca_status_values.get(pt_cp.vl["LH_EPS_03"]["EPS_HCA_Status"])
+    hca_status_boost = self.CCP.hca_status_values.get(pt_cp.vl["LH_EPS_03"]["EPS_HCA_Status"]) # HCA_01
     self.steerBoostFaultTemporary, self.steerBoostFaultPermanent = self.update_hca_state(hca_status_boost)
     self.lateral_boost_available = True #if not (self.steerBoostFaultPermanent or self.steerBoostFaultTemporary) else False
 
