@@ -343,7 +343,7 @@ class CarState(CarStateBase):
       ret.cruiseState.nonAdaptive = bool(ext_cp.vl["MEB_ACC_01"]["ACC_Limiter_Mode"])
     else:
       # Speed limiter mode; ECM faults if we command ACC while not pcmCruise
-      ret.cruiseState.nonAdaptive = False # TODO
+      ret.cruiseState.nonAdaptive = ext_cp.vl["MEB_ACC_01"]["ACC_Gesetzte_Zeitluecke"] == 0
 
     ret.accFaulted = pt_cp.vl["MEB_Motor_01"]["TSK_Status"] in (6, 7)
 
