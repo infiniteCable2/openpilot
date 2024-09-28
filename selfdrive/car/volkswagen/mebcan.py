@@ -168,7 +168,7 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
   # satisfy car to prevent errors when pressing Travel Assist Button
   # the button does nothing with this
   values_ta = {
-     "Travel_Assist_Status":    0, #2, # ready
+     "Travel_Assist_Status":    2, # ready
      "Travel_Assist_Request":   0, # no request
      "Travel_Assist_Available": 1, # button is illuminated
   }
@@ -229,11 +229,7 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "ACC_Enabled":             1 if acc_control == ACC_HUD_ACTIVE else 0,
     "ACC_Standby_Override":    1 if acc_control != ACC_HUD_ACTIVE else 0,
     "ACC_AKTIV_regelt":        1 if acc_control == ACC_HUD_ACTIVE else 0,
-    "ACC_Limiter_Mode":        0,
     "Lead_Brightness":         3 if acc_control == ACC_HUD_ACTIVE else 0, # object shows in colour
-    "Unknown_03":              106, # prevents errors
-    "Unknown_01":              0, # prevents errors
-    "Unknown_08":              0, # prevents errors
     "ACC_Events":              3 if esp_hold and acc_control == ACC_HUD_ACTIVE else 0, # acc ready message at standstill
     "Zeitluecke_1":            get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 1
     "Zeitluecke_2":            get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 2
@@ -242,8 +238,9 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "Zeitluecke_5":            get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 5
     "ACC_Anzeige_Zeitluecke":  change_distance_bar if acc_control != ACC_HUD_DISABLED else 0, # show distance bar selection
     "Zeitluecke_Farbe":        1 if acc_control in (ACC_HUD_ENABLED, ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # yellow (1) or white (0) time gap
-    "SET_ME_0X1":              0x1, # unknown
-    "SET_ME_0X3FF":            0x3FF, # unknown
+    "SET_ME_0X1":              0x1,    # unknown
+    "SET_ME_0X6A":             0x6A,   # unknown
+    "SET_ME_0X3FF":            0x3FF,  # unknown
     "SET_ME_0XFFFF":           0xFFFF, # unknown
     "SET_ME_0X7FFF":           0x7FFF, # unknown
   }
