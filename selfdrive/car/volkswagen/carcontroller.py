@@ -126,7 +126,7 @@ class CarController(CarControllerBase):
     # **** Steering Controls ************************************************ #
 
     if self.frame % self.CCP.STEER_STEP == 0:
-      if self.CP.flags & VolkswagenFlags.MEB and :
+      if self.CP.flags & VolkswagenFlags.MEB:
         # Logic to avoid HCA refused state
         #   * steering power as counter near zero before lane assist deactivation
         # MEB rack can be used continously without found time limits yet
