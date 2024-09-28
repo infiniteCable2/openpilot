@@ -291,29 +291,16 @@ class CarState(CarStateBase):
     ret.steeringPressed = abs(ret.steeringTorque) > self.CCP.STEER_DRIVER_ALLOWANCE
     ret.yawRate = pt_cp.vl["MEB_ABS_01"]["Yaw_Rate"] * CV.DEG_TO_RAD
 
-    # Update HCA status
-    hca_status_meb = self.CCP.hca_status_values.get(pt_cp.vl["MEB_EPS_01"]["LatCon_HCA_Status"]) # MEB HCA status (HCA_03)
-    hca_status_mqb = self.CCP.hca_status_values.get(pt_cp.vl["LH_EPS_03"]["EPS_HCA_Status"]) # still existing MQB HCA status (HCA_01)
-
-    # define main status driver for HCA
-    # simplify this later if PoC works
-    if not self.eps_init_complete and not hca_status_meb == "DISABLED":
-      hca_status = hca_status_meb # MEB status is relevant if init or not disabled
-      self.hca_fallback = False
-      self.hca_boost = False
-      if not hca_status_mqb == "DISABLED":
-        self.hca_boost = True # MQB signal is used as steering boost
-    elif not hca_status_mqb == "DISABLED":
-      hca_status = hca_status_mqb # MQB status is relevant as fallback option
-      self.hca_fallback = True
-      self.hca_boost = False
-    else:
-      hca_status = hca_status_meb # MEB status is relevant if init or not disabled
-      self.hca_fallback = False
-      self.hca_boost = False
-      
+    # Update MEB HCA status
+    hca_status = self.CCP.hca_status_values.get(pt_cp.vl["MEB_EPS_01"]["LatCon_HCA_Status"]) # MEB HCA status (HCA_03)
     ret.steerFaultTemporary, ret.steerFaultPermanent = self.update_hca_state(hca_status)
-    #self.steerBoostFaultTemporary, self.steerBoostFaultPermanent = self.update_hca_state(hca_status_mqb) if self.hca_boost else (True, True)
+
+    # Update MQB HCA status
+    hca_status_boost = self.CCP.hca_status_values.get(pt_cp.vl["LH_EPS_03"]["EPS_HCA_Status"]) # still existing MQB HCA status (HCA_01)
+    self.steerBoostFaultTemporary, self.steerBoostFaultPermanent = self.update_hca_state(hca_status_boost)
+
+    if not self.steerBoostFaultPermanent:
+      self.hca_boost = True # MQB HCA status used as boost
 
     # VW Emergency Assist status tracking and mitigation
     self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
