@@ -88,8 +88,8 @@ class CarControllerParams:
       #self.ANGLE_RATE_LIMIT_DOWN           = AngleRateLimit(speed_bp=[5, 12, 25], angle_v=[0.005, 0.0025, 0.0015]) # curvature safety limit down
       self.ANGLE_ERROR                     = 20    # HCA_03 maximum difference from steering angle
       self.ANGLE_MAX                       = 360   # HCA_03 maximum angle
-      self.ANGLE_RATE_LIMIT_UP             = AngleRateLimit(speed_bp=[0., 8., 15.], angle_v=[45., 45., 45.]) #AngleRateLimit(speed_bp=[0., 8., 15.], angle_v=[12., 4., 0.6])
-      self.ANGLE_RATE_LIMIT_DOWN           = AngleRateLimit(speed_bp=[0., 8., 15.], angle_v=[45., 45., 45.]) #AngleRateLimit(speed_bp=[0., 8., 15.], angle_v=[12., 6., 0.8])
+      self.ANGLE_RATE_LIMIT_UP             = AngleRateLimit(speed_bp=[0., 8., 15.], angle_v=[90., 90., 90.]) #AngleRateLimit(speed_bp=[0., 8., 15.], angle_v=[12., 4., 0.6])
+      self.ANGLE_RATE_LIMIT_DOWN           = AngleRateLimit(speed_bp=[0., 8., 15.], angle_v=[90., 90., 90.]) #AngleRateLimit(speed_bp=[0., 8., 15.], angle_v=[12., 6., 0.8])
       self.ANGLE_POWER_FACTOR              = 4
 
 
