@@ -169,7 +169,7 @@ class CarController(CarControllerBase):
         self.apply_angle_last = apply_angle
         self.apply_steer_last = apply_steer # boost
         can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power))
-        can_sends.append(self.CCS.create_steering_boost_control(self.packer_pt, CANBUS.pt, apply_steer, hca_enabled and CS.lateral_boost_available))
+        can_sends.append(self.CCS.create_steering_boost_control(self.packer_pt, CANBUS.pt1, apply_steer, hca_enabled and CS.lateral_boost_available))
 
       else:
         # Logic to avoid HCA state 4 "refused":
