@@ -336,17 +336,15 @@ class CarController(CarControllerBase):
 
       if steering_power_prev < self.CCP.STEERING_POWER_MIN:  # OP lane assist just activated
         steering_power = min(steering_power_prev + self.CCP.STEERING_POWER_STEPS, self.CCP.STEERING_POWER_MIN)
-
-      elif CS.out.steeringPressed and steering_power_prev > self.CCP.STEERING_POWER_USER: # user action results in decreasing the steering power
-        steering_power = max(steering_power_prev - self.CCP.STEERING_POWER_STEPS, self.CCP.STEERING_POWER_USER)
-
-      elif steering_power_prev < self.CCP.STEERING_POWER_MAX: # following desired target
+      elif CS.out.steeringPressed and steering_power_prev > self.CCP.STEERING_POWER_MIN:  # user action results in decreasing the steering power
+        steering_power = max(steering_power_prev - self.CCP.STEERING_POWER_STEPS, self.CCP.STEERING_POWER_MIN)
+      else: # following desired target
         if steering_power_prev < steering_power_target:
           steering_power = min(steering_power_prev + self.CCP.STEERING_POWER_STEPS, steering_power_target)
         elif steering_power_prev > steering_power_target:
           steering_power = max(steering_power_prev - self.CCP.STEERING_POWER_STEPS, steering_power_target)
-      else:
-        steering_power = steering_power_prev
+        else:
+          steering_power = steering_power_prev
         
     else:
       if steering_power_prev > 0: # monotonously decrement power to zero before disabling lane assist to prevent EPS fault
