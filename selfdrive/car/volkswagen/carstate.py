@@ -295,11 +295,6 @@ class CarState(CarStateBase):
     hca_status = self.CCP.hca_status_values.get(pt_cp.vl["MEB_EPS_01"]["LatCon_HCA_Status"]) # HCA_03
     ret.steerFaultTemporary, ret.steerFaultPermanent = self.update_hca_state(hca_status)
 
-    # Update MQB HCA status used as boost
-    hca_status_boost = self.CCP.hca_status_values.get(pt_cp.vl["LH_EPS_03"]["EPS_HCA_Status"]) # HCA_01
-    steerBoostFaultTemporary, steerBoostFaultPermanent = self.update_hca_state(hca_status_boost)
-    self.lateral_boost_available = True if not (steerBoostFaultPermanent or steerBoostFaultTemporary) else False
-
     # VW Emergency Assist status tracking and mitigation
     self.eps_stock_values = pt_cp.vl["LH_EPS_03"]
     #ret.carFaultedNonCritical =
