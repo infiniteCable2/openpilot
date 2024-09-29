@@ -39,6 +39,7 @@ def create_steering_boost_control(packer, bus, apply_steer, lkas_enabled):
     "HCA_01_Enable": lkas_enabled,
     "HCA_01_Standby": not lkas_enabled,
     "HCA_01_Available": 1,
+    "HCA_01_Vib_Freq": 3,
   }
   return packer.make_can_msg("HCA_01", bus, values)
 
