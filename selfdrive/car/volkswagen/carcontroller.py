@@ -133,23 +133,12 @@ class CarController(CarControllerBase):
 
         if CC.latActive:
           hca_enabled = True
-          apply_steer = 0 # init boost
           #current_curvature    = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1) # TODO verify sign (clockwise is negative)
           #apply_curvature      = apply_meb_curvature_limits(actuators.curvature, self.apply_curvature_last, current_curvature, CS.out.vEgoRaw, self.CCP)
           apply_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw, self.CCP)
           apply_angle = clip(apply_angle, -self.CCP.ANGLE_MAX, self.CCP.ANGLE_MAX)
           if CS.out.steeringPressed:
             apply_angle = clip(apply_angle, CS.out.steeringAngleDeg - self.CCP.ANGLE_ERROR, CS.out.steeringAngleDeg + self.CCP.ANGLE_ERROR)
-
-          # lateral boost
-          if CS.lateral_boost_available: # PoC status
-            desired_angle_diff = abs(apply_angle - CS.out.steeringAngleDeg)
-            new_steer = interp(desired_angle_diff, [0, 90], [0, self.CCP.STEER_MAX])
-            if apply_angle < CS.out.steeringAngleDeg:
-              new_steer = new_steer * -1
-            steering_boost_max_by_speed = interp(CS.out.vEgoRaw, [0, 15], [self.CCP.STEER_MAX, 0])
-            new_steer = clip(new_steer, -steering_boost_max_by_speed, steering_boost_max_by_speed)
-            apply_steer = apply_driver_steer_torque_limits(new_steer, self.apply_steer_last, CS.out.steeringTorque, self.CCP)
             
         else:
           if self.steering_power > 0: # keep HCA alive until steering power has reduced to zero
@@ -157,19 +146,15 @@ class CarController(CarControllerBase):
             #current_curvature = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1)
             #apply_curvature = current_curvature
             apply_angle = CS.out.steeringAngleDeg # synchronize with current steering angle
-            apply_steer = 0 # no boost allowed
           else:
             hca_enabled = False
             #apply_curvature = 0.
             apply_angle = 0 # inactive angle
-            apply_steer = 0 # no boost allowed
 
         self.steering_power = self.generate_vw_meb_steering_power(CS, CC.latActive, apply_angle, self.steering_power)
         #self.apply_curvature_last = apply_curvature
         self.apply_angle_last = apply_angle
-        self.apply_steer_last = apply_steer # boost
         can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power))
-        can_sends.append(self.CCS.create_steering_boost_control(self.packer_pt, CANBUS.pt1, apply_steer, hca_enabled and CS.lateral_boost_available))
 
       else:
         # Logic to avoid HCA state 4 "refused":
