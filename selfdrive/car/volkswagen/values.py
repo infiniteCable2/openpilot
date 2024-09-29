@@ -158,6 +158,7 @@ class CarControllerParams:
 
 class CANBUS:
   pt = 0
+  pt1 = 1
   cam = 2
 
 
@@ -228,7 +229,7 @@ class VolkswagenMEBPlatformConfig(PlatformConfig):
 @dataclass(frozen=True, kw_only=True)
 class VolkswagenCarSpecs(CarSpecs):
   centerToFrontRatio: float = 0.45
-  steerRatio: float = 15.9 #15.6
+  steerRatio: float = 15 #15.6
   minSteerSpeed: float = CarControllerParams.DEFAULT_MIN_STEER_SPEED
 
 
