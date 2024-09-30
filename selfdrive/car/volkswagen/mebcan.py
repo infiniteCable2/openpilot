@@ -27,8 +27,6 @@ def create_steering_control(packer, bus, apply_curvature, lkas_enabled, power):
     "Active": lkas_enabled,
     "Request": lkas_enabled,
     "Standby": not lkas_enabled,
-    "Unknown_01": lkas_enabled,
-    "Unknown_02": 1 if abs(apply_curvature) > 10 else 0,
   }
   return packer.make_can_msg("HCA_03", bus, values)
 
