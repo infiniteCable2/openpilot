@@ -17,6 +17,7 @@ class CarState(CarStateBase):
     self.esp_hold_confirmation = False
     self.upscale_lead_car_signal = False
     self.eps_stock_values = False
+    self.v_limit = 0
 
   def create_button_events(self, pt_cp, buttons):
     button_events = []
@@ -364,6 +365,9 @@ class CarState(CarStateBase):
       if ret.cruiseState.speed > 90:
         ret.cruiseState.speed = 0
 
+    # speed limit detection
+    ret.cruiseState.speedLimit = self.update_traffic_signals(pt_cp)
+
     # Update button states for turn signals and ACC controls, capture all ACC button state/config for passthrough
     ret.leftBlinker = ret.leftBlinkerOn = bool(pt_cp.vl["Blinkmodi_02"]["BM_links"])
     ret.rightBlinker = ret.rightBlinkerOn = bool(pt_cp.vl["Blinkmodi_02"]["BM_rechts"])
@@ -379,6 +383,15 @@ class CarState(CarStateBase):
 
     self.frame += 1
     return ret
+
+  def update_traffic_signals(self, cp):
+    if CP.flags & VolkswagenFlags.MEB:
+      if cp.vl["PSD_06"]["PSD_Ges_Attribute_Komplett"] == 0 and cp.vl["PSD_06"]["PSD_Sys_Quali_Tempolimits"] == 7 and cp.vl["PSD_06"]["PSD_Ges_Typ"] == 1:
+        self.v_limit = self.CCP.psd_speed_limit_values.get(pt_cp.vl["PSD_06"]["PSD_Ges_Geschwindigkeit"])
+        v_limit_unit = cp.vl["PSD_06"]["PSD_Sys_Geschwindigkeit_Einheit"]
+        speed_factor = CV.MPH_TO_MS if v_limit_unit == 1 else CV.KPH_TO_MS if v_limit_unit == 0 else 0
+
+        return self.v_limit * speed_factor if self.v_limit not in (0, 255) else 0
 
   def update_hca_state(self, hca_status):
     # Treat INITIALIZING and FAULT as temporary for worst likely EPS recovery time, for cars without factory Lane Assist
@@ -534,6 +547,7 @@ class CarState(CarStateBase):
       ("MEB_EPB_01", 20),         #
       ("MEB_Light_01", 5),        #
       ("MEB_Motor_01", 50),       #
+      ("PSD_06", 7),              #
     ]
 
     if CP.networkLocation == NetworkLocation.fwdCamera:
