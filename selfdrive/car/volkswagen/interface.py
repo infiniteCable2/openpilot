@@ -52,7 +52,7 @@ class CarInterface(CarInterfaceBase):
     elif ret.flags & VolkswagenFlags.MEB: # TODO
       # Set global MEB parameters
       ret.safetyConfigs = [get_safety_config(car.CarParams.SafetyModel.volkswagenMeb)]
-      ret.enableBsm        = True
+      ret.enableBsm = 0x24C in fingerprint[0]  # MEB_Side_Assist_01
       ret.transmissionType = TransmissionType.direct
       ret.steerControlType = car.CarParams.SteerControlType.angle
       ret.radarUnavailable = False
