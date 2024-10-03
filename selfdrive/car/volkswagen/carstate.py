@@ -386,8 +386,15 @@ class CarState(CarStateBase):
 
   def update_traffic_signals(self, cp):
     if CP.flags & VolkswagenFlags.MEB:
-      if cp.vl["PSD_06"]["PSD_Ges_Attribute_Komplett"] == 0 and cp.vl["PSD_06"]["PSD_Sys_Quali_Tempolimits"] == 7 and cp.vl["PSD_06"]["PSD_Ges_Typ"] == 1:
-        self.v_limit = self.CCP.psd_speed_limit_values.get(pt_cp.vl["PSD_06"]["PSD_Ges_Geschwindigkeit"])
+      if cp.vl["PSD_06"]["PSD_Ges_Attribute_Komplett"] == 0 and cp.vl["PSD_06"]["PSD_Ges_Typ"] == 1: #and cp.vl["PSD_06"]["PSD_Sys_Quali_Tempolimits"] == 7:
+        speed_limit = pt_cp.vl["PSD_06"]["PSD_Ges_Geschwindigkeit"]
+        if speed_limit == 11: # into value list ToDo
+          self.v_limit = 50
+        if speed_limit == 12:
+          self.v_limit = 60
+        else:
+          self.v_limit = 0
+
         v_limit_unit = cp.vl["PSD_06"]["PSD_Sys_Geschwindigkeit_Einheit"]
         speed_factor = CV.MPH_TO_MS if v_limit_unit == 1 else CV.KPH_TO_MS if v_limit_unit == 0 else 0
 
