@@ -366,7 +366,7 @@ class CarState(CarStateBase):
         ret.cruiseState.speed = 0
 
     # speed limit detection
-    ret.cruiseState.speedLimit = self.update_traffic_signals(pt_cp)
+    #ret.cruiseState.speedLimit = self.update_traffic_signals(pt_cp)
 
     # Update button states for turn signals and ACC controls, capture all ACC button state/config for passthrough
     ret.leftBlinker = ret.leftBlinkerOn = bool(pt_cp.vl["Blinkmodi_02"]["BM_links"])
