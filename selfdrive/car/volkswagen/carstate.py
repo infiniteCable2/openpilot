@@ -17,7 +17,7 @@ class CarState(CarStateBase):
     self.esp_hold_confirmation = False
     self.upscale_lead_car_signal = False
     self.eps_stock_values = False
-    self.v_limit = 0
+    #self.v_limit = 0
 
   def create_button_events(self, pt_cp, buttons):
     button_events = []
@@ -384,21 +384,21 @@ class CarState(CarStateBase):
     self.frame += 1
     return ret
 
-  def update_traffic_signals(self, cp):
-    if CP.flags & VolkswagenFlags.MEB:
-      if cp.vl["PSD_06"]["PSD_Ges_Attribute_Komplett"] == 0 and cp.vl["PSD_06"]["PSD_Ges_Typ"] == 1: #and cp.vl["PSD_06"]["PSD_Sys_Quali_Tempolimits"] == 7:
-        speed_limit = pt_cp.vl["PSD_06"]["PSD_Ges_Geschwindigkeit"]
-        if speed_limit == 11: # into value list ToDo
-          self.v_limit = 50
-        if speed_limit == 12:
-          self.v_limit = 60
-        else:
-          self.v_limit = 0
-
-        v_limit_unit = cp.vl["PSD_06"]["PSD_Sys_Geschwindigkeit_Einheit"]
-        speed_factor = CV.MPH_TO_MS if v_limit_unit == 1 else CV.KPH_TO_MS if v_limit_unit == 0 else 0
-
-        return self.v_limit * speed_factor if self.v_limit not in (0, 255) else 0
+  #def update_traffic_signals(self, cp):
+  #  if CP.flags & VolkswagenFlags.MEB:
+  #    if cp.vl["PSD_06"]["PSD_Ges_Attribute_Komplett"] == 0 and cp.vl["PSD_06"]["PSD_Ges_Typ"] == 1: #and cp.vl["PSD_06"]["PSD_Sys_Quali_Tempolimits"] == 7:
+  #      speed_limit = pt_cp.vl["PSD_06"]["PSD_Ges_Geschwindigkeit"]
+  #      if speed_limit == 11: # into value list ToDo
+  #        self.v_limit = 50
+  #      if speed_limit == 12:
+  #        self.v_limit = 60
+  #      else:
+  #        self.v_limit = 0
+  #
+  #      v_limit_unit = cp.vl["PSD_06"]["PSD_Sys_Geschwindigkeit_Einheit"]
+  #      speed_factor = CV.MPH_TO_MS if v_limit_unit == 1 else CV.KPH_TO_MS if v_limit_unit == 0 else 0
+  #
+  #      return self.v_limit * speed_factor if self.v_limit not in (0, 255) else 0
 
   def update_hca_state(self, hca_status):
     # Treat INITIALIZING and FAULT as temporary for worst likely EPS recovery time, for cars without factory Lane Assist
@@ -554,7 +554,7 @@ class CarState(CarStateBase):
       ("MEB_EPB_01", 20),         #
       ("MEB_Light_01", 5),        #
       ("MEB_Motor_01", 50),       #
-      ("PSD_06", 7),              #
+      #("PSD_06", 7),              #
     ]
 
     if CP.networkLocation == NetworkLocation.fwdCamera:
