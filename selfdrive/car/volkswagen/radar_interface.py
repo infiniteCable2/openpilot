@@ -6,9 +6,16 @@ from openpilot.selfdrive.car.interfaces import RadarInterfaceBase
 from openpilot.common.conversions import Conversions as CV
 from openpilot.selfdrive.car.volkswagen.values import DBC, VolkswagenFlags
 
+NO_OBJECT = -5
 RADAR_ADDR = 0x24F
-RADAR_SAME_LANE_01 = 1
-RADAR_SAME_LANE_02 = 2
+RADAR_SIGNALS = {
+    RADAR_SAME_LANE_01: ('Same_Lane_01_Long_Distance', 'Same_Lane_01_LD_Offset', 'Same_Lane_01_Lat_Distance', 'Same_Lane_01_Rel_Velo'),
+    RADAR_SAME_LANE_02: ('Same_Lane_02_Long_Distance', 'Same_Lane_02_LD_Offset', 'Same_Lane_02_Lat_Distance', 'Same_Lane_02_Rel_Velo'),
+    RADAR_LEFT_LANE_01: ('Left_Lane_01_Long_Distance', 'Left_Lane_01_LD_Offset', 'Left_Lane_01_Lat_Distance', 'Left_Lane_01_Rel_Velo'),
+    RADAR_LEFT_LANE_02: ('Left_Lane_02_Long_Distance', 'Left_Lane_02_LD_Offset', 'Left_Lane_02_Lat_Distance', 'Left_Lane_02_Rel_Velo'),
+    RADAR_RIGHT_LANE_01: ('Right_Lane_01_Long_Distance', 'Right_Lane_01_LD_Offset', 'Right_Lane_01_Lat_Distance', 'Right_Lane_01_Rel_Velo'),
+    RADAR_RIGHT_LANE_02: ('Right_Lane_02_Long_Distance', 'Right_Lane_02_LD_Offset', 'Right_Lane_02_Lat_Distance', 'Right_Lane_02_Rel_Velo'),
+}
 
 # info: distance signals can move without physical distance change ...
 
@@ -28,6 +35,7 @@ class RadarInterface(RadarInterfaceBase):
     self.updated_messages = set()
     self.trigger_msg = RADAR_ADDR
     self.track_id = 0
+    self.previous_offsets = {}
 
     self.radar_off_can = CP.radarUnavailable
     self.rcp = get_radar_can_parser(CP)
@@ -60,45 +68,29 @@ class RadarInterface(RadarInterfaceBase):
 
     msg = self.rcp.vl["MEB_Distance_01"]
 
-    # ---------------------------------- #
+    for signal_part, signal_fields in RADAR_SIGNALS.items():
+      if signal_part not in self.pts:
+        self.pts[signal_part] = car.RadarData.RadarPoint.new_message()
+        self.pts[signal_part].trackId = self.track_id
+        self.track_id += 1
 
-    signal_part = RADAR_SAME_LANE_01
-    if signal_part not in self.pts:
-      self.pts[signal_part]         = car.RadarData.RadarPoint.new_message()
-      self.pts[signal_part].trackId = self.track_id
-      self.track_id                += 1
+      long_distance, ld_offset, lat_distance, rel_velo = signal_fields
+      current_offset = msg[ld_offset]
+    
+      # Check if the current offset is valid and matches the previous offset (if it exists)
+      valid = current_offset != NO_OBJECT and (signal_part not in self.previous_offsets or current_offset == self.previous_offsets[signal_part])
 
-    valid = msg['Same_Lane_01_LD_Offset'] != -5
-    if valid:
-      self.pts[signal_part].measured = True
-      self.pts[signal_part].dRel     = msg['Same_Lane_01_Long_Distance'] + msg['Same_Lane_01_LD_Offset']
-      self.pts[signal_part].yRel     = msg['Same_Lane_01_Lat_Distance']
-      self.pts[signal_part].vRel     = msg['Same_Lane_01_Rel_Velo'] * CV.KPH_TO_MS
-      self.pts[signal_part].aRel     = float('nan')
-      self.pts[signal_part].yvRel    = float('nan')
-    else:
-      del self.pts[signal_part]
-
-    # ---------------------------------- #
-
-    signal_part = RADAR_SAME_LANE_02
-    if signal_part not in self.pts:
-      self.pts[signal_part]         = car.RadarData.RadarPoint.new_message()
-      self.pts[signal_part].trackId = self.track_id
-      self.track_id                += 1
-
-    valid = msg['Same_Lane_02_LD_Offset'] != -5
-    if valid:
-      self.pts[signal_part].measured = True
-      self.pts[signal_part].dRel     = msg['Same_Lane_02_Long_Distance'] + msg['Same_Lane_02_LD_Offset']
-      self.pts[signal_part].yRel     = msg['Same_Lane_02_Lat_Distance']
-      self.pts[signal_part].vRel     = msg['Same_Lane_02_Rel_Velo'] * CV.KPH_TO_MS
-      self.pts[signal_part].aRel     = float('nan')
-      self.pts[signal_part].yvRel    = float('nan')
-    else:
-      del self.pts[signal_part]
-
-    # ---------------------------------- #
+      if valid:
+        self.previous_offsets[signal_part] = current_offset
+      
+        self.pts[signal_part].measured = True
+        self.pts[signal_part].dRel = msg[long_distance] + msg[ld_offset]
+        self.pts[signal_part].yRel = msg[lat_distance]
+        self.pts[signal_part].vRel = msg[rel_velo] * CV.KPH_TO_MS
+        self.pts[signal_part].aRel = float('nan')
+        self.pts[signal_part].yvRel = float('nan')
+      else:
+        del self.pts[signal_part]
 
     ret.points = list(self.pts.values())
     return ret
