@@ -89,7 +89,9 @@ class RadarInterface(RadarInterfaceBase):
         self.pts[signal_part].vRel = msg[rel_velo] * CV.KPH_TO_MS
         self.pts[signal_part].aRel = float('nan')
         self.pts[signal_part].yvRel = float('nan')
+        
       else:
+        del self.previous_offsets[signal_part]
         del self.pts[signal_part]
 
     ret.points = list(self.pts.values())
