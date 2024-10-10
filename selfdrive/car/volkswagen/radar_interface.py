@@ -79,10 +79,9 @@ class RadarInterface(RadarInterfaceBase):
     
       # Check if the current offset is valid and matches the previous offset (if it exists)
       valid = current_offset != NO_OBJECT and (signal_part not in self.previous_offsets or current_offset == self.previous_offsets[signal_part])
-
-      if valid:
-        self.previous_offsets[signal_part] = current_offset
+      self.previous_offsets[signal_part] = current_offset
       
+      if valid:
         self.pts[signal_part].measured = True
         self.pts[signal_part].dRel = msg[long_distance] + msg[ld_offset]
         self.pts[signal_part].yRel = msg[lat_distance]
@@ -91,7 +90,6 @@ class RadarInterface(RadarInterfaceBase):
         self.pts[signal_part].yvRel = float('nan')
         
       else:
-        del self.previous_offsets[signal_part]
         del self.pts[signal_part]
 
     ret.points = list(self.pts.values())
