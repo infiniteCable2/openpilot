@@ -76,9 +76,12 @@ class RadarInterface(RadarInterfaceBase):
 
       long_distance, ld_offset, lat_distance, rel_velo = signal_fields
       current_offset = msg[ld_offset]
+
+      if signal_part not in self.previous_offsets:
+        self.previous_offsets[signal_part] = NO_OBJECT
     
-      # Check if the current offset is valid and matches the previous offset (if it exists)
-      valid = current_offset != NO_OBJECT and (signal_part not in self.previous_offsets or current_offset == self.previous_offsets[signal_part])
+      # Check if the current offset is valid and matches the previous offset
+      valid = current_offset != NO_OBJECT and current_offset == self.previous_offsets[signal_part]
       self.previous_offsets[signal_part] = current_offset
       
       if valid:
