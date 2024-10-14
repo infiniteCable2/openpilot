@@ -52,7 +52,6 @@ class RadarInterface(RadarInterfaceBase):
   def _update(self, updated_messages):
     ret = car.RadarData.new_message()
 
-    # Return if CAN parser is invalid
     if self.rcp is None or not self.rcp.can_valid:
       ret.errors = ["canError"]
       return ret
@@ -61,7 +60,7 @@ class RadarInterface(RadarInterfaceBase):
 
     # Iterate over lane types and dynamic signal parts (01, 02)
     for lane_type in LANE_TYPES:
-      for idx in range(1, 3):  # Covers 01 and 02
+      for idx in range(1, 3):
         signal_part = f'{lane_type}_0{idx}'
         long_distance = f'{signal_part}_Long_Distance'
         ld_offset = f'{signal_part}_LD_Offset'
@@ -75,6 +74,7 @@ class RadarInterface(RadarInterfaceBase):
           self.pts[signal_part].trackId = self.track_id
           self.track_id += 1
 
+        # offset changes occur when another object is detected
         if current_offset != NO_OBJECT and current_offset == self.previous_offsets[signal_part]:
           self.pts[signal_part].measured = True
           self.pts[signal_part].dRel = msg[long_distance] + current_offset
