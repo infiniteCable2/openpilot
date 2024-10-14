@@ -6,8 +6,15 @@ from openpilot.selfdrive.car.interfaces import RadarInterfaceBase
 from openpilot.common.conversions import Conversions as CV
 from openpilot.selfdrive.car.volkswagen.values import DBC, VolkswagenFlags
 
-NO_OBJECT = -5
-RADAR_ADDR = 0x24F
+NO_OBJECT           = -5
+RADAR_ADDR          = 0x24F
+RADAR_SAME_LANE_01  = 1
+RADAR_SAME_LANE_02  = 2
+RADAR_LEFT_LANE_01  = 3
+RADAR_LEFT_LANE_02  = 4
+RADAR_RIGHT_LANE_01 = 5
+RADAR_RIGHT_LANE_02 = 6
+
 RADAR_SIGNALS = {
     RADAR_SAME_LANE_01: ('Same_Lane_01_Long_Distance', 'Same_Lane_01_LD_Offset', 'Same_Lane_01_Lat_Distance', 'Same_Lane_01_Rel_Velo'),
     RADAR_SAME_LANE_02: ('Same_Lane_02_Long_Distance', 'Same_Lane_02_LD_Offset', 'Same_Lane_02_Lat_Distance', 'Same_Lane_02_Rel_Velo'),
