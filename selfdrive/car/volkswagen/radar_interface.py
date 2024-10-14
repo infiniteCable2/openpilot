@@ -74,13 +74,14 @@ class RadarInterface(RadarInterfaceBase):
         self.pts[signal_part].trackId = self.track_id
         self.track_id += 1
 
-      long_distance, ld_offset, lat_distance, rel_velo = signal_fields
-      current_offset = msg[ld_offset]
-
       if signal_part not in self.previous_offsets:
         self.previous_offsets[signal_part] = NO_OBJECT
+
+      long_distance, ld_offset, lat_distance, rel_velo = signal_fields
+      current_offset = msg[ld_offset]
     
       # Check if the current offset is valid and matches the previous offset
+      # A changed offset is defined as new detected object
       valid = current_offset != NO_OBJECT and current_offset == self.previous_offsets[signal_part]
       self.previous_offsets[signal_part] = current_offset
       
