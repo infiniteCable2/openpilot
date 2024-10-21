@@ -385,7 +385,7 @@ class CarState(CarStateBase):
     return ret
 
   def update_traffic_signals(self, cp):
-    if seld.CP.flags & VolkswagenFlags.MEB:
+    if self.CP.flags & VolkswagenFlags.MEB:
       if cp.vl["PSD_06"]["PSD_Ges_Attribute_Komplett"] == 0 and cp.vl["PSD_06"]["PSD_Ges_Typ"] == 1:
         speed_limit_raw = pt_cp.vl["PSD_06"]["PSD_Ges_Geschwindigkeit"]
         if speed_limit_raw > 0 and speed_limit_raw < 11: # in steps of five
