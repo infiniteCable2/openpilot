@@ -390,9 +390,9 @@ class CarState(CarStateBase):
         if cp.vl["PSD_06"]["PSD_Ges_Attribute_Komplett"] == 0 and cp.vl["PSD_06"]["PSD_Ges_Typ"] == 1: # currently plausible speed limit
           speed_limit_raw = cp.vl["PSD_06"]["PSD_Ges_Geschwindigkeit"]
           if speed_limit_raw > 0 and speed_limit_raw < 11:
-            self.v_limit = (speed_limit_raw - 1) * 5 # speed in steps of five from 0
+            self.v_limit = (speed_limit_raw - 1) * 5 # speed in steps of five from 0 to 45
           if speed_limit_raw >= 11 and speed_limit_raw < 23:
-            self.v_limit = 50 + (speed_limit_raw - 11) * 10 # speed in steps of ten from 50
+            self.v_limit = 50 + (speed_limit_raw - 11) * 10 # speed in steps of ten from 50 to 160
           else:
             self.v_limit = 0
   
