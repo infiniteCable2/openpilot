@@ -258,7 +258,7 @@ class CarController(CarControllerBase):
       if self.CP.flags & VolkswagenFlags.MEB:
         self.long_heartbeat = self.generate_vw_meb_hud_heartbeat(self.long_heartbeat)
         desired_gap = max(1, CS.out.vEgo * get_T_FOLLOW(hud_control.leadDistanceBars))
-        distance = min(self.lead_distance, 100)
+        distance = min(self.lead_distance, 140)
         
         change_distance_bar = False
         if hud_control.leadDistanceBars != self.lead_distance_bars_last:
