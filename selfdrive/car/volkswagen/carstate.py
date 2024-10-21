@@ -386,18 +386,19 @@ class CarState(CarStateBase):
 
   def update_traffic_signals(self, cp):
     if self.CP.flags & VolkswagenFlags.MEB:
-      if cp.vl["PSD_06"]["PSD_Ges_Attribute_Komplett"] == 0 and cp.vl["PSD_06"]["PSD_Ges_Typ"] == 1:
-        speed_limit_raw = cp.vl["PSD_06"]["PSD_Ges_Geschwindigkeit"]
-        if speed_limit_raw > 0 and speed_limit_raw < 11: # in steps of five
-          self.v_limit = (speed_limit_raw - 1) * 5
-        if speed_limit_raw >= 11 and speed_limit_raw < 23: # in steps of ten
-          self.v_limit = 50 + (speed_limit_raw - 11) * 10
-        else:
-          self.v_limit = 0
+      if cp.vl["PSD_06"]["PSD_06_Mux"] == 2: # multiplex signal in correct state
+        if cp.vl["PSD_06"]["PSD_Ges_Attribute_Komplett"] == 0 and cp.vl["PSD_06"]["PSD_Ges_Typ"] == 1: # currently plausible speed limit
+          speed_limit_raw = cp.vl["PSD_06"]["PSD_Ges_Geschwindigkeit"]
+          if speed_limit_raw > 0 and speed_limit_raw < 11:
+            self.v_limit = (speed_limit_raw - 1) * 5 # speed in steps of five from 0
+          if speed_limit_raw >= 11 and speed_limit_raw < 23:
+            self.v_limit = 50 + (speed_limit_raw - 11) * 10 # speed in steps of ten from 50
+          else:
+            self.v_limit = 0
   
-        v_limit_unit = cp.vl["PSD_06"]["PSD_Sys_Geschwindigkeit_Einheit"]
-        speed_factor = CV.MPH_TO_MS if v_limit_unit == 1 else CV.KPH_TO_MS if v_limit_unit == 0 else 0
-        self.v_limit = self.v_limit * speed_factor
+          v_limit_unit = cp.vl["PSD_06"]["PSD_Sys_Geschwindigkeit_Einheit"]
+          speed_factor = CV.MPH_TO_MS if v_limit_unit == 1 else CV.KPH_TO_MS if v_limit_unit == 0 else 0
+          self.v_limit = self.v_limit * speed_factor
 
     return self.v_limit
 
