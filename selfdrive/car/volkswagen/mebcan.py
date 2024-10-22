@@ -197,20 +197,12 @@ def acc_hud_status_value(main_switch_on, acc_faulted, long_active, esp_hold, ove
   return acc_hud_control
 
 
-def get_desired_gap(distance_bars, desired_gap):
+def get_desired_gap(distance_bars, desired_gap, current_gap_signal):
   # mapping desired gap to correct signal of corresponding distance bar
   gap = 0
-
-  if distance_bars == 1:
+  
+  if distance_bars == current_gap_signal:
     gap = desired_gap 
-  elif distance_bars == 2:
-    gap = desired_gap
-  elif distance_bars == 3:
-    gap = desired_gap
-  elif distance_bars == 4:
-    gap = desired_gap
-  elif distance_bars == 5:
-    gap = desired_gap
 
   return gap
 
@@ -233,11 +225,11 @@ def create_acc_hud_control(packer, bus, acc_control, set_speed, lead_visible, di
     "ACC_AKTIV_regelt":        1 if acc_control == ACC_HUD_ACTIVE else 0,
     "Lead_Brightness":         3 if acc_control == ACC_HUD_ACTIVE else 0, # object shows in colour
     "ACC_Events":              3 if esp_hold and acc_control == ACC_HUD_ACTIVE else 0, # acc ready message at standstill
-    "Zeitluecke_1":            get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 1
-    "Zeitluecke_2":            get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 2
-    "Zeitluecke_3":            get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 3
-    "Zeitluecke_4":            get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 4
-    "Zeitluecke_5":            get_desired_gap(distance_bars, desired_gap), # desired distance to lead object for distance bar 5
+    "Zeitluecke_1":            get_desired_gap(distance_bars, desired_gap, 1), # desired distance to lead object for distance bar 1
+    "Zeitluecke_2":            get_desired_gap(distance_bars, desired_gap, 2), # desired distance to lead object for distance bar 2
+    "Zeitluecke_3":            get_desired_gap(distance_bars, desired_gap, 3), # desired distance to lead object for distance bar 3
+    "Zeitluecke_4":            get_desired_gap(distance_bars, desired_gap, 4), # desired distance to lead object for distance bar 4
+    "Zeitluecke_5":            get_desired_gap(distance_bars, desired_gap, 5), # desired distance to lead object for distance bar 5
     "ACC_Anzeige_Zeitluecke":  change_distance_bar if acc_control != ACC_HUD_DISABLED else 0, # show distance bar selection
     "Zeitluecke_Farbe":        1 if acc_control in (ACC_HUD_ENABLED, ACC_HUD_ACTIVE, ACC_HUD_OVERRIDE) else 0, # yellow (1) or white (0) time gap
     "SET_ME_0X1":              0x1,    # unknown
