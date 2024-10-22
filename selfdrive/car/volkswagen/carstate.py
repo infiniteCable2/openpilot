@@ -19,6 +19,7 @@ class CarState(CarStateBase):
     self.eps_stock_values = False
     self.v_limit = 0
     self.v_limit_speed_factor = 0
+    self.v_limit_receive = False
 
   def create_button_events(self, pt_cp, buttons):
     button_events = []
@@ -402,10 +403,12 @@ class CarState(CarStateBase):
             self.v_limit = 0
   
           self.v_limit = self.v_limit * self.v_limit_speed_factor
+          self.v_limit_receive = False # speed limit has been received, wait for next receive allowance
               
       elif psd_06["PSD_06_Mux"] == 0: # multiplex signal in init state
         v_limit_unit = psd_06["PSD_Sys_Geschwindigkeit_Einheit"]
         self.v_limit_speed_factor = CV.MPH_TO_MS if v_limit_unit == 1 else CV.KPH_TO_MS if v_limit_unit == 0 else 0
+        self.v_limit_receive = True if psd_06["PSD_Sys_Quali_Tempolimits"] == 7 else False # receive allowance by quality "flag"
 
     return self.v_limit
 
