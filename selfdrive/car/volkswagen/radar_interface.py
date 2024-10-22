@@ -8,7 +8,7 @@ from openpilot.selfdrive.car.volkswagen.values import DBC, VolkswagenFlags
 from collections import defaultdict
 
 RADAR_ADDR = 0x24F
-NO_OBJECT  = -5
+NO_OBJECT  = -6
 LANE_TYPES = ['Same_Lane', 'Left_Lane', 'Right_Lane']
 
 # info: distance signals can move without physical distance change ...
