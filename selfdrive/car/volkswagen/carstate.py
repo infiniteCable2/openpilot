@@ -391,8 +391,7 @@ class CarState(CarStateBase):
       if psd_06["PSD_06_Mux"] == 2: # multiplex signal speed limit attribute state
         if (psd_06["PSD_Ges_Attribute_Komplett"] == 0 and # signal is iterating through speed limit info
             psd_06["PSD_Ges_Typ"] == 1 and # current plausible speed limit
-            psd_06["PSD_Ges_Gesetzlich_Kategorie"] == 0 and # detected non street type specific speed limit
-            psd_06["PSD_Sys_Quali_Tempolimits"] == 7): # quality confirmation
+            psd_06["PSD_Ges_Gesetzlich_Kategorie"] == 0: # detected non street type specific speed limit
               
           speed_limit_raw = psd_06["PSD_Ges_Geschwindigkeit"]
           if speed_limit_raw > 0 and speed_limit_raw < 11:
