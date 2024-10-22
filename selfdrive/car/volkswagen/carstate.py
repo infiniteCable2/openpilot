@@ -18,6 +18,7 @@ class CarState(CarStateBase):
     self.upscale_lead_car_signal = False
     self.eps_stock_values = False
     self.v_limit = 0
+    self.v_limit_speed_factor = 0
 
   def create_button_events(self, pt_cp, buttons):
     button_events = []
@@ -387,7 +388,7 @@ class CarState(CarStateBase):
   def update_traffic_signals(self, cp):
     if self.CP.flags & VolkswagenFlags.MEB:
       psd_06 = cp.vl["PSD_06"]
-      if psd_06["PSD_06_Mux"] == 2: # multiplex signal in correct state
+      if psd_06["PSD_06_Mux"] == 2: # multiplex signal speed limit attribute state
         if (psd_06["PSD_Ges_Attribute_Komplett"] == 0 and # signal is iterating through speed limit info
             psd_06["PSD_Ges_Typ"] == 1 and # current plausible speed limit
             psd_06["PSD_Ges_Gesetzlich_Kategorie"] == 0 and # detected non street type specific speed limit
@@ -401,9 +402,11 @@ class CarState(CarStateBase):
           else:
             self.v_limit = 0
   
-          v_limit_unit = psd_06["PSD_Sys_Geschwindigkeit_Einheit"]
-          speed_factor = CV.MPH_TO_MS if v_limit_unit == 1 else CV.KPH_TO_MS if v_limit_unit == 0 else 0
-          self.v_limit = self.v_limit * speed_factor
+          self.v_limit = self.v_limit * self.v_limit_speed_factor
+              
+      elif psd_06["PSD_06_Mux"] == 0: # multiplex signal in init state
+        v_limit_unit = psd_06["PSD_Sys_Geschwindigkeit_Einheit"]
+        self.v_limit_speed_factor = CV.MPH_TO_MS if v_limit_unit == 1 else CV.KPH_TO_MS if v_limit_unit == 0 else 0
 
     return self.v_limit
 
