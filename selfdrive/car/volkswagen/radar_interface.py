@@ -77,7 +77,7 @@ class RadarInterface(RadarInterfaceBase):
         # offset changes occur when another object is detected
         if current_offset != NO_OBJECT and current_offset == self.previous_offsets[signal_part]:
           self.pts[signal_part].measured = True
-          self.pts[signal_part].dRel = msg[long_distance] #+ current_offset
+          self.pts[signal_part].dRel = msg[long_distance] + current_offset
           self.pts[signal_part].yRel = msg[lat_distance]
           self.pts[signal_part].vRel = msg[rel_velo] * CV.KPH_TO_MS
           self.pts[signal_part].aRel = float('nan')
