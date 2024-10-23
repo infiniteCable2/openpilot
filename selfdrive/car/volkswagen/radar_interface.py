@@ -8,7 +8,7 @@ from openpilot.selfdrive.car.volkswagen.values import DBC, VolkswagenFlags
 from collections import defaultdict
 
 RADAR_ADDR = 0x24F
-NO_OBJECT  = -6
+NO_OBJECT  = -5
 LANE_TYPES = ['Same_Lane', 'Left_Lane', 'Right_Lane']
 
 # info: distance signals can move without physical distance change ...
@@ -77,7 +77,7 @@ class RadarInterface(RadarInterfaceBase):
         # offset changes occur when another object is detected
         if current_offset != NO_OBJECT and current_offset == self.previous_offsets[signal_part]:
           self.pts[signal_part].measured = True
-          self.pts[signal_part].dRel = msg[long_distance] + current_offset
+          self.pts[signal_part].dRel = msg[long_distance] #+ current_offset
           self.pts[signal_part].yRel = msg[lat_distance]
           self.pts[signal_part].vRel = msg[rel_velo] * CV.KPH_TO_MS
           self.pts[signal_part].aRel = float('nan')
