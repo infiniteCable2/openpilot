@@ -390,7 +390,8 @@ class CarState(CarStateBase):
     if self.CP.flags & VolkswagenFlags.MEB:
       psd_06 = cp.vl["PSD_06"]
       if psd_06["PSD_06_Mux"] == 2: # multiplex signal speed limit attribute state
-        if (psd_06["PSD_Ges_Typ"] == 1 and # current plausible speed limit
+        if (self.v_limit_receive and # receiving allowed
+            psd_06["PSD_Ges_Typ"] == 1 and # current plausible speed limit
             psd_06["PSD_Ges_Gesetzlich_Kategorie"] == 0): # detected non street type specific speed limit
               
           speed_limit_raw = psd_06["PSD_Ges_Geschwindigkeit"]
