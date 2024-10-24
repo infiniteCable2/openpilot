@@ -5,13 +5,13 @@ from opendbc.can.parser import CANParser
 from openpilot.selfdrive.car.interfaces import RadarInterfaceBase
 from openpilot.common.conversions import Conversions as CV
 from openpilot.selfdrive.car.volkswagen.values import DBC, VolkswagenFlags
-from collections import defaultdict
 
 RADAR_ADDR = 0x24F
 NO_OBJECT  = 0
 LANE_TYPES = ['Same_Lane', 'Left_Lane', 'Right_Lane']
 
 # info: distance signals can move without physical distance change ...
+# this is not raw data
 
 def get_radar_can_parser(CP):
   if CP.flags & VolkswagenFlags.MEB:
@@ -29,7 +29,6 @@ class RadarInterface(RadarInterfaceBase):
     self.updated_messages = set()
     self.trigger_msg = RADAR_ADDR
     self.track_id = 0
-    self.previous_objects = defaultdict(lambda: NO_OBJECT)
 
     self.radar_off_can = CP.radarUnavailable
     self.rcp = get_radar_can_parser(CP)
@@ -53,62 +52,59 @@ class RadarInterface(RadarInterfaceBase):
     ret = car.RadarData.new_message()
 
     if self.rcp is None or not self.rcp.can_valid:
-      ret.errors = ["canError"]
-      return ret
+        ret.errors = ["canError"]
+        return ret
 
     msg = self.rcp.vl["MEB_Distance_01"]
 
-    # tempory collection of active object ids
-    active_object_ids = set()
+    # Temporäre Sammlung der Informationen aller aktiven Objekte (nach ID geordnet)
+    active_objects = {}
 
-    # iterate over lane types and dynamic signal parts (01, 02)
+    # Gehe über alle Signal Parts (6 in diesem Fall)
     for lane_type in LANE_TYPES:
       for idx in range(1, 3):
         signal_part = f'{lane_type}_0{idx}'
         long_distance = f'{signal_part}_Long_Distance'
-        object = f'{signal_part}_ObjectID'
+        object_id = f'{signal_part}_ObjectID'
         lat_distance = f'{signal_part}_Lat_Distance'
         rel_velo = f'{signal_part}_Rel_Velo'
 
-        current_object = msg[object]
+        current_object_id = msg[object_id]
 
-        # add current object id to collection
-        if current_object != NO_OBJECT:
-          active_object_ids.add(current_object)
+        # Wenn eine Objekt-ID vorhanden ist, sammeln wir alle relevanten Daten
+        if current_object_id != NO_OBJECT:
+          if current_object_id not in active_objects:
+            active_objects[current_object_id] = {
+              "long_distance": msg[long_distance],
+              "lat_distance": msg[lat_distance],
+              "rel_velo": msg[rel_velo] * CV.KPH_TO_MS
+            }
+          else:
+            # Falls das Objekt schon erfasst wurde, aktualisiere die Informationen
+            # (z.B. wenn Daten von einem anderen Signalpart kommen)
+            active_objects[current_object_id]["long_distance"] = msg[long_distance]
+            active_objects[current_object_id]["lat_distance"] = msg[lat_distance]
+            active_objects[current_object_id]["rel_velo"] = msg[rel_velo] * CV.KPH_TO_MS
 
-        if signal_part not in self.pts:
-          self.pts[signal_part] = car.RadarData.RadarPoint.new_message()
-          self.pts[signal_part].trackId = self.track_id
-          self.track_id += 1
+    # Aktualisiere die Radarpunkte basierend auf den aktiven Objekt-IDs
+    for object_id, data in active_objects.items():
+      if object_id not in self.pts:
+        self.pts[object_id] = car.RadarData.RadarPoint.new_message()
+        self.pts[object_id].trackId = self.track_id
+        self.track_id += 1
 
-        # check if current object does differ from previous
-        if current_object != NO_OBJECT:
-          if current_object != self.previous_objects.get(signal_part):
-            # new object detected -> create, otherwise just update
-            self.pts[signal_part] = car.RadarData.RadarPoint.new_message()
-            self.pts[signal_part].trackId = self.track_id
-            self.track_id += 1
-          
-          self.pts[signal_part].measured = True
-          self.pts[signal_part].dRel = msg[long_distance]
-          self.pts[signal_part].yRel = msg[lat_distance]
-          self.pts[signal_part].vRel = msg[rel_velo] * CV.KPH_TO_MS
-          self.pts[signal_part].aRel = float('nan')
-          self.pts[signal_part].yvRel = float('nan')
-          
-        else:
-          # no object
-          self.pts[signal_part].measured = False
+      self.pts[object_id].measured = True
+      self.pts[object_id].dRel = data["long_distance"]
+      self.pts[object_id].yRel = data["lat_distance"]
+      self.pts[object_id].vRel = data["rel_velo"]
+      self.pts[object_id].aRel = float('nan')
+      self.pts[object_id].yvRel = float('nan')
 
-        self.previous_objects[signal_part] = current_object
-
-    # remove object ids that do not exist anymore
-    tracked_object_ids = {pt.trackId for pt in self.pts.values()}
-
-    # remove irrelevant signal part if object id is not active anymore
-    for signal_part, pt in list(self.pts.items()):
-      if pt.trackId not in active_object_ids:
-        self.pts.pop(signal_part, None)
+    # Entferne Objekte, die in keinem Signal Part mehr vorkommen
+    tracked_ids = set(self.pts.keys())
+    active_ids = set(active_objects.keys())
+    for object_id in tracked_ids - active_ids:
+      self.pts.pop(object_id, None)
 
     ret.points = list(self.pts.values())
     return ret
