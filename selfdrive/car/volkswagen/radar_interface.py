@@ -8,7 +8,7 @@ from openpilot.selfdrive.car.volkswagen.values import DBC, VolkswagenFlags
 from collections import defaultdict
 
 RADAR_ADDR = 0x24F
-NO_OBJECT  = -5
+NO_OBJECT  = 0
 LANE_TYPES = ['Same_Lane', 'Left_Lane', 'Right_Lane']
 
 # info: distance signals can move without physical distance change ...
@@ -29,7 +29,7 @@ class RadarInterface(RadarInterfaceBase):
     self.updated_messages = set()
     self.trigger_msg = RADAR_ADDR
     self.track_id = 0
-    self.previous_offsets = defaultdict(lambda: NO_OBJECT)
+    self.previous_objects = defaultdict(lambda: NO_OBJECT)
 
     self.radar_off_can = CP.radarUnavailable
     self.rcp = get_radar_can_parser(CP)
@@ -58,36 +58,57 @@ class RadarInterface(RadarInterfaceBase):
 
     msg = self.rcp.vl["MEB_Distance_01"]
 
-    # Iterate over lane types and dynamic signal parts (01, 02)
+    # tempory collection of active object ids
+    active_object_ids = set()
+
+    # iterate over lane types and dynamic signal parts (01, 02)
     for lane_type in LANE_TYPES:
       for idx in range(1, 3):
         signal_part = f'{lane_type}_0{idx}'
         long_distance = f'{signal_part}_Long_Distance'
-        ld_offset = f'{signal_part}_LD_Offset'
+        object = f'{signal_part}_ObjectID'
         lat_distance = f'{signal_part}_Lat_Distance'
         rel_velo = f'{signal_part}_Rel_Velo'
 
-        current_offset = msg[ld_offset]
-            
+        current_object = msg[object]
+
+        # add current object id to collection
+        if current_object != NO_OBJECT:
+          active_object_ids.add(current_object)
+
         if signal_part not in self.pts:
           self.pts[signal_part] = car.RadarData.RadarPoint.new_message()
           self.pts[signal_part].trackId = self.track_id
           self.track_id += 1
 
-        # offset changes occur when another object is detected
-        if current_offset != NO_OBJECT and current_offset == self.previous_offsets[signal_part]:
+        # check if current object does differ from previous
+        if current_object != NO_OBJECT:
+          if current_object != self.previous_objects.get(signal_part):
+            # new object detected -> create, otherwise just update
+            self.pts[signal_part] = car.RadarData.RadarPoint.new_message()
+            self.pts[signal_part].trackId = self.track_id
+            self.track_id += 1
+          
           self.pts[signal_part].measured = True
-          self.pts[signal_part].dRel = msg[long_distance] + current_offset
+          self.pts[signal_part].dRel = msg[long_distance]
           self.pts[signal_part].yRel = msg[lat_distance]
           self.pts[signal_part].vRel = msg[rel_velo] * CV.KPH_TO_MS
           self.pts[signal_part].aRel = float('nan')
           self.pts[signal_part].yvRel = float('nan')
+          
         else:
-          self.pts.pop(signal_part, None)
-            
-        self.previous_offsets[signal_part] = current_offset
+          # no object
+          self.pts[signal_part].measured = False
+
+        self.previous_objects[signal_part] = current_object
+
+    # remove object ids that do not exist anymore
+    tracked_object_ids = {pt.trackId for pt in self.pts.values()}
+
+    # remove irrelevant signal part if object id is not active anymore
+    for signal_part, pt in list(self.pts.items()):
+      if pt.trackId not in active_object_ids:
+        self.pts.pop(signal_part, None)
 
     ret.points = list(self.pts.values())
     return ret
-
-    
