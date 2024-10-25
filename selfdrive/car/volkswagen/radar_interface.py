@@ -80,12 +80,10 @@ class RadarInterface(RadarInterfaceBase):
               "rel_velo": msg[rel_velo] * CV.KPH_TO_MS
             }
           else:
-            # Falls das Objekt schon erfasst wurde, aktualisiere die Informationen
-            # (z.B. wenn Daten von einem anderen Signalpart kommen)
-            active_objects[current_object_id]["long_distance"] = msg[long_distance]
-            active_objects[current_object_id]["lat_distance"] = msg[lat_distance]
-            active_objects[current_object_id]["rel_velo"] = msg[rel_velo] * CV.KPH_TO_MS
-
+            # Objekt-IDs sollten eineindeutig sein: PoC ist im Widerspruch
+            ret.errors = ["canError"]
+            return ret
+            
     # Aktualisiere die Radarpunkte basierend auf den aktiven Objekt-IDs
     for object_id, data in active_objects.items():
       if object_id not in self.pts:
