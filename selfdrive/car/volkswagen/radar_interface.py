@@ -52,8 +52,8 @@ class RadarInterface(RadarInterfaceBase):
     ret = car.RadarData.new_message()
 
     if self.rcp is None or not self.rcp.can_valid:
-        ret.errors = ["canError"]
-        return ret
+      ret.errors = ["canError"]
+      return ret
 
     msg = self.rcp.vl["MEB_Distance_01"]
 
