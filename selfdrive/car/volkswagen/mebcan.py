@@ -26,7 +26,7 @@ def create_steering_control(packer, bus, apply_curvature, lkas_enabled, power):
     "Request": lkas_enabled,
     "Standby": not lkas_enabled,
     # TESTING PART
-    "Test_1": 1 if lkas_enabled else 0,
+    #"Test_1": 1 if lkas_enabled else 0,
     #"Test_2": 1 if lkas_enabled else 0,
     #"Test_3": 0xFF if lkas_enabled,
     #"Test_4": 0x1F if lkas_enabled,
