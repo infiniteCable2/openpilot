@@ -78,7 +78,6 @@ class CarController(CarControllerBase):
     
     self.apply_angle_last = 0
     self.steering_power = 0
-    self.long_heartbeat = 0
     self.accel_last = 0
 
   def calculate_lead_distance(self, hud_control: car.CarControl.HUDControl) -> float:
@@ -256,7 +255,6 @@ class CarController(CarControllerBase):
 
     if self.frame % self.CCP.ACC_HUD_STEP == 0 and self.CP.openpilotLongitudinalControl:
       if self.CP.flags & VolkswagenFlags.MEB:
-        self.long_heartbeat = self.generate_vw_meb_hud_heartbeat(self.long_heartbeat)
         desired_gap = max(1, CS.out.vEgo * get_T_FOLLOW(hud_control.leadDistanceBars))
         distance = min(self.lead_distance, 140)
         
@@ -270,7 +268,7 @@ class CarController(CarControllerBase):
                                                        CS.esp_hold_confirmation, CC.cruiseControl.override or CS.out.gasPressed)
         can_sends.append(self.CCS.create_acc_hud_control(self.packer_pt, CANBUS.pt, acc_hud_status, hud_control.setSpeed * CV.MS_TO_KPH,
                                                          hud_control.leadVisible, hud_control.leadDistanceBars, change_distance_bar,
-                                                         desired_gap, distance, self.long_heartbeat, CS.esp_hold_confirmation))
+                                                         desired_gap, distance, CS.esp_hold_confirmation))
 
       else:
         lead_distance = 0
@@ -353,12 +351,6 @@ class CarController(CarControllerBase):
         steering_power = 0
         
     return steering_power
-
-  def generate_vw_meb_hud_heartbeat(self, long_heartbeat_prev):
-    if long_heartbeat_prev != 221:
-      return 221
-    elif long_heartbeat_prev == 221:
-      return 360
 
   # multikyd methods, sunnyhaibin logic
   def get_cruise_buttons_status(self, CS):
