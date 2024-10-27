@@ -26,14 +26,14 @@ def create_steering_control(packer, bus, apply_curvature, lkas_enabled, power):
     "Request": lkas_enabled,
     "Standby": not lkas_enabled,
     # TESTING PART
-    "Test_1": 1 if lkas_enabled,
-    "Test_2": 1 if lkas_enabled,
+    "Test_1": 1 if lkas_enabled else 0,
+    "Test_2": 1 if lkas_enabled else 0,
     #"Test_3": 0xFF if lkas_enabled,
     #"Test_4": 0x1F if lkas_enabled,
-    "Test_5": 3 if lkas_enabled,
+    "Test_5": 3 if lkas_enabled else 0,
     #"Test_6": 0x1FF if lkas_enabled,
     #"Test_7": 0x1F if lkas_enabled,
-    "Test_8": 1 if lkas_enabled,
+    "Test_8": 1 if lkas_enabled else 0,
   }
   return packer.make_can_msg("HCA_03", bus, values)
 
