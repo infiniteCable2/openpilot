@@ -153,9 +153,6 @@ def create_acc_accel_control(packer, bus, acc_type, acc_enabled, accel, acc_cont
     "SET_ME_0XFE":                0xFE,
     "SET_ME_0X1":                 0x1,
     "SET_ME_0X9":                 0x9,
-    "SET_ME_0XFE":                0xFE,
-    "SET_ME_0X1":                 0x1,
-    "SET_ME_0X9":                 0x9,
   }
 
   commands.append(packer.make_can_msg("MEB_ACC_02", bus, values))
