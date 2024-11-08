@@ -91,7 +91,7 @@ class CarInterface(CarInterfaceBase):
       CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
     elif ret.flags & VolkswagenFlags.MEB:
     #  ret.steerLimitTimer = 1.2
-      ret.steerActuatorDelay = 0.14
+      ret.steerActuatorDelay = 0.15
     else:
       ret.steerActuatorDelay = 0.1
       ret.lateralTuning.pid.kpBP = [0.]
@@ -103,7 +103,7 @@ class CarInterface(CarInterfaceBase):
     # Global longitudinal tuning defaults, can be overridden per-vehicle
 
     if ret.flags & VolkswagenFlags.MEB:
-      ret.longitudinalActuatorDelay = 0.14
+      ret.longitudinalActuatorDelay = 0.5
       ret.radarTimeStep = (1.0 / 25) # 25Hz
       #ret.longitudinalTuning.kpBP = [0., 5., 35.]
       #ret.longitudinalTuning.kpV  = [0., 0.1, 0.4]
