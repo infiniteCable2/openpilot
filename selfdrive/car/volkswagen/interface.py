@@ -107,8 +107,8 @@ class CarInterface(CarInterfaceBase):
       ret.radarTimeStep = (1.0 / 25) # 25Hz
       #ret.longitudinalTuning.kpBP = [0., 5., 35.]
       #ret.longitudinalTuning.kpV  = [0., 0.1, 0.4]
-      ret.longitudinalTuning.kiBP = [0., 5., 35.]
-      ret.longitudinalTuning.kiV  = [1.4, 0.4, 0.1]
+      #ret.longitudinalTuning.kiBP = [0., 5., 35.]
+      #ret.longitudinalTuning.kiV  = [1.4, 0.4, 0.1]
 
     ret.experimentalLongitudinalAvailable = ret.networkLocation == NetworkLocation.gateway or docs
     if experimental_long:
