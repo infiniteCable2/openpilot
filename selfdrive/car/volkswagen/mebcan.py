@@ -15,14 +15,14 @@ ACC_HUD_ENABLED  = 2
 ACC_HUD_DISABLED = 0
 
 
-def create_steering_control(packer, bus, apply_curvature, lkas_enabled, power):
+def create_steering_control(packer, bus, apply_curvature, lkas_enabled, power, power_boost):
   # active lateral control deactivates active steering wheel centering 
   values = {
     #"Curvature": abs(apply_curvature) * 1000, # in 1/mm
     "Steering_Angle": abs(apply_curvature),
-    "VZ": 1 if apply_curvature < 0 and lkas_enabled == 1 else 0, # > for curvature
+    "VZ": 1 if apply_curvature < 0 and lkas_enabled else 0, # > for curvature
     "Power": power if lkas_enabled else 0,
-    "Power_Boost": lkas_enabled,
+    "Power_Boost": 1 if power_boost and lkas_enabled else 0,
     "Active": lkas_enabled,
     "Request": lkas_enabled,
     "Standby": not lkas_enabled,
