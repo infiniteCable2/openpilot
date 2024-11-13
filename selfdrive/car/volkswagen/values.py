@@ -79,7 +79,7 @@ class CarControllerParams:
       self.BTN_STEP                        = 3
       self.STEERING_POWER_MAX              = 125   # HCA_03 maximum steering power
       self.STEERING_POWER_MIN              = 40    # HCA_03 minimum steering power
-      self.STEERING_POWER_STEPS            = 5     # HCA_03 steering power counter steps
+      self.STEERING_POWER_STEPS            = 6     # HCA_03 steering power counter steps
       self.STEERING_POWER_MAX_BY_SPEED     = 20    # HCA_03 speed in m/s^2 where maximum steering power is reached
       #self.CURVATURE_MAX                   = 0.195 # HCA_03 maximum curvature in 1/m, we estimate that about 0.2 1/m is max of signal
       #self.CURVATURE_ERROR                 = 0.01  # HCA_03 curvature error, yaw rate error at standstill in range of about 0.2 deg/sec
