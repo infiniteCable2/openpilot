@@ -80,9 +80,6 @@ class CarController(CarControllerBase):
     self.steering_power = 0
     self.accel_last = 0
 
-    self.counter_hca = 1 # FOR TESTING
-    self.test_gong = False # FOR TESTING
-
   def calculate_lead_distance(self, hud_control: car.CarControl.HUDControl) -> float:
     lead_one = self.sm["radarState"].leadOne
     lead_two = self.sm["radarState"].leadTwo
@@ -127,12 +124,6 @@ class CarController(CarControllerBase):
 
     # **** Steering Controls ************************************************ #
 
-    if self.frame % 1000 == 0: # FOR TESTING
-      self.counter_hca = self.counter_hca + 1
-      self.test_gong = True
-      if self.counter_hca > 32:
-        self.counter_hca = 1
-
     if self.frame % self.CCP.STEER_STEP == 0:
       if self.CP.flags & VolkswagenFlags.MEB:
         # Logic to avoid HCA refused state
@@ -162,7 +153,7 @@ class CarController(CarControllerBase):
         self.steering_power = self.generate_vw_meb_steering_power(CS, CC.latActive, apply_angle, self.steering_power)
         #self.apply_curvature_last = apply_curvature
         self.apply_angle_last = apply_angle
-        can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power, self.counter_hca))
+        can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power))
 
       else:
         # Logic to avoid HCA state 4 "refused":
@@ -245,9 +236,6 @@ class CarController(CarControllerBase):
     if self.frame % self.CCP.LDW_STEP == 0:
       hud_alert = 0
       sound_alert = 0
-      if self.test_gong: # FOR TESTING
-        sound_alert = 1
-        self.test_gong = False
         
       if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw):
         hud_alert = self.CCP.LDW_MESSAGES["laneAssistTakeOverUrgent"]
@@ -345,8 +333,7 @@ class CarController(CarControllerBase):
       steering_power_target_angle = steering_power_min_by_speed + self.CCP.ANGLE_POWER_FACTOR * steering_angle_diff + abs(apply_angle)
       steering_power_target = clip(steering_power_target_angle, self.CCP.STEERING_POWER_MIN, self.CCP.STEERING_POWER_MAX)
 
-      #if steering_power_prev < self.CCP.STEERING_POWER_MIN:  # OP lane assist just activated
-      if steering_power_prev < self.CCP.STEERING_POWER_MAX: # FOR TESTING
+      if steering_power_prev < self.CCP.STEERING_POWER_MIN:  # OP lane assist just activated
         steering_power = min(steering_power_prev + self.CCP.STEERING_POWER_STEPS, self.CCP.STEERING_POWER_MIN)
       elif CS.out.steeringPressed and steering_power_prev > self.CCP.STEERING_POWER_MIN:  # user action results in decreasing the steering power
         steering_power = max(steering_power_prev - self.CCP.STEERING_POWER_STEPS, self.CCP.STEERING_POWER_MIN)
