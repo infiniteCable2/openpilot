@@ -151,9 +151,10 @@ class CarController(CarControllerBase):
             apply_angle = 0 # inactive angle
 
         self.steering_power = self.generate_vw_meb_steering_power(CS, CC.latActive, apply_angle, self.steering_power)
+        steering_power_boost = True if self.steering_power == self.CCP.STEERING_POWER_MAX else False
         #self.apply_curvature_last = apply_curvature
         self.apply_angle_last = apply_angle
-        can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power))
+        can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power, steering_power_boost))
 
       else:
         # Logic to avoid HCA state 4 "refused":
