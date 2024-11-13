@@ -80,7 +80,8 @@ class CarController(CarControllerBase):
     self.steering_power = 0
     self.accel_last = 0
 
-    self.counter_hca = 1
+    self.counter_hca = 1 # FOR TESTING
+    self.test_gong = False # FOR TESTING
 
   def calculate_lead_distance(self, hud_control: car.CarControl.HUDControl) -> float:
     lead_one = self.sm["radarState"].leadOne
@@ -126,8 +127,9 @@ class CarController(CarControllerBase):
 
     # **** Steering Controls ************************************************ #
 
-    if self.frame % 300 == 0:
+    if self.frame % 1000 == 0: # FOR TESTING
       self.counter_hca = self.counter_hca + 1
+      self.test_gong = True
       if self.counter_hca > 32:
         self.counter_hca = 1
 
@@ -243,6 +245,10 @@ class CarController(CarControllerBase):
     if self.frame % self.CCP.LDW_STEP == 0:
       hud_alert = 0
       sound_alert = 0
+      if self.test_gong: # FOR TESTING
+        sound_alert = 1
+        self.test_gong = False
+        
       if hud_control.visualAlert in (VisualAlert.steerRequired, VisualAlert.ldw):
         hud_alert = self.CCP.LDW_MESSAGES["laneAssistTakeOverUrgent"]
         sound_alert = 1
