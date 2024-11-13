@@ -80,6 +80,8 @@ class CarController(CarControllerBase):
     self.steering_power = 0
     self.accel_last = 0
 
+    self.counter_hca = 0
+
   def calculate_lead_distance(self, hud_control: car.CarControl.HUDControl) -> float:
     lead_one = self.sm["radarState"].leadOne
     lead_two = self.sm["radarState"].leadTwo
@@ -124,6 +126,11 @@ class CarController(CarControllerBase):
 
     # **** Steering Controls ************************************************ #
 
+    if self.frame % 300 == 0:
+      self.counter_hca = self.counter_hca + 1
+      if self.counter_hca > 32:
+        self.counter_hca = 0
+
     if self.frame % self.CCP.STEER_STEP == 0:
       if self.CP.flags & VolkswagenFlags.MEB:
         # Logic to avoid HCA refused state
@@ -153,7 +160,7 @@ class CarController(CarControllerBase):
         self.steering_power = self.generate_vw_meb_steering_power(CS, CC.latActive, apply_angle, self.steering_power)
         #self.apply_curvature_last = apply_curvature
         self.apply_angle_last = apply_angle
-        can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power))
+        can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power, self.counter_hca))
 
       else:
         # Logic to avoid HCA state 4 "refused":
