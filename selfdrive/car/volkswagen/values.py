@@ -78,7 +78,7 @@ class CarControllerParams:
       self.STEER_DRIVER_ALLOWANCE          = 80    # Driver intervention threshold 0.6 Nm
       self.BTN_STEP                        = 3
       self.STEERING_POWER_MAX              = 125   # HCA_03 maximum steering power
-      self.STEERING_POWER_MIN              = 40    # HCA_03 minimum steering power
+      self.STEERING_POWER_MIN              = 60    # HCA_03 minimum steering power
       self.STEERING_POWER_STEPS            = 10     # HCA_03 steering power counter steps
       self.STEERING_POWER_MAX_BY_SPEED     = 20    # HCA_03 speed in m/s^2 where maximum steering power is reached
       #self.CURVATURE_MAX                   = 0.195 # HCA_03 maximum curvature in 1/m, we estimate that about 0.2 1/m is max of signal
@@ -87,8 +87,8 @@ class CarControllerParams:
       #self.ANGLE_RATE_LIMIT_DOWN           = AngleRateLimit(speed_bp=[5, 12, 25], angle_v=[0.005, 0.0025, 0.0015]) # curvature safety limit down
       self.ANGLE_ERROR                     = 20    # HCA_03 maximum difference from steering angle
       self.ANGLE_MAX                       = 360   # HCA_03 maximum angle, max for HCA_03 ~ 420 deg
-      self.ANGLE_RATE_LIMIT_UP             = AngleRateLimit(speed_bp=[0., 5., 15.], angle_v=[12., 4., 0.4]) # max for HCA_03 ~ 120-130 deg/s
-      self.ANGLE_RATE_LIMIT_DOWN           = AngleRateLimit(speed_bp=[0., 5., 15.], angle_v=[12., 8., 0.8])
+      self.ANGLE_RATE_LIMIT_UP             = AngleRateLimit(speed_bp=[0., 5., 15.], angle_v=[100., 50., 0.4]) #angle_v=[12., 4., 0.4]) # max for HCA_03 ~ 120-130 deg/s
+      self.ANGLE_RATE_LIMIT_DOWN           = AngleRateLimit(speed_bp=[0., 5., 15.], angle_v=[100., 50., 0.8]) #angle_v=[12., 8., 0.8])
       self.ANGLE_POWER_FACTOR              = 4
 
 
