@@ -345,7 +345,8 @@ class CarController(CarControllerBase):
       steering_power_target_angle = steering_power_min_by_speed + self.CCP.ANGLE_POWER_FACTOR * steering_angle_diff + abs(apply_angle)
       steering_power_target = clip(steering_power_target_angle, self.CCP.STEERING_POWER_MIN, self.CCP.STEERING_POWER_MAX)
 
-      if steering_power_prev < self.CCP.STEERING_POWER_MIN:  # OP lane assist just activated
+      #if steering_power_prev < self.CCP.STEERING_POWER_MIN:  # OP lane assist just activated
+      if steering_power_prev < self.CCP.STEERING_POWER_MAX: # FOR TESTING
         steering_power = min(steering_power_prev + self.CCP.STEERING_POWER_STEPS, self.CCP.STEERING_POWER_MIN)
       elif CS.out.steeringPressed and steering_power_prev > self.CCP.STEERING_POWER_MIN:  # user action results in decreasing the steering power
         steering_power = max(steering_power_prev - self.CCP.STEERING_POWER_STEPS, self.CCP.STEERING_POWER_MIN)
