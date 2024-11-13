@@ -288,7 +288,8 @@ class CarState(CarStateBase):
     ret.standstill = ret.vEgoRaw == 0
 
     # Update EPS position and state info. For signed values, VW sends the sign in a separate signal.
-    ret.steeringAngleDeg = pt_cp.vl["MEB_EPS_01"]["Steering_Angle"] * (1, -1)[int(pt_cp.vl["MEB_EPS_01"]["Steering_Angle_VZ"])]
+    #ret.steeringAngleDeg = pt_cp.vl["MEB_EPS_01"]["Steering_Angle"] * (1, -1)[int(pt_cp.vl["MEB_EPS_01"]["Steering_Angle_VZ"])] # wrong between 0 and 360 deg, also lwi_01
+    ret.steeringAngleDeg = pt_cp.vl["LH_EPS_03"]["EPS_Berechneter_LW"] * (1, -1)[int(pt_cp.vl["LH_EPS_03"]["EPS_VZ_BLW"])]
     ret.steeringRateDeg = pt_cp.vl["LWI_01"]["LWI_Lenkradw_Geschw"] * (1, -1)[int(pt_cp.vl["LWI_01"]["LWI_VZ_Lenkradw_Geschw"])]
     ret.steeringTorque = pt_cp.vl["LH_EPS_03"]["EPS_Lenkmoment"] * (1, -1)[int(pt_cp.vl["LH_EPS_03"]["EPS_VZ_Lenkmoment"])]
     ret.steeringPressed = abs(ret.steeringTorque) > self.CCP.STEER_DRIVER_ALLOWANCE
