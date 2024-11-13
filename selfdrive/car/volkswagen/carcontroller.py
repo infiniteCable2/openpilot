@@ -80,7 +80,7 @@ class CarController(CarControllerBase):
     self.steering_power = 0
     self.accel_last = 0
 
-    self.counter_hca = 0
+    self.counter_hca = 1
 
   def calculate_lead_distance(self, hud_control: car.CarControl.HUDControl) -> float:
     lead_one = self.sm["radarState"].leadOne
@@ -129,7 +129,7 @@ class CarController(CarControllerBase):
     if self.frame % 300 == 0:
       self.counter_hca = self.counter_hca + 1
       if self.counter_hca > 32:
-        self.counter_hca = 0
+        self.counter_hca = 1
 
     if self.frame % self.CCP.STEER_STEP == 0:
       if self.CP.flags & VolkswagenFlags.MEB:
