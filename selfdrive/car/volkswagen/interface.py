@@ -103,7 +103,7 @@ class CarInterface(CarInterfaceBase):
     # Global longitudinal tuning defaults, can be overridden per-vehicle
 
     if ret.flags & VolkswagenFlags.MEB:
-      ret.longitudinalActuatorDelay = 0.05
+      ret.longitudinalActuatorDelay = 0.1
       ret.radarTimeStep = (1.0 / 25) # 25Hz
       #ret.longitudinalTuning.kpBP = [0., 5., 35.]
       #ret.longitudinalTuning.kpV  = [0., 0.1, 0.4]
