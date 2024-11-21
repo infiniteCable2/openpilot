@@ -76,9 +76,19 @@ class CarController(CarControllerBase):
     self.lead_distance_bars_last = None
     self.lead_distance_bar_timer = 0
     
-    self.apply_angle_last = 0
-    self.steering_power = 0
+    self.apply_curvature_last = 0
+    self.steering_power_last = 0
     self.accel_last = 0
+
+  def apply_vw_meb_curvature_limits(apply_curvature, apply_curvature_last, current_curvature, v_ego_raw, CCP):
+    # No blending at low speed due to inaccurate current curvature
+    if v_ego_raw > 9:
+      apply_curvature = clip(apply_curvature, current_curvature - CCP.CURVATURE_ERROR, current_curvature + CCP.CURVATURE_ERROR)
+
+    # Curvature rate limit after driver torque limit
+    apply_curvature = apply_std_steer_angle_limits(apply_curvature, apply_curvature_last, v_ego_raw, CCP)
+
+  return clip(apply_curvature, -CCP.CURVATURE_MAX, CCP.CURVATURE_MAX)
 
   def calculate_lead_distance(self, hud_control: car.CarControl.HUDControl) -> float:
     lead_one = self.sm["radarState"].leadOne
@@ -132,29 +142,24 @@ class CarController(CarControllerBase):
 
         if CC.latActive:
           hca_enabled = True
-          #current_curvature    = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1) # TODO verify sign (clockwise is negative)
-          #apply_curvature      = apply_meb_curvature_limits(actuators.curvature, self.apply_curvature_last, current_curvature, CS.out.vEgoRaw, self.CCP)
-          apply_angle = apply_std_steer_angle_limits(actuators.steeringAngleDeg, self.apply_angle_last, CS.out.vEgoRaw, self.CCP)
-          apply_angle = clip(apply_angle, -self.CCP.ANGLE_MAX, self.CCP.ANGLE_MAX)
-          if CS.out.steeringPressed:
-            apply_angle = clip(apply_angle, CS.out.steeringAngleDeg - self.CCP.ANGLE_ERROR, CS.out.steeringAngleDeg + self.CCP.ANGLE_ERROR)
+          # apply rate limits, curvature error limit, and clip to signal range
+          current_curvature    = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1)
+          apply_curvature      = apply_vw_meb_curvature_limits(actuators.curvature, self.apply_curvature_last, current_curvature, CS.out.vEgoRaw, self.CCP)
             
         else:
           if self.steering_power > 0: # keep HCA alive until steering power has reduced to zero
             hca_enabled = True
-            #current_curvature = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1)
-            #apply_curvature = current_curvature
-            apply_angle = CS.out.steeringAngleDeg # synchronize with current steering angle
+            current_curvature = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1)
+            apply_curvature = current_curvature # synchronize with current steering angle
           else:
             hca_enabled = False
-            #apply_curvature = 0.
-            apply_angle = 0 # inactive angle
+            apply_curvature = 0. # inactive curvature
 
-        self.steering_power = self.generate_vw_meb_steering_power(CS, CC.latActive, apply_angle, self.steering_power)
+        steering_power = self.generate_vw_meb_steering_power(CS, CC.latActive, apply_curvature, self.steering_power_last)
         steering_power_boost = True if self.steering_power == self.CCP.STEERING_POWER_MAX else False
-        #self.apply_curvature_last = apply_curvature
-        self.apply_angle_last = apply_angle
-        can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_angle, hca_enabled, self.steering_power, steering_power_boost))
+        can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_curvature, hca_enabled, steering_power, steering_power_boost))
+        self.apply_curvature_last = apply_curvature
+        self.steering_power_last = steering_power
 
       else:
         # Logic to avoid HCA state 4 "refused":
@@ -313,7 +318,7 @@ class CarController(CarControllerBase):
     new_actuators = actuators.as_builder()
     new_actuators.steer = self.apply_steer_last / self.CCP.STEER_MAX
     new_actuators.steerOutputCan = self.apply_steer_last
-    new_actuators.steeringAngleDeg = self.apply_angle_last
+    new_actuators.curvature = self.apply_curvature_last
     new_actuators.accel = self.accel_last
     self.lead_distance_bars_last = hud_control.leadDistanceBars
 
@@ -322,17 +327,18 @@ class CarController(CarControllerBase):
     self.frame += 1
     return new_actuators, can_sends
 
-  def generate_vw_meb_steering_power(self, CS, lat_active, apply_angle, steering_power_prev):
+  def generate_vw_meb_steering_power(self, CS, lat_active, apply_curvature, steering_power_prev):
     # Steering power counter is used to:
     #   * prevent sudden fluctuations at low speeds
     #   * avoid HCA refused
     #   * easy user intervention
     #   * keep it near maximum regarding speed to get full steering power in shortest time
     if lat_active:
+      current_curvature = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1)
       steering_power_min_by_speed = interp(CS.out.vEgoRaw, [0, self.CCP.STEERING_POWER_MAX_BY_SPEED], [self.CCP.STEERING_POWER_MIN, self.CCP.STEERING_POWER_MAX])
-      steering_angle_diff = abs(apply_angle - CS.out.steeringAngleDeg)
-      steering_power_target_angle = steering_power_min_by_speed + self.CCP.ANGLE_POWER_FACTOR * steering_angle_diff + abs(apply_angle)
-      steering_power_target = clip(steering_power_target_angle, self.CCP.STEERING_POWER_MIN, self.CCP.STEERING_POWER_MAX)
+      steering_curvature_diff = abs(apply_curvature - current_curvature)
+      steering_power_target_curvature = steering_power_min_by_speed + self.CCP.CURVATURE_POWER_FACTOR * (steering_curvature_diff + abs(apply_curvature))
+      steering_power_target = clip(steering_power_target_curvature, self.CCP.STEERING_POWER_MIN, self.CCP.STEERING_POWER_MAX)
 
       if steering_power_prev < self.CCP.STEERING_POWER_MIN:  # OP lane assist just activated
         steering_power = min(steering_power_prev + self.CCP.STEERING_POWER_STEPS, self.CCP.STEERING_POWER_MIN)
