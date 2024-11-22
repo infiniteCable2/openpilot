@@ -81,10 +81,10 @@ class CarControllerParams:
       self.STEERING_POWER_MIN              = 40    # HCA_03 minimum steering power
       self.STEERING_POWER_STEPS            = 6     # HCA_03 steering power counter steps
       self.STEERING_POWER_MAX_BY_SPEED     = 20    # HCA_03 speed in m/s^2 where maximum steering power is reached
-      self.CURVATURE_MAX                   = 0.195 # HCA_03 maximum curvature in 1/m, we estimate that about 0.2 1/m is max of signal
+      self.CURVATURE_MAX                   = 0.195 # HCA_03 maximum curvature in 1/m
       self.CURVATURE_ERROR                 = 0.01  # HCA_03 curvature error, yaw rate error at standstill in range of about 0.2 deg/sec
-      self.ANGLE_RATE_LIMIT_UP             = AngleRateLimit(speed_bp=[5, 12, 25], angle_v=[0.004, 0.002, 0.001]) # curvature safety limit up (max angle change for HCA_03 ~ 120-130 deg/s)
-      self.ANGLE_RATE_LIMIT_DOWN           = AngleRateLimit(speed_bp=[5, 12, 25], angle_v=[0.005, 0.0025, 0.0015]) # curvature safety limit down
+      self.ANGLE_RATE_LIMIT_UP             = AngleRateLimit(speed_bp=[0., 5., 15.], angle_v=[0.005, 0.0015, 0.00015]) # curvature safety limit up (max angle change for HCA_03 ~ 120-130 deg/s)
+      self.ANGLE_RATE_LIMIT_DOWN           = AngleRateLimit(speed_bp=[0., 5., 15.], angle_v=[0.005, 0.0035, 0.00035]) # curvature safety limit down
       self.CURVATURE_POWER_FACTOR          = 1000
 
 
