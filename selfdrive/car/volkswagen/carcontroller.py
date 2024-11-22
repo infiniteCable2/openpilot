@@ -147,7 +147,7 @@ class CarController(CarControllerBase):
           apply_curvature      = apply_vw_meb_curvature_limits(actuators.curvature, self.apply_curvature_last, current_curvature, CS.out.vEgoRaw, self.CCP)
             
         else:
-          if self.steering_power > 0: # keep HCA alive until steering power has reduced to zero
+          if self.steering_power_last > 0: # keep HCA alive until steering power has reduced to zero
             hca_enabled = True
             current_curvature = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1)
             apply_curvature = current_curvature # synchronize with current steering angle
