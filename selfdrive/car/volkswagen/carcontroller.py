@@ -80,7 +80,7 @@ class CarController(CarControllerBase):
     self.steering_power_last = 0
     self.accel_last = 0
 
-  def apply_vw_meb_curvature_limits(apply_curvature, apply_curvature_last, current_curvature, v_ego_raw, CCP):
+  def apply_vw_meb_curvature_limits(self, apply_curvature, apply_curvature_last, current_curvature, v_ego_raw, CCP):
     # No blending at low speed due to inaccurate current curvature
     if v_ego_raw > 9:
       apply_curvature = clip(apply_curvature, current_curvature - CCP.CURVATURE_ERROR, current_curvature + CCP.CURVATURE_ERROR)
