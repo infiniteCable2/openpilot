@@ -88,7 +88,7 @@ class CarController(CarControllerBase):
     # Curvature rate limit after driver torque limit
     apply_curvature = apply_std_steer_angle_limits(apply_curvature, apply_curvature_last, v_ego_raw, CCP)
 
-  return clip(apply_curvature, -CCP.CURVATURE_MAX, CCP.CURVATURE_MAX)
+    return clip(apply_curvature, -CCP.CURVATURE_MAX, CCP.CURVATURE_MAX)
 
   def calculate_lead_distance(self, hud_control: car.CarControl.HUDControl) -> float:
     lead_one = self.sm["radarState"].leadOne
