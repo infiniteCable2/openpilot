@@ -156,7 +156,7 @@ class CarController(CarControllerBase):
             apply_curvature = 0. # inactive curvature
 
         steering_power = self.generate_vw_meb_steering_power(CS, CC.latActive, apply_curvature, self.steering_power_last)
-        steering_power_boost = True if self.steering_power == self.CCP.STEERING_POWER_MAX else False
+        steering_power_boost = True if steering_power == self.CCP.STEERING_POWER_MAX else False
         can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_curvature, hca_enabled, steering_power, steering_power_boost))
         self.apply_curvature_last = apply_curvature
         self.steering_power_last = steering_power
