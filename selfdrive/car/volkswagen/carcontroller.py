@@ -144,7 +144,7 @@ class CarController(CarControllerBase):
           hca_enabled = True
           # apply rate limits, curvature error limit, and clip to signal range
           current_curvature    = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1)
-          apply_curvature      = self.apply_vw_meb_curvature_limits(actuators.curvature, self.apply_curvature_last, current_curvature, CS.out.vEgoRaw, self.CCP) * CV.RAD_TO_DEG
+          apply_curvature      = self.apply_vw_meb_curvature_limits(actuators.curvature, self.apply_curvature_last, current_curvature, CS.out.vEgoRaw, self.CCP)
           
         else:
           if self.steering_power_last > 0: # keep HCA alive until steering power has reduced to zero
@@ -155,6 +155,7 @@ class CarController(CarControllerBase):
             hca_enabled = False
             apply_curvature = 0. # inactive curvature
 
+        apply_curvature = apply_curvature * CV.RAD_TO_DEG
         steering_power = self.generate_vw_meb_steering_power(CS, CC.latActive, apply_curvature, self.steering_power_last)
         steering_power_boost = True if steering_power == self.CCP.STEERING_POWER_MAX else False
         can_sends.append(self.CCS.create_steering_control(self.packer_pt, CANBUS.pt, apply_curvature, hca_enabled, steering_power, steering_power_boost))
