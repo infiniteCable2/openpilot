@@ -78,7 +78,7 @@ class CarControllerParams:
       self.STEER_DRIVER_ALLOWANCE          = 80    # Driver intervention threshold 0.6 Nm
       self.BTN_STEP                        = 3
       self.STEERING_POWER_MAX              = 125   # HCA_03 maximum steering power
-      self.STEERING_POWER_MIN              = 40    # HCA_03 minimum steering power
+      self.STEERING_POWER_MIN              = 25    # HCA_03 minimum steering power
       self.STEERING_POWER_STEPS            = 6     # HCA_03 steering power counter steps
       self.STEERING_POWER_MAX_BY_SPEED     = 20    # HCA_03 speed in m/s^2 where maximum steering power is reached
       self.CURVATURE_MAX                   = 0.195 # HCA_03 maximum curvature in 1/m
