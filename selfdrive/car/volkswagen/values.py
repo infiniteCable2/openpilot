@@ -84,7 +84,7 @@ class CarControllerParams:
       self.CURVATURE_MAX                   = 0.195 # HCA_03 maximum curvature in 1/m
       self.CURVATURE_ERROR                 = 0.01  # HCA_03 curvature error, yaw rate error at standstill in range of about 0.2 deg/sec
       self.ANGLE_RATE_LIMIT_UP             = AngleRateLimit(speed_bp=[0., 5., 15.], angle_v=[0.005, 0.0015, 0.00015]) # curvature safety limit up (max angle change for HCA_03 ~ 120-130 deg/s)
-      self.ANGLE_RATE_LIMIT_DOWN           = AngleRateLimit(speed_bp=[0., 5., 15.], angle_v=[0.005, 0.0035, 0.00035]) # curvature safety limit down
+      self.ANGLE_RATE_LIMIT_DOWN           = AngleRateLimit(speed_bp=[0., 5., 15.], angle_v=[0.005, 0.0034, 0.00034]) # curvature safety limit down
       self.CURVATURE_POWER_FACTOR          = 1000
 
 
