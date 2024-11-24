@@ -1,3 +1,5 @@
+from openpilot.common.conversions import Conversions as CV
+
 ACC_CTRL_ERROR    = 6
 ACC_CTRL_OVERRIDE = 4
 ACC_CTRL_ACTIVE   = 3
@@ -18,7 +20,7 @@ ACC_HUD_DISABLED = 0
 def create_steering_control(packer, bus, apply_curvature, lkas_enabled, power, power_boost):
   # active lateral control deactivates active steering wheel centering 
   values = {
-    "Curvature": abs(apply_curvature), # in deg/m
+    "Curvature": abs(apply_curvature) * CV.RAD_TO_DEG, # in deg/m
     "VZ": 1 if apply_curvature > 0 and lkas_enabled else 0,
     "Power": power if lkas_enabled else 0,
     "Power_Boost": 1 if power_boost and lkas_enabled else 0,
