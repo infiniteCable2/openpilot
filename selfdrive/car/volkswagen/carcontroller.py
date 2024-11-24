@@ -80,16 +80,6 @@ class CarController(CarControllerBase):
     self.steering_power_last = 0
     self.accel_last = 0
 
-  def apply_vw_meb_curvature_limits(self, apply_curvature, apply_curvature_last, current_curvature, v_ego_raw, CCP):
-    # No blending at low speed due to inaccurate current curvature
-    if v_ego_raw > 9:
-      apply_curvature = clip(apply_curvature, current_curvature - CCP.CURVATURE_ERROR, current_curvature + CCP.CURVATURE_ERROR)
-
-    # Curvature rate limit after driver torque limit
-    apply_curvature = apply_std_steer_angle_limits(apply_curvature, apply_curvature_last, v_ego_raw, CCP)
-
-    return clip(apply_curvature, -CCP.CURVATURE_MAX, CCP.CURVATURE_MAX)
-
   def calculate_lead_distance(self, hud_control: car.CarControl.HUDControl) -> float:
     lead_one = self.sm["radarState"].leadOne
     lead_two = self.sm["radarState"].leadTwo
@@ -143,8 +133,11 @@ class CarController(CarControllerBase):
         if CC.latActive:
           hca_enabled = True
           # apply rate limits, curvature error limit, and clip to signal range
-          current_curvature    = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1)
-          apply_curvature      = self.apply_vw_meb_curvature_limits(actuators.curvature, self.apply_curvature_last, current_curvature, CS.out.vEgoRaw, self.CCP)
+          current_curvature = -CS.out.yawRate / max(CS.out.vEgoRaw, 0.1)
+          apply_curvature = apply_std_steer_angle_limits(actuators.curvature, self.apply_curvature_last, CS.out.vEgoRaw, self.CCP)
+          apply_curvature = clip(apply_curvature, -self.CCP.CURVATURE_MAX, self.CCP.CURVATURE_MAX)
+          if CS.out.steeringPressed: # roughly sync with user input
+            apply_angle = clip(apply_curvature, current_curvature - self.CCP.CURVATURE_ERROR, current_curvature + self.CCP.CURVATURE_ERROR)
           
         else:
           if self.steering_power_last > 0: # keep HCA alive until steering power has reduced to zero
