@@ -85,7 +85,7 @@ class CarControllerParams:
       self.CURVATURE_ERROR                 = 0.01
       self.ANGLE_RATE_LIMIT_UP             = AngleRateLimit(speed_bp=[0., 5., 15.], angle_v=[0.005, 0.0015, 0.00015]) # curvature safety limit up (max real steering angle change ~ 120-130 deg/s)
       self.ANGLE_RATE_LIMIT_DOWN           = AngleRateLimit(speed_bp=[0., 5., 15.], angle_v=[0.005, 0.0034, 0.00034]) # curvature safety limit down
-      self.CURVATURE_POWER_FACTOR          = 1000
+      self.CURVATURE_POWER_FACTOR          = 4000
 
 
       self.shifter_values    = can_define.dv["Getriebe_11"]["GE_Fahrstufe"]
