@@ -76,17 +76,8 @@ class LongControl:
       self.reset()
 
     elif self.long_control_state == LongCtrlState.starting:
-      if self.CP.useCarBrakeHoldState:
-        if CS.brakeHoldConfirmation:
-          output_accel = self.CP.startAccel
-          self.reset()
-        else:
-          error = a_target - CS.aEgo
-          output_accel = self.pid.update(error, speed=CS.vEgo,
-                                         feedforward=a_target)
-      else:
-        output_accel = self.CP.startAccel
-        self.reset()
+      output_accel = self.CP.startAccel
+      self.reset()
 
     else:  # LongCtrlState.pid
       error = a_target - CS.aEgo
