@@ -6,7 +6,7 @@ from openpilot.selfdrive.controls.lib.latcontrol import LatControl
 from openpilot.common.pid_mu import MultiplicativeUnwindPID
 
 CURVATURE_SATURATION_THRESHOLD = 5e-4 # rad/m
-CAR_YAW_RATE_INVALID_COUNT_MAX = 100
+CAR_YAW_RATE_INVALID_COUNT_MAX = 500
 
 
 class LatControlCurvature(LatControl):
@@ -35,9 +35,10 @@ class LatControlCurvature(LatControl):
       actual_curvature_vm = actual_curvature_vm_no_roll - roll_compensation
 
       if self.useCarYawRate:
-        self.carYawRateInvalidCounter += 1 if CS.yawRate == 0 and CS.vEgo != 0 else 0
-        #assert self.carYawRateInvalidCounter < CAR_YAW_RATE_INVALID_COUNT_MAX # safety relevant, throw error
-        actual_curvature_car = CS.yawRate / CS.vEgo
+        v_ego = max(CS.vEgo, 0.1)
+        self.carYawRateInvalidCounter += 1 if CS.yawRate == 0 else 0
+        assert self.carYawRateInvalidCounter < CAR_YAW_RATE_INVALID_COUNT_MAX # safety relevant, throw error
+        actual_curvature_car = CS.yawRate / v_ego
         actual_curvature = np.interp(CS.vEgo, [2.0, 5.0], [actual_curvature_vm, actual_curvature_car])
       else:
         actual_curvature = actual_curvature_vm
