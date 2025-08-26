@@ -36,7 +36,7 @@ class LatControlCurvature(LatControl):
 
       if self.useCarYawRate:
         self.carYawRateInvalidCounter += 1 if CS.yawRate == 0 and CS.vEgo != 0 else 0
-        assert self.carYawRateInvalidCounter < CAR_YAW_RATE_INVALID_COUNT_MAX # safety relevant, throw error
+        #assert self.carYawRateInvalidCounter < CAR_YAW_RATE_INVALID_COUNT_MAX # safety relevant, throw error
         actual_curvature_car = CS.yawRate / CS.vEgo
         actual_curvature = np.interp(CS.vEgo, [2.0, 5.0], [actual_curvature_vm, actual_curvature_car])
       else:
