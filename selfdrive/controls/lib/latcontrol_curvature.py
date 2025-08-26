@@ -12,6 +12,7 @@ class LatControlCurvature(LatControl):
   def __init__(self, CP, CP_SP, CI):
     super().__init__(CP, CP_SP, CI)
     self.useCarSteerCurvature = CP.useCarSteerCurvature
+    self.useCarYawRate = CP.useCarYawRate
     self.pid = MultiplicativeUnwindPID((CP.lateralTuning.pid.kpBP, CP.lateralTuning.pid.kpV),
                                        (CP.lateralTuning.pid.kiBP, CP.lateralTuning.pid.kiV),
                                        k_f=CP.lateralTuning.pid.kf, pos_limit=self.curvature_max, neg_limit=-self.curvature_max)
@@ -30,9 +31,12 @@ class LatControlCurvature(LatControl):
       roll_compensation = -VM.roll_compensation(params.roll, CS.vEgo)
       actual_curvature_vm_no_roll = -VM.calc_curvature(math.radians(CS.steeringAngleDeg - params.angleOffsetDeg), CS.vEgo, 0.)
       actual_curvature_vm = actual_curvature_vm_no_roll - roll_compensation
-      assert calibrated_pose is not None
-      actual_curvature_pose = calibrated_pose.angular_velocity.yaw / CS.vEgo
-      actual_curvature = np.interp(CS.vEgo, [2.0, 5.0], [actual_curvature_vm, actual_curvature_pose])
+
+      if self.useCarYawRate:
+        actual_curvature_car = CS.yawRate / CS.vEgo
+        actual_curvature = np.interp(CS.vEgo, [2.0, 5.0], [actual_curvature_vm, actual_curvature_car])
+      else:
+        actual_curvature = actual_curvature_vm
 
       desired_curvature_corr = desired_curvature - roll_compensation
       
