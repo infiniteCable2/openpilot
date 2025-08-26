@@ -13,7 +13,7 @@ class LatControlCurvature(LatControl):
   def __init__(self, CP, CP_SP, CI):
     super().__init__(CP, CP_SP, CI)
     self.useCarSteerCurvature = CP.useCarSteerCurvature
-    self.useCarYawRate = CP.useCarYawRate
+    self.useCarYawRate = CP.useCarYawrate
     self.carYawRateInvalidCounter = 0
     self.pid = MultiplicativeUnwindPID((CP.lateralTuning.pid.kpBP, CP.lateralTuning.pid.kpV),
                                        (CP.lateralTuning.pid.kiBP, CP.lateralTuning.pid.kiV),
