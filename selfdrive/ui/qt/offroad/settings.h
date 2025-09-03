@@ -71,6 +71,20 @@ protected:
   ButtonControl *resetCalibBtn;
 };
 
+class InfiniteCableTogglesPanel : public ListWidget {
+  Q_OBJECT
+public:
+  explicit InfiniteCableTogglesPanel(SettingsWindow *parent);
+
+public slots:
+  void expandToggleDescription(const QString &param);
+  void scrollToToggle(const QString &param);
+
+protected:
+  Params params;
+  std::map<std::string, ParamControl*> toggles;
+};
+
 class TogglesPanel : public ListWidget {
   Q_OBJECT
 public:
