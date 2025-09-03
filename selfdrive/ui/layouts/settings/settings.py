@@ -38,6 +38,7 @@ class PanelType(IntEnum):
   SOFTWARE = 3
   FIREHOSE = 4
   DEVELOPER = 5
+  ICTOGGLES = 6
 
 
 @dataclass
@@ -56,6 +57,7 @@ class SettingsLayout(Widget):
     self._panels = {
       PanelType.DEVICE: PanelInfo("Device", DeviceLayout()),
       PanelType.NETWORK: PanelInfo("Network", NetworkLayout()),
+      PanelType.ICTOGGLES: PanelInfo("infiniteCableCustom", TogglesLayout()),
       PanelType.TOGGLES: PanelInfo("Toggles", TogglesLayout()),
       PanelType.SOFTWARE: PanelInfo("Software", SoftwareLayout()),
       PanelType.FIREHOSE: PanelInfo("Firehose", FirehoseLayout()),

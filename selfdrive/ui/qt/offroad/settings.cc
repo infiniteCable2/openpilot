@@ -16,6 +16,95 @@
 #include "selfdrive/ui/qt/offroad/developer_panel.h"
 #include "selfdrive/ui/qt/offroad/firehose.h"
 
+InfiniteCableTogglesPanel::InfiniteCableTogglesPanel(SettingsWindow *parent) : ListWidget(parent) {
+  std::vector<std::tuple<QString, QString, QString, QString, bool>> toggle_defs{
+    {
+      "EnableCurvatureController",
+      tr("VW MEB: Lateral Correction (Recommended)"),
+      tr("Enables curvature PID post-processing additionally to QFK curvature offset<br>"),
+      "../assets/icons/chffr_wheel.png",
+      false,
+    },
+    {
+      "EnableSpeedLimitControl",
+      tr("VW MEB: Speed Limit Control"),
+      tr("Enables setting maximum speed by speed limit detection<br>"),
+      "../assets/icons/speed_limit.png",
+      false,
+    },
+    {
+      "EnableSpeedLimitPredicative",
+      tr("VW MEB: Predicative Speed Limit"),
+      tr("Enables setting predicative speed limit<br>"),
+      "../assets/icons/speed_limit.png",
+      false,
+    },
+    {
+      "BatteryDetails",
+      tr("VW MEB: Display Battery Details"),
+      tr("Display battery detail panel"),
+      "../assets/icons/capslock-fill.png",
+      false,
+    },
+    {
+      "EnableSmoothSteer",
+      tr("Steer Smoothing"),
+      tr("Enables S-curving on lateral control for smoother steering<br>"),
+      "../assets/icons/chffr_wheel.png",
+      false,
+    },
+    {
+      "DarkMode",
+      tr("Dark Mode"),
+      tr("Force brightness to a minimal value"),
+      "../assets/icons/eye_closed.png",
+      false,
+    },
+    {
+      "DisableScreenTimer",
+      tr("Onroad Screen Timeout"),
+      tr("the onroad screen is turned of after 10 seconds. It will be temporarily enabled on alerts"),
+      "../assets/icons/eye_closed.png",
+      false,
+    },
+  };
+
+  for (auto &[param, title, desc, icon, needs_restart] : toggle_defs) {
+    auto toggle = new ParamControl(param, title, desc, icon, this);
+
+    bool locked = params.getBool((param + "Lock").toStdString());
+    toggle->setEnabled(!locked);
+
+    if (needs_restart && !locked) {
+      toggle->setDescription(toggle->getDescription() + tr(" Changing this setting will restart openpilot if the car is powered on."));
+
+      QObject::connect(uiState(), &UIState::engagedChanged, [toggle](bool engaged) {
+        toggle->setEnabled(!engaged);
+      });
+
+      QObject::connect(toggle, &ParamControl::toggleFlipped, [=](bool state) {
+        params.putBool("OnroadCycleRequested", true);
+      });
+    }
+
+    addItem(toggle);
+    toggles[param.toStdString()] = toggle;
+  }
+}
+
+void InfiniteCableTogglesPanel::expandToggleDescription(const QString &param) {
+  toggles[param.toStdString()]->showDescription();
+}
+
+void InfiniteCableTogglesPanel::scrollToToggle(const QString &param) {
+  if (auto it = toggles.find(param.toStdString()); it != toggles.end()) {
+    auto scroll_area = qobject_cast<QScrollArea*>(parent()->parent());
+    if (scroll_area) {
+      scroll_area->ensureWidgetVisible(it->second);
+    }
+  }
+}
+
 TogglesPanel::TogglesPanel(SettingsWindow *parent) : ListWidget(parent) {
   // param, title, desc, icon, restart needed
   std::vector<std::tuple<QString, QString, QString, QString, bool>> toggle_defs{
@@ -45,55 +134,6 @@ TogglesPanel::TogglesPanel(SettingsWindow *parent) : ListWidget(parent) {
       tr("Disengage on Accelerator Pedal"),
       tr("When enabled, pressing the accelerator pedal will disengage sunnypilot."),
       "../assets/icons/disengage_on_accelerator.svg",
-      false,
-    },
-    {
-      "EnableCurvatureController",
-      tr("Enable Curvature Controller"),
-      tr("Enables curvature post-processing<br>"),
-      "../assets/icons/chffr_wheel.png",
-      false,
-    },
-    {
-      "EnableSpeedLimitControl",
-      tr("Enable Speed Limit Control"),
-      tr("Enables setting maximum speed by speed limit detection<br>"),
-      "../assets/icons/speed_limit.png",
-      false,
-    },
-    {
-      "EnableSpeedLimitPredicative",
-      tr("Enable Predicative Speed Limit"),
-      tr("Enables setting predicative speed limit<br>"),
-      "../assets/icons/speed_limit.png",
-      false,
-    },
-    {
-      "EnableSmoothSteer",
-      tr("Enable Steer Smoothing"),
-      tr("Enables S-curving on lateral control for smoother steering<br>"),
-      "../assets/icons/chffr_wheel.png",
-      false,
-    },
-    {
-      "DarkMode",
-      tr("Dark Mode"),
-      tr("Force brightness to a minimal value."),
-      "../assets/icons/eye_closed.png",
-      false,
-    },
-    {
-      "DisableScreenTimer",
-      tr("Turn onroad screen off after 10 seconds"),
-      tr("the onroad screen is turned of after 10 seconds. It will be temporarily enabled on alerts."),
-      "../assets/icons/eye_closed.png",
-      false,
-    },
-    {
-      "BatteryDetails",
-      tr("Display Battery Details"),
-      tr("Enable battery details panel."),
-      "../assets/icons/capslock-fill.png",
       false,
     },
     {
@@ -530,6 +570,10 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
   QObject::connect(device, &DevicePanel::reviewTrainingGuide, this, &SettingsWindow::reviewTrainingGuide);
   QObject::connect(device, &DevicePanel::showDriverView, this, &SettingsWindow::showDriverView);
 
+  InfiniteCableTogglesPanel *ictoggles = new InfiniteCableTogglesPanel(this);
+  QObject::connect(this, &SettingsWindow::expandToggleDescription, ictoggles, &InfiniteCableTogglesPanel::expandToggleDescription);
+  QObject::connect(this, &SettingsWindow::scrollToToggle, ictoggles, &InfiniteCableTogglesPanel::scrollToToggle);
+
   TogglesPanel *toggles = new TogglesPanel(this);
   QObject::connect(this, &SettingsWindow::expandToggleDescription, toggles, &TogglesPanel::expandToggleDescription);
   QObject::connect(this, &SettingsWindow::scrollToToggle, toggles, &TogglesPanel::scrollToToggle);
@@ -540,6 +584,7 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QFrame(parent) {
   QList<QPair<QString, QWidget *>> panels = {
     {tr("Device"), device},
     {tr("Network"), networking},
+    {tr("infiniteCableCustom"), ictoggles},
     {tr("Toggles"), toggles},
     {tr("Software"), new SoftwarePanel(this)},
     {tr("Firehose"), new FirehosePanel(this)},
