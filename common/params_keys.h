@@ -138,6 +138,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"EnableSpeedLimitControl", {PERSISTENT, BOOL}},
     {"EnableSpeedLimitPredicative", {PERSISTENT, BOOL}},
 	{"BatteryDetails", {PERSISTENT, BOOL}},
+	{"ForceRHDForBSM", {PERSISTENT, BOOL}},
 
     // --- sunnypilot params --- //
     {"ApiCache_DriveStats", {PERSISTENT, JSON}},
@@ -163,6 +164,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"MaxTimeOffroad", {PERSISTENT | BACKUP, INT, "1800"}},
     {"ModelRunnerTypeCache", {CLEAR_ON_ONROAD_TRANSITION, INT}},
     {"OffroadMode", {CLEAR_ON_MANAGER_START, BOOL}},
+    {"Offroad_TiciSupport", {CLEAR_ON_MANAGER_START, JSON}},
     {"QuickBootToggle", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"QuietMode", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"RainbowMode", {PERSISTENT | BACKUP, BOOL, "0"}},

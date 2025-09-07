@@ -9,6 +9,7 @@ CURVATURE_SATURATION_THRESHOLD = 5e-4 # rad/m
 class LatControlCurvature(LatControl):
   def __init__(self, CP, CP_SP, CI):
     super().__init__(CP, CP_SP, CI)
+    assert False
 
   def reset(self):
     super().reset()

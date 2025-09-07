@@ -63,7 +63,14 @@ InfiniteCableTogglesPanel::InfiniteCableTogglesPanel(SettingsWindow *parent) : L
     {
       "DisableScreenTimer",
       tr("Onroad Screen Timeout"),
-      tr("the onroad screen is turned of after 10 seconds. It will be temporarily enabled on alerts"),
+      tr("The onroad screen is turned of after 10 seconds. It will be temporarily enabled on alerts"),
+      "../assets/icons/eye_closed.png",
+      false,
+    },
+	{
+      "ForceRHDForBSM",
+      tr("Force RHD for BSM"),
+      tr("Switch BSM detection side to RHD. Passenger is on the right side."),
       "../assets/icons/eye_closed.png",
       false,
     },
