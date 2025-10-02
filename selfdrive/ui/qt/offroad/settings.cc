@@ -27,6 +27,13 @@ InfiniteCableTogglesPanel::InfiniteCableTogglesPanel(SettingsWindow *parent) : L
       false,
     },
     {
+      "EnableLongComfortMode",
+      tr("VW MEB: Longitudinal Comfort Mode"),
+      tr("Enables longitudinal jerk and accel deviation limit control for safe and comfortable driving<br>"),
+      "../assets/icons/chffr_wheel.png",
+      false,
+    },
+    {
       "EnableSpeedLimitControl",
       tr("VW MEB: Speed Limit Control"),
       tr("Enables setting maximum speed by speed limit detection<br>"),
