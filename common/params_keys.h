@@ -134,6 +134,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
 	{"DarkMode", {PERSISTENT, BOOL}},
 	{"EnableAngleOffset", {PERSISTENT, BOOL}},
 	{"EnableCurvatureController", {PERSISTENT, BOOL, "1"}},
+	{"EnableLongComfortMode", {PERSISTENT, BOOL}},
     {"EnableScreenEvent", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},
     {"EnableSmoothSteer", {PERSISTENT, BOOL}},
     {"EnableSpeedLimitControl", {PERSISTENT, BOOL}},
