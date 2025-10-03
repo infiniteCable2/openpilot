@@ -81,8 +81,10 @@ public slots:
   void scrollToToggle(const QString &param);
 
 protected:
+  void showEvent(QShowEvent *event) override;
   Params params;
   std::map<std::string, ParamControl*> toggles;
+  OptionControlSP *steer_offset_control = nullptr;
 };
 
 class TogglesPanel : public ListWidget {

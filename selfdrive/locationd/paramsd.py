@@ -19,6 +19,7 @@ ROLL_LOWERED_MAX = np.radians(8)
 ROLL_STD_MAX = np.radians(1.5)
 LATERAL_ACC_SENSOR_THRESHOLD = 4.0
 OFFSET_MAX = 10.0
+OFFSET_HIGHER_MAX = 18.0
 OFFSET_LOWERED_MAX = 8.0
 MIN_ACTIVE_SPEED = 1.0
 LOW_ACTIVE_SPEED = 10.0
@@ -26,12 +27,16 @@ LOW_ACTIVE_SPEED = 10.0
 
 class VehicleParamsLearner:
   def __init__(self, CP: car.CarParams, steer_ratio: float, stiffness_factor: float, angle_offset: float, P_initial: np.ndarray | None = None):
+    params = Params()
     self.kf = CarKalman(GENERATED_DIR)
 
     self.x_initial = CarKalman.initial_x.copy()
     self.x_initial[States.STEER_RATIO] = steer_ratio
     self.x_initial[States.STIFFNESS] = stiffness_factor
-    self.x_initial[States.ANGLE_OFFSET] = angle_offset
+    set_manual_angle_offset = params.get_bool("EnableAngleOffset")
+    self.allow_higher_angle_offset = set_manual_angle_offset
+    manual_angle_offset_deg = float(params.get("AngleOffsetDegree") or 0.0)
+    self.x_initial[States.ANGLE_OFFSET] = np.radians(manual_angle_offset_deg) if set_manual_angle_offset else angle_offset
     self.P_initial = P_initial if P_initial is not None else CarKalman.P_initial
 
     self.kf.set_globals(
@@ -150,8 +155,9 @@ class VehicleParamsLearner:
       sensors_valid = bool(abs(self.observed_speed * (x[States.YAW_RATE].item() + self.observed_yaw_rate)) < LATERAL_ACC_SENSOR_THRESHOLD)
     else:
       sensors_valid = True
-    self.avg_offset_valid = check_valid_with_hysteresis(self.avg_offset_valid, self.avg_angle_offset, OFFSET_MAX, OFFSET_LOWERED_MAX)
-    self.total_offset_valid = check_valid_with_hysteresis(self.total_offset_valid, self.angle_offset, OFFSET_MAX, OFFSET_LOWERED_MAX)
+    avg_angle_offset_max = OFFSET_HIGHER_MAX if self.allow_higher_angle_offset else OFFSET_MAX
+    self.avg_offset_valid = check_valid_with_hysteresis(self.avg_offset_valid, self.avg_angle_offset, avg_angle_offset_max, OFFSET_LOWERED_MAX)
+    self.total_offset_valid = check_valid_with_hysteresis(self.total_offset_valid, self.angle_offset, avg_angle_offset_max, OFFSET_LOWERED_MAX)
     self.roll_valid = check_valid_with_hysteresis(self.roll_valid, self.roll, ROLL_MAX, ROLL_LOWERED_MAX)
 
     msg = messaging.new_message('liveParameters')
@@ -290,6 +296,7 @@ def main():
       msg_dat = msg.to_bytes()
       if sm.frame % 1200 == 0:  # once a minute
         params.put_nonblocking("LiveParametersV2", msg_dat)
+        params.put_nonblocking("AngleOffsetDegree", msg.liveParameters.angleOffsetDeg)
 
       pm.send('liveParameters', msg_dat)
 
