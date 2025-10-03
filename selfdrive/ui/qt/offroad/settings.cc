@@ -15,6 +15,7 @@
 #include "selfdrive/ui/qt/widgets/scrollview.h"
 #include "selfdrive/ui/qt/offroad/developer_panel.h"
 #include "selfdrive/ui/qt/offroad/firehose.h"
+#include "selfdrive/ui/sunnypilot/qt/widgets/controls.h"
 
 InfiniteCableTogglesPanel::InfiniteCableTogglesPanel(SettingsWindow *parent) : ListWidget(parent) {
   std::vector<std::tuple<QString, QString, QString, QString, bool>> toggle_defs{
@@ -74,6 +75,13 @@ InfiniteCableTogglesPanel::InfiniteCableTogglesPanel(SettingsWindow *parent) : L
       "../assets/icons/eye_closed.png",
       false,
     },
+    {
+      "EnableAngleOffset",
+      tr("Enable Steer Angle Offset"),
+      tr("Enables the use of manual steer angle offset selection as start value for params detection."),
+      "../assets/icons/eye_closed.png",
+      false,
+    },
   };
 
   for (auto &[param, title, desc, icon, needs_restart] : toggle_defs) {
@@ -96,6 +104,38 @@ InfiniteCableTogglesPanel::InfiniteCableTogglesPanel(SettingsWindow *parent) : L
 
     addItem(toggle);
     toggles[param.toStdString()] = toggle;
+  }
+
+  steer_offset_control = new OptionControlSP(
+    "AngleOffsetDegree",
+    tr("Steering Angle Offset"),
+    tr("Adjust steering angle offset params learner start value manually (in degrees). Taking effect only for onroad transition. Is refreshed with the actual learned value and saved."), 
+    "", {-1800, 1800}, 10, false, nullptr, true, true);
+
+  float stored_val = QString::fromStdString(params.get("AngleOffsetDegree")).toFloat();
+  steer_offset_control->setLabel(QString::number(stored_val, 'f', 1) + "°");
+  steer_offset_control->showDescription();
+  addItem(steer_offset_control);
+
+  bool enable_angle_offset = params.getBool("EnableAngleOffset");
+  steer_offset_control->setVisible(enable_angle_offset);
+
+  connect(uiStateSP(), &UIStateSP::uiUpdate, this, [=]() {
+    bool enable_steer_offset_control = params.getBool("EnableAngleOffset");
+    steer_offset_control->setVisible(enable_steer_offset_control);
+  });
+
+  QObject::connect(steer_offset_control, &OptionControlSP::updateLabels, [=]() {
+    float val = QString::fromStdString(params.get("AngleOffsetDegree")).toFloat();
+    steer_offset_control->setLabel(QString::number(val, 'f', 1) + "°");
+  });
+}
+
+void InfiniteCableTogglesPanel::showEvent(QShowEvent *event) {
+  ListWidget::showEvent(event);
+  if (steer_offset_control) {
+    float val = QString::fromStdString(params.get("AngleOffsetDegree")).toFloat();
+    steer_offset_control->setLabel(QString::number(val, 'f', 1) + "°");
   }
 }
 
