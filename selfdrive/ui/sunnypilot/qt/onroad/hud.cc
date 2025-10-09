@@ -21,6 +21,8 @@ HudRendererSP::HudRendererSP() {
   green_light_alert_large_img = loadPixmap("../../sunnypilot/selfdrive/assets/images/green_light.png", {large_max, large_max});
   lead_depart_alert_small_img = loadPixmap("../../sunnypilot/selfdrive/assets/images/lead_depart.png", {small_max, small_max});
   lead_depart_alert_large_img = loadPixmap("../../sunnypilot/selfdrive/assets/images/lead_depart.png", {large_max, large_max});
+
+  standstillTimerOctagon.reserve(8);
 }
 
 void HudRendererSP::updateState(const UIState &s) {
@@ -115,6 +117,11 @@ void HudRendererSP::updateState(const UIState &s) {
 
   greenLightAlert = lp_sp.getE2eAlerts().getGreenLightAlert();
   leadDepartAlert = lp_sp.getE2eAlerts().getLeadDepartAlert();
+
+  // override stock current speed values
+  float v_ego = (v_ego_cluster_seen && !s.scene.trueVEgoUI) ? car_state.getVEgoCluster() : car_state.getVEgo();
+  speed = std::max<float>(0.0f, v_ego * (is_metric ? MS_TO_KPH : MS_TO_MPH));
+  hideVEgoUI = s.scene.hideVEgoUI;
 }
 
 void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
@@ -126,6 +133,10 @@ void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
 
   if (is_cruise_available) {
     drawSetSpeedSP(p, surface_rect);
+  }
+
+  if (!hideVEgoUI) {
+    drawCurrentSpeedSP(p, surface_rect);
   }
 
   if (!reversing) {
@@ -394,19 +405,19 @@ void HudRendererSP::drawStandstillTimer(QPainter &p, int x, int y) {
 
     // stop sign for standstill timer
     const int size = 190;  // size
-    const float angle = M_PI / 8.0;
+    const float angle = M_PI / 8.0f;
 
-    QPolygon octagon;
+    standstillTimerOctagon.clear();
     for (int i = 0; i < 8; i++) {
-      float curr_angle = angle + i * M_PI / 4.0;
+      float curr_angle = angle + i * M_PI / 4.0f;
       int point_x = x + size / 2 * cos(curr_angle);
       int point_y = y + size / 2 * sin(curr_angle);
-      octagon << QPoint(point_x, point_y);
+      standstillTimerOctagon << QPoint(point_x, point_y);
     }
 
     p.setPen(QPen(Qt::white, 6));
     p.setBrush(QColor(255, 90, 81, 200)); // red pastel
-    p.drawPolygon(octagon);
+    p.drawPolygon(standstillTimerOctagon);
 
     QString time_str = QString("%1:%2").arg(minute, 1, 10, QChar('0')).arg(second, 2, 10, QChar('0'));
     p.setFont(InterFont(55, QFont::Bold));
@@ -730,4 +741,14 @@ void HudRendererSP::drawE2eAlert(QPainter &p, const QRect &surface_rect) {
   QPointF pixmapCenterOffset = QPointF(alert_img.width() / 2.0, alert_img.height() / 2.0);
   QPointF drawPoint = center - pixmapCenterOffset;
   p.drawPixmap(drawPoint, alert_img);
+}
+
+void HudRendererSP::drawCurrentSpeedSP(QPainter &p, const QRect &surface_rect) {
+  QString speedStr = QString::number(std::nearbyint(speed));
+
+  p.setFont(InterFont(176, QFont::Bold));
+  HudRenderer::drawText(p, surface_rect.center().x(), 210, speedStr);
+
+  p.setFont(InterFont(66));
+  HudRenderer::drawText(p, surface_rect.center().x(), 290, is_metric ? tr("km/h") : tr("mph"), 200);
 }
