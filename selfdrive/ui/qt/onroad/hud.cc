@@ -61,8 +61,8 @@ void HudRenderer::draw(QPainter &p, const QRect &surface_rect) {
   if (is_cruise_available) {
     drawSetSpeed(p, surface_rect);
   }
-#endif
   drawCurrentSpeed(p, surface_rect);
+#endif
 
   auto params = Params();
   bool display_battery_details = params.getBool("BatteryDetails");
