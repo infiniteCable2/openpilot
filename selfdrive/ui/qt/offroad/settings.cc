@@ -27,6 +27,13 @@ InfiniteCableTogglesPanel::InfiniteCableTogglesPanel(SettingsWindow *parent) : L
       false,
     },
     {
+      "EnableLongComfortMode",
+      tr("VW MEB: Longitudinal Comfort Mode"),
+      tr("Enables longitudinal jerk and accel deviation limit control for safe and comfortable driving<br>"),
+      "../assets/icons/chffr_wheel.png",
+      false,
+    },
+    {
       "EnableSpeedLimitControl",
       tr("VW MEB: Speed Limit Control"),
       tr("Enables setting maximum speed by speed limit detection<br>"),
@@ -167,13 +174,6 @@ TogglesPanel::TogglesPanel(SettingsWindow *parent) : ListWidget(parent) {
       tr("Experimental Mode"),
       "",
       "../assets/icons/experimental_white.svg",
-      false,
-    },
-    {
-      "DynamicExperimentalControl",
-      tr("Enable Dynamic Experimental Control"),
-      tr("Enable toggle to allow the model to determine when to use sunnypilot ACC or sunnypilot End to End Longitudinal."),
-      "../assets/offroad/icon_blank.png",
       false,
     },
     {
