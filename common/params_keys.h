@@ -134,6 +134,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
 	{"DarkMode", {PERSISTENT, BOOL}},
 	{"EnableAngleOffset", {PERSISTENT, BOOL}},
 	{"EnableCurvatureController", {PERSISTENT, BOOL, "1"}},
+	{"EnableLongComfortMode", {PERSISTENT, BOOL}},
     {"EnableScreenEvent", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},
     {"EnableSmoothSteer", {PERSISTENT, BOOL}},
     {"EnableSpeedLimitControl", {PERSISTENT, BOOL}},
@@ -172,9 +173,9 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"ModelRunnerTypeCache", {CLEAR_ON_ONROAD_TRANSITION, INT}},
     {"OffroadMode", {CLEAR_ON_MANAGER_START, BOOL}},
     {"Offroad_TiciSupport", {CLEAR_ON_MANAGER_START, JSON}},
-    {"OnroadScreenOffBrightness", {PERSISTENT | BACKUP, INT, "100"}},
+    {"OnroadScreenOffBrightness", {PERSISTENT | BACKUP, INT, "0"}},
     {"OnroadScreenOffControl", {PERSISTENT | BACKUP, BOOL}},
-    {"OnroadScreenOffTimer", {PERSISTENT | BACKUP, INT, "0"}},
+    {"OnroadScreenOffTimer", {PERSISTENT | BACKUP, INT, "15"}},
     {"OnroadUploads", {PERSISTENT | BACKUP, BOOL, "1"}},
     {"QuickBootToggle", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"QuietMode", {PERSISTENT | BACKUP, BOOL, "0"}},
@@ -217,6 +218,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
 
     // sunnypilot car specific params
     {"HyundaiLongitudinalTuning", {PERSISTENT | BACKUP, INT, "0"}},
+    {"SubaruStopAndGo", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"SubaruStopAndGoManualParkingBrake", {PERSISTENT | BACKUP, BOOL, "0"}},
 
     {"DynamicExperimentalControl", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"BlindSpot", {PERSISTENT | BACKUP, BOOL, "0"}},
