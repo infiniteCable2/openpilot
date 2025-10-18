@@ -215,16 +215,32 @@ class RadarD:
 
     self.ready = False
 
+    self.params = Params()
+    self.disable_radar_data = self.params.get_bool("DisableRadarData")
+    self.last_disable_radar_check_ts = 0.0
+
+  def _refresh_disable_radar_data_flag(self):
+    if self.current_time - self.last_disable_radar_check_ts > 0.5:
+      self.disable_radar_data = self.params.get_bool("DisableRadarData")
+      self.last_disable_radar_check_ts = self.current_time
+
   def update(self, sm: messaging.SubMaster, rr: car.RadarData):
     self.ready = sm.seen['modelV2']
     self.current_time = 1e-9*max(sm.logMonoTime.values())
+
+    self._refresh_disable_radar_data_flag()
 
     if sm.recv_frame['carState'] != self.last_v_ego_frame:
       self.v_ego = sm['carState'].vEgo
       self.v_ego_hist.append(self.v_ego)
       self.last_v_ego_frame = sm.recv_frame['carState']
 
-    ar_pts = {pt.trackId: [pt.dRel, pt.yRel, pt.vRel, pt.measured] for pt in rr.points}
+    if self.disable_radar_data:
+      if self.tracks:
+        self.tracks.clear()
+      ar_pts = {}
+    else:
+      ar_pts = {pt.trackId: [pt.dRel, pt.yRel, pt.vRel, pt.measured] for pt in rr.points}
 
     # *** remove missing points from meta data ***
     for ids in list(self.tracks.keys()):
