@@ -82,6 +82,13 @@ InfiniteCableTogglesPanel::InfiniteCableTogglesPanel(SettingsWindow *parent) : L
       "../assets/icons/eye_closed.png",
       false,
     },
+	{
+      "DisableRadarData",
+      tr("Disable Radar Tracks"),
+      tr("Disables the use of actual distance data from car."),
+      "../assets/icons/eye_closed.png",
+      false,
+    },
     {
       "EnableAngleOffset",
       tr("Enable Steer Angle Offset"),
