@@ -130,7 +130,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
 	
 	// --- infiniteCable params --- //
 	{"AngleOffsetDegree", {PERSISTENT, FLOAT, "0.0"}},
-	{"DisableRadarData", {PERSISTENT, BOOL}},
+	{"DisableRadarData", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, BOOL}},
 	{"DisableScreenTimer", {PERSISTENT, BOOL}},
 	{"DarkMode", {PERSISTENT, BOOL}},
 	{"EnableAngleOffset", {PERSISTENT, BOOL}},
