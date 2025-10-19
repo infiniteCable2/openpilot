@@ -124,7 +124,6 @@ class Controls(ControlsExt, ModelStateBase):
 
       self.LaC.extension.update_model_v2(self.sm['modelV2'])
 
-      self.lat_delay = get_lat_delay(self.params, self.sm["liveDelay"].lateralDelay)
       self.LaC.extension.update_lateral_lag(self.lat_delay)
 
     long_plan = self.sm['longitudinalPlan']
@@ -275,6 +274,9 @@ class Controls(ControlsExt, ModelStateBase):
   def params_thread(self, evt):
     while not evt.is_set():
       self.get_params_sp()
+
+      if self.CP.lateralTuning.which() == 'torque':
+        self.lat_delay = get_lat_delay(self.params, self.sm["liveDelay"].lateralDelay)
 
       time.sleep(0.1)
 
