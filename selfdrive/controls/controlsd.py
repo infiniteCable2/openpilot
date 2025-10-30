@@ -63,6 +63,8 @@ class Controls(ControlsExt, ModelStateBase):
     self.enable_curvature_controller = self.params.get_bool("EnableCurvatureController")
     self.enable_speed_limit_control = self.params.get_bool("EnableSpeedLimitControl")
     self.enable_speed_limit_predicative = self.params.get_bool("EnableSpeedLimitPredicative")
+    self.enable_pred_react_to_speed_limits = self.params.get_bool("EnableSLPredReactToSL")
+    self.enable_pred_react_to_curves = self.params.get_bool("EnableSLPredReactToCurves")
     self.enable_smooth_steer = self.params.get_bool("EnableSmoothSteer")
     self.enable_long_comfort_mode = self.params.get_bool("EnableLongComfortMode")
     self.smooth_steer = PT2Filter(46.0, 1.0, DT_CTRL)
@@ -97,6 +99,8 @@ class Controls(ControlsExt, ModelStateBase):
       self.enable_smooth_steer = self.params.get_bool("EnableSmoothSteer")
       self.enable_speed_limit_control = self.params.get_bool("EnableSpeedLimitControl")
       self.enable_speed_limit_predicative = self.params.get_bool("EnableSpeedLimitPredicative")
+      self.enable_pred_react_to_speed_limits = self.params.get_bool("EnableSLPredReactToSL")
+      self.enable_pred_react_to_curves = self.params.get_bool("EnableSLPredReactToCurves")
       self.force_rhd_for_bsm = self.params.get_bool("ForceRHDForBSM")
       self.enable_long_comfort_mode = self.params.get_bool("EnableLongComfortMode")
   
@@ -209,6 +213,8 @@ class Controls(ControlsExt, ModelStateBase):
     CC.cruiseControl.resume = CC.enabled and CS.cruiseState.standstill and not self.sm['longitudinalPlan'].shouldStop
     CC.cruiseControl.speedLimit = self.enable_speed_limit_control
     CC.cruiseControl.speedLimitPredicative = self.enable_speed_limit_predicative
+    CC.cruiseControl.speedLimitPredReactToSL = self.enable_pred_react_to_speed_limits
+    CC.cruiseControl.speedLimitPredReactToCurves = self.enable_pred_react_to_curves
 
     hudControl = CC.hudControl
     hudControl.setSpeed = float(CS.vCruiseCluster * CV.KPH_TO_MS)

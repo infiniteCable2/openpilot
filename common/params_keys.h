@@ -139,6 +139,8 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"EnableSmoothSteer", {PERSISTENT, BOOL}},
     {"EnableSpeedLimitControl", {PERSISTENT, BOOL}},
     {"EnableSpeedLimitPredicative", {PERSISTENT, BOOL}},
+	{"EnableSLPredReactToSL", {PERSISTENT, BOOL}},
+    {"EnableSLPredReactToCurves", {PERSISTENT, BOOL}},
 	{"BatteryDetails", {PERSISTENT, BOOL}},
 	{"ForceRHDForBSM", {PERSISTENT, BOOL}},
 
