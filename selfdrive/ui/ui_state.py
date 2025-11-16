@@ -257,7 +257,7 @@ class Device:
     ignition_just_turned_on = ui_state.ignition and not self._ignition
     self._ignition = ui_state.ignition
 
-    enable_screen_event = ui_state.has_alert or ui_state.has_status_change
+    enable_screen_event = ui_state.ignition and (ui_state.has_alert or ui_state.has_status_change)
     if ignition_just_turned_off or ignition_just_turned_on or enable_screen_event or any(ev.left_down for ev in gui_app.mouse_events):
       self.reset_interactive_timeout()
 
@@ -268,7 +268,7 @@ class Device:
     self._prev_timed_out = interaction_timeout
 
     wake_ignition = ui_state.ignition and not ui_state.onroad_screen_timeout
-    wake_event_onroad = ui_state.ignition and ui_state.onroad_screen_timeout and enable_screen_event
+    wake_event_onroad = ui_state.ignition and ui_state.onroad_screen_timeout
     self._set_awake(wake_ignition or wake_event_onroad or not interaction_timeout)
 
   def _set_awake(self, on: bool):
