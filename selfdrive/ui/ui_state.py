@@ -267,9 +267,7 @@ class Device:
         callback()
     self._prev_timed_out = interaction_timeout
 
-    wake_ignition = ui_state.ignition and not ui_state.onroad_screen_timeout
-    wake_event_onroad = ui_state.ignition and ui_state.onroad_screen_timeout
-    self._set_awake(wake_ignition or wake_event_onroad or not interaction_timeout)
+    self._set_awake((ui_state.ignition and not ui_state.onroad_screen_timeout) or not interaction_timeout)
 
   def _set_awake(self, on: bool):
     if on != self._awake:
