@@ -101,8 +101,6 @@ class HudRenderer(Widget):
     v_ego = v_ego_cluster if self.v_ego_cluster_seen else car_state.vEgo
     speed_conversion = CV.MS_TO_KPH if ui_state.is_metric else CV.MS_TO_MPH
     self.speed = max(0.0, v_ego * speed_conversion)
-    
-    self._battery_details.update()
 
   def _render(self, rect: rl.Rectangle) -> None:
     """Render HUD elements to the screen."""
