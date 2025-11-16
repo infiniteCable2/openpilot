@@ -60,8 +60,8 @@ class SettingsLayout(Widget):
     self._panels = {
       PanelType.DEVICE: PanelInfo(tr_noop("Device"), DeviceLayout()),
       PanelType.NETWORK: PanelInfo(tr_noop("Network"), NetworkUI(wifi_manager)),
-      PanelType.ICTOGGLES: PanelInfo(tr_noop("infiniteCableCustom"), ICTogglesLayout()),
       PanelType.TOGGLES: PanelInfo(tr_noop("Toggles"), TogglesLayout()),
+      PanelType.ICTOGGLES: PanelInfo(tr_noop("infiniteCable"), ICTogglesLayout()),
       PanelType.SOFTWARE: PanelInfo(tr_noop("Software"), SoftwareLayout()),
       PanelType.FIREHOSE: PanelInfo(tr_noop("Firehose"), FirehoseLayout()),
       PanelType.DEVELOPER: PanelInfo(tr_noop("Developer"), DeveloperLayout()),
