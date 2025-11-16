@@ -19,7 +19,7 @@ class BatteryPanelConfig:
 CONFIG = BatteryPanelConfig()
 
 class BatteryDetails(Widget):
-  def __init__(self, button_size: int, icon_size: int):
+  def __init__(self) -> None:
     super().__init__()
     self._params = Params()
     
