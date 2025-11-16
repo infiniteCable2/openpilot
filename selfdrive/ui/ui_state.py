@@ -75,7 +75,10 @@ class UIState:
     self._param_update_time: float = 0.0
     
     self.dark_mode: bool = False
-    self.onroad_screen_timeout = False
+    self.onroad_screen_timeout: bool = False
+    self.has_alert: bool = False
+    self.has_status_change: bool = False
+    self._status_prev: UIStatus = self.status
 
     # Callbacks
     self._offroad_transition_callbacks: list[Callable[[], None]] = []
@@ -146,6 +149,13 @@ class UIState:
         self.status = UIStatus.OVERRIDE
       else:
         self.status = UIStatus.ENGAGED if ss.enabled else UIStatus.DISENGAGED
+        
+      # detect status change
+      self.has_status_change = True if self.status != self._status_prev else False
+      self._status_prev = self.status
+        
+      # check for alert
+      self.has_alert = True if ss.alertSize != 0 else False
 
     # Check for engagement state changes
     if self.engaged != self._engaged_prev:
@@ -256,7 +266,10 @@ class Device:
         callback()
     self._prev_timed_out = interaction_timeout
 
-    self._set_awake((ui_state.ignition and not ui_state.onroad_screen_timeout) or not interaction_timeout)
+    enable_screen_event = ui_state.has_alert or ui_state.has_status_change
+    wake_ignition = ui_state.ignition and not ui_state.onroad_screen_timeout
+    wake_event_onroad = ui_state.ignition and ui_state.onroad_screen_timeout and enable_screen_event
+    self._set_awake(wake_ignition or wake_event_onroad or not interaction_timeout)
 
   def _set_awake(self, on: bool):
     if on != self._awake:
