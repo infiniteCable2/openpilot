@@ -244,9 +244,10 @@ class Device:
   def _update_wakefulness(self):
     # Handle interactive timeout
     ignition_just_turned_off = not ui_state.ignition and self._ignition
+    ignition_just_turned_on = ui_state.ignition and not self._ignition
     self._ignition = ui_state.ignition
 
-    if ignition_just_turned_off or any(ev.left_down for ev in gui_app.mouse_events):
+    if ignition_just_turned_off or ignition_just_turned_on or any(ev.left_down for ev in gui_app.mouse_events):
       self.reset_interactive_timeout()
 
     interaction_timeout = time.monotonic() > self._interaction_time
