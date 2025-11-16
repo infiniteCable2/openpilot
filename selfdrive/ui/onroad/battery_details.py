@@ -34,7 +34,8 @@ class BatteryDetails(Widget):
 
     self._font: rl.Font = gui_app.font(FontWeight.MEDIUM)
     self._panel_bg: rl.Color = rl.Color(0, 0, 0, 128)
-    self._text_color: rl.Color = rl.Color(255, 255, 255, 255)
+    self._label_color: rl.Color = rl.Color(220, 220, 220, 255)
+    self._value_color: rl.Color = rl.Color(255, 255, 255, 255)
     
     self._display_enabled: bool = False
 
@@ -126,7 +127,7 @@ class BatteryDetails(Widget):
         label_pos,
         40 * scale,
         0,
-        self._text_color,
+        self._label_color,
       )
 
       value_x = base_x + label_width + text_margin
@@ -137,5 +138,5 @@ class BatteryDetails(Widget):
         value_pos,
         40 * scale,
         0,
-        self._text_color,
+        self._value_color,
       )
