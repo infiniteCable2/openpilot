@@ -13,7 +13,7 @@ class BatteryPanelConfig:
   panel_width_ratio: float = 0.7   # 70 % der Breite von rechts
   panel_margin: int = 30           # Abstand zum Rand
   line_height: int = 48            # Basis-Zeilenhöhe
-  label_width: int = 280
+  label_width: int = 320
   text_margin: int = 25            # Abstand Label → Wert
   
 CONFIG = BatteryPanelConfig()
@@ -91,7 +91,7 @@ class BatteryDetails(Widget):
 
     label_width = CONFIG.label_width
     text_margin = CONFIG.text_margin
-    column_spacing = panel_width // 2 - 20
+    column_spacing = panel_width // 2 - 40
     value_width = column_spacing - label_width - text_margin
 
     labels = [
