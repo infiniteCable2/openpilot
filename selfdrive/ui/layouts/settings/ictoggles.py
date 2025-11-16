@@ -36,6 +36,12 @@ DESCRIPTIONS = {
   "EnableSmoothSteer": tr_noop(
     "Enables S-curving on lateral control for smoother steering"
   ),
+  "DarkMode": tr_noop(
+    "Force brightness to a minimal value"
+  ),
+  "DisableScreenTimer": tr_noop(
+    "The onroad screen is turned of after 10 seconds. It will be temporarily enabled on alerts"
+  ),
 }
 
 
@@ -94,10 +100,16 @@ class ICTogglesLayout(Widget):
         "chffr_wheel.png",
         False,
       ),
-      "EnableSmoothSteer": (
-        lambda: tr("Steer Smoothing"),
-        DESCRIPTIONS["EnableSmoothSteer"],
-        "chffr_wheel.png",
+      "DarkMode": (
+        lambda: tr("Dark Mode"),
+        DESCRIPTIONS["DarkMode"],
+        "eye_closed.png",
+        False,
+      ),
+      "DisableScreenTimer": (
+        lambda: tr("Onroad Screen Timeout"),
+        DESCRIPTIONS["DisableScreenTimer"],
+        "eye_closed.png",
         False,
       ),
     }

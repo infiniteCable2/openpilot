@@ -73,6 +73,9 @@ class UIState:
     self.CP: car.CarParams | None = None
     self.light_sensor: float = -1.0
     self._param_update_time: float = 0.0
+    
+    self.dark_mode: bool = False
+    self.onroad_screen_timeout = False
 
     # Callbacks
     self._offroad_transition_callbacks: list[Callable[[], None]] = []
@@ -173,6 +176,8 @@ class UIState:
       else:
         self.has_longitudinal_control = self.CP.openpilotLongitudinalControl
     self._param_update_time = time.monotonic()
+    self.dark_mode = self.params.get_bool("DarkMode")
+    self.onroad_screen_timeout = self.params.get_bool("DisableScreenTimer")
 
 
 class Device:
@@ -222,7 +227,11 @@ class Device:
 
       clipped_brightness = float(np.clip(100 * clipped_brightness, 10, 100))
 
+    if ui_state.started and ui_state.dark_mode:
+      clipped_brightness = 1.0
+
     brightness = round(self._brightness_filter.update(clipped_brightness))
+
     if not self._awake:
       brightness = 0
 
@@ -246,7 +255,7 @@ class Device:
         callback()
     self._prev_timed_out = interaction_timeout
 
-    self._set_awake(ui_state.ignition or not interaction_timeout)
+    self._set_awake((ui_state.ignition and not ui_state.onroad_screen_timeout) or not interaction_timeout)
 
   def _set_awake(self, on: bool):
     if on != self._awake:
