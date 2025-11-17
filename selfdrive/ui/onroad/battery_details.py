@@ -1,6 +1,7 @@
 import pyray as rl
-from dataclasses import dataclass
+import time
 
+from dataclasses import dataclass
 from openpilot.common.params import Params
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app, FontWeight
@@ -38,9 +39,14 @@ class BatteryDetails(Widget):
     self._value_color: rl.Color = rl.Color(255, 255, 255, 255)
     
     self._display_enabled: bool = False
+    self._param_update_time: float = 0.0
+    
+    self.update_params()
 
   def _update_state(self) -> None:
-    self._display_enabled = self._params.get_bool("BatteryDetails")
+    if time.monotonic() - self._param_update_time > 2.0:
+      self.update_params()
+    
     if not self._display_enabled:
       return
       
@@ -60,6 +66,10 @@ class BatteryDetails(Widget):
     self._voltage       = float(battery_data.voltage)
     self._current       = float(battery_data.current)
     self._power         = float(battery_data.power)
+    
+  def _update_params(self) -> None:
+    self._param_update_time = time.monotonic()
+    self._display_enabled = self._params.get_bool("BatteryDetails")
     
   def _reset_values(self) -> None:
     self._capacity = 0.0
