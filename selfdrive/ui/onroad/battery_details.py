@@ -41,11 +41,11 @@ class BatteryDetails(Widget):
     self._display_enabled: bool = False
     self._param_update_time: float = 0.0
     
-    self.update_params()
+    self._update_params()
 
   def _update_state(self) -> None:
     if time.monotonic() - self._param_update_time > 2.0:
-      self.update_params()
+      self._update_params()
     
     if not self._display_enabled:
       return
