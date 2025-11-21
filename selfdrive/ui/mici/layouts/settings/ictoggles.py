@@ -5,11 +5,12 @@ from cereal import log
 from openpilot.system.ui.widgets.scroller import Scroller
 from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle
 from openpilot.system.ui.lib.application import gui_app
+from openpilot.system.ui.widgets import NavWidget
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
 
 
-class ICTogglesLayoutMici():
+class ICTogglesLayoutMici(NavWidget):
   def __init__(self, back_callback: Callable):
     super().__init__()
     self.set_back_callback(back_callback)
