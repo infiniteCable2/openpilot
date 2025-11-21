@@ -60,7 +60,7 @@ class ICTogglesLayout(Widget):
       ),
       "EnableLongComfortMode": (
         lambda: tr("VW: Longitudinal Comfort Mode"),
-        DESCRIPTIONS["EnableCurvatureController"],
+        DESCRIPTIONS["EnableLongComfortMode"],
         "chffr_wheel.png",
         False,
       ),

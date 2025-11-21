@@ -7,6 +7,7 @@ from openpilot.common.params import Params
 from openpilot.system.ui.widgets.scroller import Scroller
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton
 from openpilot.selfdrive.ui.mici.layouts.settings.toggles import TogglesLayoutMici
+from openpilot.selfdrive.ui.mici.layouts.settings.ictoggles import ICTogglesLayoutMici
 from openpilot.selfdrive.ui.mici.layouts.settings.network import NetworkLayoutMici
 from openpilot.selfdrive.ui.mici.layouts.settings.device import DeviceLayoutMici, PairBigButton
 from openpilot.selfdrive.ui.mici.layouts.settings.developer import DeveloperLayoutMici
@@ -22,6 +23,7 @@ class PanelType(IntEnum):
   DEVELOPER = 3
   USER_MANUAL = 4
   FIREHOSE = 5
+  ICTOGGLES = 6
 
 
 @dataclass
@@ -38,6 +40,8 @@ class SettingsLayout(NavWidget):
 
     toggles_btn = BigButton("toggles", "", "icons_mici/settings/toggles_icon.png")
     toggles_btn.set_click_callback(lambda: self._set_current_panel(PanelType.TOGGLES))
+    ictoggles_btn = BigButton("ictoggles", "", "icons_mici/settings/toggles_icon.png")
+    ictoggles_btn.set_click_callback(lambda: self._set_current_panel(PanelType.ICTOGGLES))
     network_btn = BigButton("network", "", "icons_mici/settings/network/wifi_strength_full.png")
     network_btn.set_click_callback(lambda: self._set_current_panel(PanelType.NETWORK))
     device_btn = BigButton("device", "", "icons_mici/settings/device_icon.png")
@@ -50,6 +54,7 @@ class SettingsLayout(NavWidget):
 
     self._scroller = Scroller([
       toggles_btn,
+      ictoggles_btn,
       network_btn,
       device_btn,
       PairBigButton(),
@@ -64,6 +69,7 @@ class SettingsLayout(NavWidget):
 
     self._panels = {
       PanelType.TOGGLES: PanelInfo("Toggles", TogglesLayoutMici(back_callback=lambda: self._set_current_panel(None))),
+      PanelType.ICTOGGLES: PanelInfo("infiniteCable", ICTogglesLayoutMici(back_callback=lambda: self._set_current_panel(None))),
       PanelType.NETWORK: PanelInfo("Network", NetworkLayoutMici(back_callback=lambda: self._set_current_panel(None))),
       PanelType.DEVICE: PanelInfo("Device", DeviceLayoutMici(back_callback=lambda: self._set_current_panel(None))),
       PanelType.DEVELOPER: PanelInfo("Developer", DeveloperLayoutMici(back_callback=lambda: self._set_current_panel(None))),
