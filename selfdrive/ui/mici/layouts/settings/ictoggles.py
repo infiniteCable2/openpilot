@@ -9,7 +9,7 @@ from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callba
 from openpilot.selfdrive.ui.ui_state import ui_state
 
 
-class TogglesLayoutMici(NavWidget):
+class TogglesLayoutMici():
   def __init__(self, back_callback: Callable):
     super().__init__()
     self.set_back_callback(back_callback)
