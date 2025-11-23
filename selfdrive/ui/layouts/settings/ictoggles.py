@@ -31,7 +31,7 @@ DESCRIPTIONS = {
     "Display battery detail panel"
   ),
   "ForceRHDForBSM": tr_noop(
-    "Switch BSM detection side to RHD. Passenger is on the right side."
+    "Switch BSM detection side to RHD. Driver is on the right side."
   ),
   "EnableSmoothSteer": tr_noop(
     "Enables S-curving on lateral control for smoother steering"
