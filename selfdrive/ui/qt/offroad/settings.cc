@@ -71,7 +71,7 @@ InfiniteCableTogglesPanel::InfiniteCableTogglesPanel(SettingsWindow *parent) : L
 	{
       "ForceRHDForBSM",
       tr("VW: Force RHD for BSM"),
-      tr("Switch BSM detection side to RHD. Passenger is on the right side."),
+      tr("Switch BSM detection side to RHD. Driver is on the right side."),
       "../assets/icons/eye_closed.png",
       false,
     },
