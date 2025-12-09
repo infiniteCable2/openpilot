@@ -103,6 +103,12 @@ class ICTogglesLayout(Widget):
         "chffr_wheel.png",
         False,
       ),
+      "EnableSmoothSteer": (
+        lambda: tr("Steer Smoothing"),
+        DESCRIPTIONS["EnableSmoothSteer"],
+        "chffr_wheel.png",
+        False,
+      ),
       "DarkMode": (
         lambda: tr("Dark Mode"),
         DESCRIPTIONS["DarkMode"],
