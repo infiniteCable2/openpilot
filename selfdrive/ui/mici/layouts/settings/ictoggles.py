@@ -22,7 +22,7 @@ class ICTogglesLayoutMici(NavWidget):
     enable_sl_pred_sl           = BigParamControl("VW: Predicative - Reaction to Speed Limits", "EnableSLPredReactToSL")
     enable_sl_pred_curve        = BigParamControl("VW: Predicative - Reaction to Curves", "EnableSLPredReactToCurves")
     force_rhd_bsm               = BigParamControl("VW: Force RHD for BSM", "ForceRHDForBSM")
-    enable_smooth_steer         = BigParamControl("Steer Smothing", "EnableSmoothSteer")
+    enable_smooth_steer         = BigParamControl("Steer Smoothing", "EnableSmoothSteer")
     enable_dark_mode            = BigParamControl("Dark Mode", "DarkMode")
     enable_onroad_screen_timer  = BigParamControl("Onroad Screen Timeout", "DisableScreenTimer")
     
