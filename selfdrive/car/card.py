@@ -123,6 +123,10 @@ class Car:
       self.CI, self.CP, self.CP_SP = CI, CI.CP, CI.CP_SP
       self.RI = RI
 
+    # supply a pre init method to set CP by checking data on the can bus
+    # e.g. car is in a state where the radar can not be disabled -> set dashcam mode
+    self.CI.pre_init(self.CP, self.CP_SP, *self.can_callbacks)
+
     self.CP.alternativeExperience = 0
     # mads
     set_alternative_experience(self.CP, self.CP_SP, self.params)
