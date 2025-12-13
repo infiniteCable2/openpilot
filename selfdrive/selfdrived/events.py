@@ -271,6 +271,12 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
                                        priority=Priority.HIGH),
   },
 
+  EventName.dashcamModeRadDisEngOn: {
+    ET.PERMANENT: NormalPermanentAlert("Dashcam Mode - Radar Deactivation Failed",
+                                       "Engine is running. Retry during ignition.",
+                                       priority=Priority.LOWEST),
+  },
+
   EventName.dashcamMode: {
     ET.PERMANENT: NormalPermanentAlert("Dashcam Mode",
                                        priority=Priority.LOWEST),
@@ -704,6 +710,16 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   EventName.radarTempUnavailable: {
     ET.SOFT_DISABLE: soft_disable_alert("Radar Temporarily Unavailable"),
     ET.NO_ENTRY: NoEntryAlert("Radar Temporarily Unavailable"),
+  },
+
+  EventName.radarDisableFailed: {
+    ET.NO_ENTRY: NoEntryAlert("Radar Deactivation Failed"),
+    ET.IMMEDIATE_DISABLE: ImmediateDisableAlert("Radar Deactivation Failed"),
+    ET.PERMANENT: Alert(
+      "Radar Deactivation Failed",
+      "Retry during ignition",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.HIGH, VisualAlert.none, AudibleAlert.warningImmediate, .1),
   },
 
   # Every frame from the camera should be processed by the model. If modeld
