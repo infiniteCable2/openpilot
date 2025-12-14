@@ -45,6 +45,9 @@ DESCRIPTIONS = {
   "DisableScreenTimer": tr_noop(
     "The onroad screen is turned of after 10 seconds. It will be temporarily enabled on alerts"
   ),
+  "RoadEdgeLaneChangeEnabled": tr_noop(
+    "Enable this toggle to block lane change when road edge is detected on the stalk actuated side."
+  ),
 }
 
 
@@ -119,6 +122,12 @@ class ICTogglesLayout(Widget):
         lambda: tr("Onroad Screen Timeout"),
         DESCRIPTIONS["DisableScreenTimer"],
         "eye_closed.png",
+        False,
+      ),
+      "RoadEdgeLaneChangeEnabled": (
+        lambda: tr("Block Lane Change: Road Edge Detection"),
+        DESCRIPTIONS["RoadEdgeLaneChangeEnabled"],
+        "chffr_wheel.png",
         False,
       ),
     }
