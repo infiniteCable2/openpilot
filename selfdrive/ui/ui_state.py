@@ -273,12 +273,20 @@ class Device(DeviceSP):
       else:
         clipped_brightness = ((clipped_brightness + 16.0) / 116.0) ** 3.0
 
-      clipped_brightness = float(np.interp(clipped_brightness, [0, 1], [30, 100]))
+      min_brightness = 30
+      if gui_app.sunnypilot_ui():
+        min_brightness = DeviceSP.set_min_onroad_brightness(ui_state, min_brightness)
+
+      clipped_brightness = float(np.interp(clipped_brightness, [0, 1], [min_brightness, 100]))
 
     if ui_state.started and ui_state.dark_mode:
       clipped_brightness = 1.0
 
     brightness = round(self._brightness_filter.update(clipped_brightness))
+
+    if gui_app.sunnypilot_ui():
+      brightness = DeviceSP.set_onroad_brightness(ui_state, self._awake, brightness)
+
     if not self._awake:
       brightness = 0
 
@@ -296,6 +304,9 @@ class Device(DeviceSP):
 
     enable_screen_event = ui_state.ignition and (ui_state.has_alert or ui_state.has_status_change)
     if ignition_just_turned_off or ignition_just_turned_on or enable_screen_event or any(ev.left_down for ev in gui_app.mouse_events):
+      if gui_app.sunnypilot_ui():
+        DeviceSP.wake_from_dimmed_onroad_brightness(ui_state, gui_app.mouse_events)
+
       self._reset_interactive_timeout()
 
     interaction_timeout = time.monotonic() > self._interaction_time
