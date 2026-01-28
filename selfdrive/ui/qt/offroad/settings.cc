@@ -75,6 +75,13 @@ InfiniteCableTogglesPanel::InfiniteCableTogglesPanel(SettingsWindow *parent) : L
       "../assets/icons/eye_closed.png",
       false,
     },
+	{
+      "DisableCarSteerAlerts",
+      tr("VW: Disable Car Steer Alert Chime"),
+      tr("Disables audible steering alerts from car"),
+      "../assets/icons/chffr_wheel.png",
+      false,
+    },
     {
       "EnableSmoothSteer",
       tr("Steer Smoothing"),
@@ -94,13 +101,6 @@ InfiniteCableTogglesPanel::InfiniteCableTogglesPanel(SettingsWindow *parent) : L
       tr("Onroad Screen Timeout"),
       tr("The onroad screen is turned of after 10 seconds. It will be temporarily enabled on alerts"),
       "../assets/icons/eye_closed.png",
-      false,
-    },
-	{
-      "DisableCarSteerAlerts",
-      tr("Disable Car Steer Alerts"),
-      tr("Disables audible steering alerts from car"),
-      "../assets/icons/chffr_wheel.png",
       false,
     },
     {
