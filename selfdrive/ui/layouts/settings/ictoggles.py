@@ -45,6 +45,9 @@ DESCRIPTIONS = {
   "DisableScreenTimer": tr_noop(
     "The onroad screen is turned of after 10 seconds. It will be temporarily enabled on alerts"
   ),
+  "DisableCarSteerAlerts": tr_noop(
+    "Disables audible steering alerts from car"
+  ),
 }
 
 
@@ -119,6 +122,12 @@ class ICTogglesLayout(Widget):
         lambda: tr("Onroad Screen Timeout"),
         DESCRIPTIONS["DisableScreenTimer"],
         "eye_closed.png",
+        False,
+      ),
+      "DisableCarSteerAlerts": (
+        lambda: tr("VW: Disable Car Steer Alert Chime"),
+        DESCRIPTIONS["DisableCarSteerAlerts"],
+        "chffr_wheel.png",
         False,
       ),
     }
