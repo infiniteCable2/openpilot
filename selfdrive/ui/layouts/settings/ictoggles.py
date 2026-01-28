@@ -109,6 +109,12 @@ class ICTogglesLayout(Widget):
         "chffr_wheel.png",
         False,
       ),
+      "DisableCarSteerAlerts": (
+        lambda: tr("VW: Disable Car Steer Alert Chime"),
+        DESCRIPTIONS["DisableCarSteerAlerts"],
+        "chffr_wheel.png",
+        False,
+      ),
       "EnableSmoothSteer": (
         lambda: tr("Steer Smoothing"),
         DESCRIPTIONS["EnableSmoothSteer"],
@@ -130,12 +136,6 @@ class ICTogglesLayout(Widget):
       "RoadEdgeLaneChangeEnabled": (
         lambda: tr("Block Lane Change: Road Edge Detection"),
         DESCRIPTIONS["RoadEdgeLaneChangeEnabled"],
-        "chffr_wheel.png",
-        False,
-      ),
-      "DisableCarSteerAlerts": (
-        lambda: tr("VW: Disable Car Steer Alert Chime"),
-        DESCRIPTIONS["DisableCarSteerAlerts"],
         "chffr_wheel.png",
         False,
       ),
