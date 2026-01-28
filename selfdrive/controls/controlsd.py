@@ -69,6 +69,7 @@ class Controls(ControlsExt, ModelStateBase):
     self.enable_long_comfort_mode = self.params.get_bool("EnableLongComfortMode")
     self.smooth_steer = PT2Filter(46.0, 1.0, DT_CTRL)
     self.force_rhd_for_bsm = self.params.get_bool("ForceRHDForBSM")
+    self.disable_car_steer_alerts = self.params.get_bool("DisableCarSteerAlerts")
 
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
@@ -103,6 +104,7 @@ class Controls(ControlsExt, ModelStateBase):
       self.enable_pred_react_to_curves = self.params.get_bool("EnableSLPredReactToCurves")
       self.force_rhd_for_bsm = self.params.get_bool("ForceRHDForBSM")
       self.enable_long_comfort_mode = self.params.get_bool("EnableLongComfortMode")
+      self.disable_car_steer_alerts = self.params.get_bool("DisableCarSteerAlerts")
   
   def state_control(self):
     CS = self.sm['carState']
@@ -198,6 +200,7 @@ class Controls(ControlsExt, ModelStateBase):
     CC.steerLimited = self.steer_limited_by_safety
     CC.forceRHDForBSM = self.force_rhd_for_bsm
     CC.longComfortMode = self.enable_long_comfort_mode
+    CC.disableCarSteerAlerts = self.disable_car_steer_alerts
 
     # Orientation and angle rates can be useful for carcontroller
     # Only calibrated (car) frame is relevant for the carcontroller

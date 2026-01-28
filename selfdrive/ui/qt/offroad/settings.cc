@@ -96,6 +96,13 @@ InfiniteCableTogglesPanel::InfiniteCableTogglesPanel(SettingsWindow *parent) : L
       "../assets/icons/eye_closed.png",
       false,
     },
+	{
+      "DisableCarSteerAlerts",
+      tr("Disable Car Steer Alerts"),
+      tr("Disables audible steering alerts from car"),
+      "../assets/icons/chffr_wheel.png",
+      false,
+    },
     {
       "EnableAngleOffset",
       tr("Enable Steer Angle Offset (Testing)"),
