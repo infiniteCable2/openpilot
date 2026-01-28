@@ -106,6 +106,12 @@ class ICTogglesLayout(Widget):
         "chffr_wheel.png",
         False,
       ),
+      "DisableCarSteerAlerts": (
+        lambda: tr("VW: Disable Car Steer Alert Chime"),
+        DESCRIPTIONS["DisableCarSteerAlerts"],
+        "chffr_wheel.png",
+        False,
+      ),
       "EnableSmoothSteer": (
         lambda: tr("Steer Smoothing"),
         DESCRIPTIONS["EnableSmoothSteer"],
@@ -122,12 +128,6 @@ class ICTogglesLayout(Widget):
         lambda: tr("Onroad Screen Timeout"),
         DESCRIPTIONS["DisableScreenTimer"],
         "eye_closed.png",
-        False,
-      ),
-      "DisableCarSteerAlerts": (
-        lambda: tr("VW: Disable Car Steer Alert Chime"),
-        DESCRIPTIONS["DisableCarSteerAlerts"],
-        "chffr_wheel.png",
         False,
       ),
     }
