@@ -48,6 +48,9 @@ DESCRIPTIONS = {
   "RoadEdgeLaneChangeEnabled": tr_noop(
     "Enable this toggle to block lane change when road edge is detected on the stalk actuated side."
   ),
+  "DisableCarSteerAlerts": tr_noop(
+    "Disables audible steering alerts from car"
+  ),
 }
 
 
@@ -127,6 +130,12 @@ class ICTogglesLayout(Widget):
       "RoadEdgeLaneChangeEnabled": (
         lambda: tr("Block Lane Change: Road Edge Detection"),
         DESCRIPTIONS["RoadEdgeLaneChangeEnabled"],
+        "chffr_wheel.png",
+        False,
+      ),
+      "DisableCarSteerAlerts": (
+        lambda: tr("VW: Disable Car Steer Alert Chime"),
+        DESCRIPTIONS["DisableCarSteerAlerts"],
         "chffr_wheel.png",
         False,
       ),
