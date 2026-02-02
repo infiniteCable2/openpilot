@@ -26,7 +26,7 @@ class ICTogglesLayoutMici(NavWidget):
     enable_smooth_steer         = BigParamControl("Steer Smoothing", "EnableSmoothSteer")
     enable_dark_mode            = BigParamControl("Dark Mode", "DarkMode")
     enable_onroad_screen_timer  = BigParamControl("Onroad Screen Timeout", "DisableScreenTimer")
-    road_edge_lane_change_block = BigParamControl("Block Lane Change: Road Edge Detection")
+    road_edge_lane_change_block = BigParamControl("Block Lane Change: Road Edge Detection", "RoadEdgeLaneChangeEnabled")
     
 
     self._scroller = Scroller([
