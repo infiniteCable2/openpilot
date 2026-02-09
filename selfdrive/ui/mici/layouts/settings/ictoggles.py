@@ -61,6 +61,7 @@ class ICTogglesLayoutMici(NavWidget):
       ("DisableScreenTimer", enable_onroad_screen_timer),
       ("ForceShowTorqueBar", force_enable_torque_bar),
       ("RoadEdgeLaneChangeEnabled", road_edge_lane_change_block),
+    )
 
     if ui_state.params.get_bool("ShowDebugInfo"):
       gui_app.set_show_touches(True)
