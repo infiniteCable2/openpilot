@@ -26,6 +26,7 @@ class ICTogglesLayoutMici(NavWidget):
     enable_smooth_steer         = BigParamControl("Steer Smoothing", "EnableSmoothSteer")
     enable_dark_mode            = BigParamControl("Dark Mode", "DarkMode")
     enable_onroad_screen_timer  = BigParamControl("Onroad Screen Timeout", "DisableScreenTimer")
+    force_enable_torque_bar     = BigParamControl("Force Enable Torque Bar", "ForceShowTorqueBar")
     road_edge_lane_change_block = BigParamControl("Block Lane Change: Road Edge Detection", "RoadEdgeLaneChangeEnabled")
     
 
@@ -41,6 +42,7 @@ class ICTogglesLayoutMici(NavWidget):
       enable_smooth_steer,
       enable_dark_mode,
       enable_onroad_screen_timer,
+      force_enable_torque_bar,
       road_edge_lane_change_block,
     ], snap_items=False)
 
@@ -57,8 +59,8 @@ class ICTogglesLayoutMici(NavWidget):
       ("EnableSmoothSteer", enable_smooth_steer),
       ("DarkMode", enable_dark_mode),
       ("DisableScreenTimer", enable_onroad_screen_timer),
+      ("ForceShowTorqueBar", force_enable_torque_bar),
       ("RoadEdgeLaneChangeEnabled", road_edge_lane_change_block),
-    )
 
     if ui_state.params.get_bool("ShowDebugInfo"):
       gui_app.set_show_touches(True)
