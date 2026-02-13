@@ -9,7 +9,7 @@ from itertools import zip_longest
 
 import matplotlib.pyplot as plt
 import numpy as np
-from tabulate import tabulate
+from openpilot.common.utils import tabulate
 
 from openpilot.common.git import get_commit
 from openpilot.system.hardware import PC
@@ -77,7 +77,7 @@ def generate_report(proposed, master, tmp, commit):
                      (lambda x: get_idx_if_non_empty(x.leftDriverData.faceProb), "leftDriverData.faceProb"),
                      (lambda x: get_idx_if_non_empty(x.leftDriverData.faceOrientation, 0), "leftDriverData.faceOrientation0"),
                      (lambda x: get_idx_if_non_empty(x.leftDriverData.leftBlinkProb), "leftDriverData.leftBlinkProb"),
-                     (lambda x: get_idx_if_non_empty(x.leftDriverData.notReadyProb, 0), "leftDriverData.notReadyProb0"),
+                     (lambda x: get_idx_if_non_empty(x.leftDriverData.phoneProb), "leftDriverData.phoneProb"),
                      (lambda x: get_idx_if_non_empty(x.rightDriverData.faceProb), "rightDriverData.faceProb"),
                     ], "driverStateV2")
 

@@ -22,6 +22,7 @@ from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
 
 from openpilot.system.version import get_build_metadata
+from openpilot.system.hardware import HARDWARE
 
 from openpilot.sunnypilot.mads.mads import ModularAssistiveDrivingSystem
 from openpilot.sunnypilot import get_sanitize_int_param
@@ -44,6 +45,7 @@ LaneChangeDirection = log.LaneChangeDirection
 EventName = log.OnroadEvent.EventName
 ButtonType = car.CarState.ButtonEvent.Type
 SafetyModel = car.CarParams.SafetyModel
+DashcamOnlyReason = car.CarParams.DashcamOnlyReason
 TurnDirection = custom.ModelDataV2SP.TurnDirection
 
 IGNORED_SAFETY_MODES = (SafetyModel.silent, SafetyModel.noOutput)
@@ -147,6 +149,8 @@ class SelfdriveD(CruiseHelper):
     # Determine startup event
     is_remote = build_metadata.openpilot.comma_remote or build_metadata.openpilot.sunnypilot_remote
     self.startup_event = EventName.startup if is_remote and build_metadata.tested_channel else EventName.startupMaster
+    if HARDWARE.get_device_type() == 'mici':
+      self.startup_event = None
     if not car_recognized:
       self.startup_event = EventName.startupNoCar
     elif car_recognized and self.CP.passive:
@@ -158,7 +162,10 @@ class SelfdriveD(CruiseHelper):
       self.events.add(EventName.carUnrecognized, static=True)
       set_offroad_alert("Offroad_CarUnrecognized", True)
     elif self.CP.passive:
-      self.events.add(EventName.dashcamMode, static=True)
+      if self.CP.dashcamOnlyReason == DashcamOnlyReason.radarDisableEngineOn:
+        self.events.add(EventName.dashcamModeRadDisEngOn, static=True)
+      else:
+        self.events.add(EventName.dashcamMode, static=True)
 
     self.events_sp = EventsSP()
     self.events_sp_prev = []
@@ -233,6 +240,9 @@ class SelfdriveD(CruiseHelper):
         (CS.brakePressed and (not self.CS_prev.brakePressed or not CS.standstill)) or \
         (CS.regenBraking and (not self.CS_prev.regenBraking or not CS.standstill)):
         self.events.add(EventName.pedalPressed)
+
+      if CS.radarDisableFailed:
+        self.events.add(EventName.radarDisableFailed)
 
     # Create events for temperature, disk space, and memory
     if self.sm['deviceState'].thermalStatus >= ThermalStatus.red:

@@ -87,6 +87,7 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     laneChange @50;
     lowMemory @51;
     stockAeb @52;
+    stockLkas @98;
     ldw @53;
     carUnrecognized @54;
     invalidLkasSetting @55;
@@ -130,6 +131,8 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     userBookmark @95;
     excessiveActuation @96;
     audioFeedback @97;
+    dashcamModeRadDisEngOn @99;
+    radarDisableFailed @100;
 
     soundsUnavailableDEPRECATED @47;
   }
@@ -918,6 +921,8 @@ struct ControlsState @0x97ff69c53601abf1 {
     saturated @7 :Bool;
     actualLateralAccel @9 :Float32;
     desiredLateralAccel @10 :Float32;
+    desiredLateralJerk @11 :Float32;
+    version @12 :Int32;
    }
 
   struct LateralLQRState {
@@ -1477,6 +1482,11 @@ struct ProcLog {
 
     cmdline @15 :List(Text);
     exe @16 :Text;
+
+    # from /proc/<pid>/smaps_rollup (proportional/private memory)
+    memPss @17 :UInt64;        # Pss — shared pages split by mapper count
+    memPssAnon @18 :UInt64;    # Pss_Anon — private anonymous (heap, stack)
+    memPssShmem @19 :UInt64;   # Pss_Shmem — proportional MSGQ/tmpfs share
   }
 
   struct CPUTimes {
@@ -2148,13 +2158,10 @@ struct Joystick {
 struct DriverStateV2 {
   frameId @0 :UInt32;
   modelExecutionTime @1 :Float32;
-  dspExecutionTimeDEPRECATED @2 :Float32;
   gpuExecutionTime @8 :Float32;
   rawPredictions @3 :Data;
 
-  poorVisionProb @4 :Float32;
   wheelOnRightProb @5 :Float32;
-
   leftDriverData @6 :DriverData;
   rightDriverData @7 :DriverData;
 
@@ -2169,10 +2176,14 @@ struct DriverStateV2 {
     leftBlinkProb @7 :Float32;
     rightBlinkProb @8 :Float32;
     sunglassesProb @9 :Float32;
-    occludedProb @10 :Float32;
-    readyProb @11 :List(Float32);
-    notReadyProb @12 :List(Float32);
+    phoneProb @13 :Float32;
+    notReadyProbDEPRECATED @12 :List(Float32);
+    occludedProbDEPRECATED @10 :Float32;
+    readyProbDEPRECATED @11 :List(Float32);
   }
+
+  dspExecutionTimeDEPRECATED @2 :Float32;
+  poorVisionProbDEPRECATED @4 :Float32;
 }
 
 struct DriverStateDEPRECATED @0xb83c6cc593ed0a00 {
@@ -2224,6 +2235,9 @@ struct DriverMonitoringState @0xb83cda094a1da284 {
   hiStdCount @14 :UInt32;
   isActiveMode @16 :Bool;
   isRHD @4 :Bool;
+  uncertainCount @19 :UInt32;
+  phoneProbOffset @20 :Float32;
+  phoneProbValidCount @21 :UInt32;
 
   isPreviewDEPRECATED @15 :Bool;
   rhdCheckedDEPRECATED @5 :Bool;
@@ -2520,13 +2534,10 @@ struct Event {
     controlsState @7 :ControlsState;
     selfdriveState @130 :SelfdriveState;
     gyroscope @99 :SensorEventData;
-    gyroscope2 @100 :SensorEventData;
     accelerometer @98 :SensorEventData;
-    accelerometer2 @101 :SensorEventData;
     magnetometer @95 :SensorEventData;
     lightSensor @96 :SensorEventData;
     temperatureSensor @97 :SensorEventData;
-    temperatureSensor2 @123 :SensorEventData;
     pandaStates @81 :List(PandaState);
     peripheralState @80 :PeripheralState;
     radarState @13 :RadarState;
@@ -2689,5 +2700,8 @@ struct Event {
     liveLocationKalman @72 :LiveLocationKalman;
     liveTracksDEPRECATED @16 :List(LiveTracksDEPRECATED);
     onroadEventsDEPRECATED @68: List(Car.OnroadEventDEPRECATED);
+    gyroscope2DEPRECATED @100 :SensorEventData;
+    accelerometer2DEPRECATED @101 :SensorEventData;
+    temperatureSensor2DEPRECATED @123 :SensorEventData;
   }
 }
