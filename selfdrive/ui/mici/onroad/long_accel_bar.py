@@ -23,11 +23,14 @@ class LongitudinalAccelBar(Widget):
     self._scale = scale
     self._always = always
 
-    # Smooth motion
-    self._aego_f = FirstOrderFilter(0.0, 0.15, 1 / gui_app.target_fps)   # actual accel (effect)
-    self._ades_f = FirstOrderFilter(0.0, 0.15, 1 / gui_app.target_fps)   # desired accel (request)
+    self._aego_f = FirstOrderFilter(0.0, 0.15, 1 / gui_app.target_fps)   # actual (effect)
+    self._ades_f = FirstOrderFilter(0.0, 0.15, 1 / gui_app.target_fps)   # desired (request)
 
+    # intensity / "loaded" feel
     self._mag_f = FirstOrderFilter(0.0, 0.20, 1 / gui_app.target_fps)
+
+    # TorqueBar-like show/hide smoothing
+    self._alpha_f = FirstOrderFilter(0.0, 0.10, 1 / gui_app.target_fps)
 
   def update_filter(self, aego: float, ades: float = 0.0):
     self._aego_f.update(aego)
@@ -40,14 +43,8 @@ class LongitudinalAccelBar(Widget):
     car_state = ui_state.sm['carState']
     car_control = ui_state.sm['carControl']
 
-    # actual accel
-    aego = float(car_state.aEgo)
-
-    # desired accel (command)
-    ades = float(car_control.actuators.accel)
-
-    self._aego_f.update(aego)
-    self._ades_f.update(ades)
+    self._aego_f.update(float(car_state.aEgo))
+    self._ades_f.update(float(car_control.actuators.accel))
 
   @staticmethod
   def _norm_acc(a: float) -> float:
@@ -55,7 +52,7 @@ class LongitudinalAccelBar(Widget):
     if a >= 0.0:
       return a / max(1e-3, ACCEL_MAX)
     else:
-      return a / max(1e-3, -ACCEL_MIN)  # negative / positive -> negative
+      return a / max(1e-3, -ACCEL_MIN)
 
   def _render(self, rect: rl.Rectangle):
     content_rect = rl.Rectangle(
@@ -65,34 +62,37 @@ class LongitudinalAccelBar(Widget):
       rect.height,
     )
 
-    # "rightmost" confidence ball sits at (content_rect.x + content_rect.width - status_dot_radius)
+    # ConfidenceBall uses this radius; we align to its footprint
     status_dot_radius = int(24 * self._scale)
 
-    bar_w_base = 16
-    bar_w = int(bar_w_base * self._scale)
+    # --- Geometry: same "length scale" as the ball column ---
+    bar_w = int(18 * self._scale)  # slightly thicker, closer to torque-bar visual weight
+    gap_to_ball = int(3 * self._scale)  # move further right (smaller gap)
 
-    # Height roughly the confidence ball vertical span (2*radius) plus some breathing room.
-    # Also clamp to not exceed panel height.
-    bar_h = int((2 * status_dot_radius + 110 * self._scale))
-    bar_h = int(clamp(bar_h, 140 * self._scale, content_rect.height - 40 * self._scale))
+    # Make height match the confidence ball travel span (same formula as ConfidenceBall)
+    # ConfidenceBall: dot_height spans [status_dot_radius .. content_rect.height - status_dot_radius]
+    bar_h = int(content_rect.height - 2 * status_dot_radius)
+    bar_h = int(clamp(bar_h, 160 * self._scale, content_rect.height - int(2 * status_dot_radius)))
 
-    # Place near the top like ConfidenceBall uses, but keep it nicely within panel.
-    top_pad = int(18 * self._scale)
+    # Align bar top to the same band where the ball travels
+    bar_y = int(content_rect.y + status_dot_radius)
 
-    # Slightly closer to the confidence ball than before
-    gap_to_ball = int(6 * self._scale)
-
+    # Place bar left of ball footprint
     bar_x = int(content_rect.x + content_rect.width - (2 * status_dot_radius) - gap_to_ball - bar_w)
-    bar_y = int(content_rect.y + top_pad)
 
-    # If we run out of space at bottom, shift upward a bit
-    if bar_y + bar_h > content_rect.y + content_rect.height - int(12 * self._scale):
-      bar_y = int(content_rect.y + content_rect.height - int(12 * self._scale) - bar_h)
+    # Visibility
+    # fade out only when DISENGAGED (unless always=True).
+    if self._demo:
+      self._alpha_f.update(1.0)
+    else:
+      visible = self._always or (ui_state.status != UIStatus.DISENGAGED)
+      self._alpha_f.update(1.0 if visible else 0.0)
 
-    # Visibility: always drawn
-    alpha = 1.0 if (self._demo or self._always or True) else 0.0
+    alpha = clamp(self._alpha_f.x, 0.0, 1.0)
+    if alpha <= 0.001:
+      return
 
-    # Color policy: only demo/ENGAGED/LONG_ONLY are colored; everything else is gray
+    # --- Color policy: colored only for demo / ENGAGED / LONG_ONLY, otherwise gray ---
     colored = self._demo or (ui_state.status in (UIStatus.ENGAGED, UIStatus.LONG_ONLY))
     dim = 1.0 if colored else 0.55
 
@@ -105,66 +105,73 @@ class LongitudinalAccelBar(Widget):
 
     mag = clamp(abs(nades), 0.0, 1.0)
     self._mag_f.update(mag)
-
-    # Slight intensity growth near extremes (similar "bigger/stronger" feel)
-    # This increases background alpha a bit and makes the bar look more "loaded".
     load = self._mag_f.x
-    bg_alpha = int(255 * (0.20 + 0.08 * load) * alpha * dim)
-    border_alpha = int(255 * (0.26 + 0.10 * load) * alpha * dim)
-    mid_alpha = int(255 * 0.35 * alpha * dim)
+
+    # Slightly increase bar thickness with load (subtle) while keeping right edge aligned.
+    extra_w = int((2.0 * load) * self._scale)  # 0..~2px
+    bar_w_dyn = bar_w + extra_w
+    bar_x_dyn = bar_x - extra_w  # expand left only, keeps proximity to ball
+
+    # Background alpha ramps with load
+    bg_alpha = int(255 * (0.18 + 0.10 * load) * alpha * dim)
+    border_alpha = int(255 * (0.24 + 0.12 * load) * alpha * dim)
+    mid_alpha = int(255 * 0.30 * alpha * dim)
 
     bg = rl.Color(255, 255, 255, bg_alpha)
     border = rl.Color(255, 255, 255, border_alpha)
     midline = rl.Color(255, 255, 255, mid_alpha)
 
     # Background
-    rl.draw_rectangle(bar_x, bar_y, bar_w, bar_h, bg)
-    rl.draw_rectangle_lines(bar_x, bar_y, bar_w, bar_h, border)
+    rl.draw_rectangle(bar_x_dyn, bar_y, bar_w_dyn, bar_h, bg)
+    rl.draw_rectangle_lines(bar_x_dyn, bar_y, bar_w_dyn, bar_h, border)
 
     # Midline at 0 m/s²
     mid_y = bar_y + bar_h // 2
-    rl.draw_line(bar_x, mid_y, bar_x + bar_w, mid_y, midline)
+    rl.draw_line(bar_x_dyn, mid_y, bar_x_dyn + bar_w_dyn, mid_y, midline)
 
-    # Fill = desired/request (what the model/controller wants)
-    # Marker = actual/effect (what happens)
+    # Fill = desired/request (model/controller wants)
     half = bar_h / 2.0
     fill_h = int(abs(nades) * half)
 
     if colored:
-      # Fade to orange as we approach max request magnitude
-      # Positive request -> more yellow, Negative request -> more orange
+      # fade to yellow/orange near extremes
       t = clamp((abs(nades) - 0.75) * 4.0, 0.0, 1.0)
-      base_white = rl.Color(255, 255, 255, int(255 * (0.90 + 0.05 * load) * alpha * dim))
 
+      base_white = rl.Color(255, 255, 255, int(255 * (0.88 + 0.08 * load) * alpha * dim))
       if nades >= 0:
-        hi = rl.Color(255, 200, 0, int(255 * (0.95 + 0.03 * load) * alpha * dim))   # yellow
+        hi = rl.Color(255, 200, 0, int(255 * (0.92 + 0.06 * load) * alpha * dim))   # yellow
       else:
-        hi = rl.Color(255, 115, 0, int(255 * (0.95 + 0.03 * load) * alpha * dim))   # orange
+        hi = rl.Color(255, 115, 0, int(255 * (0.92 + 0.06 * load) * alpha * dim))   # orange
 
       fill = blend_colors(base_white, hi, t)
     else:
-      fill = rl.Color(255, 255, 255, int(255 * 0.35 * alpha * dim))
+      fill = rl.Color(255, 255, 255, int(255 * 0.32 * alpha * dim))
 
     if fill_h > 0:
       if nades >= 0:
         fy = int(mid_y - fill_h)
-        rl.draw_rectangle(bar_x, fy, bar_w, fill_h, fill)
+        rl.draw_rectangle(bar_x_dyn, fy, bar_w_dyn, fill_h, fill)
       else:
         fy = int(mid_y)
-        rl.draw_rectangle(bar_x, fy, bar_w, fill_h, fill)
+        rl.draw_rectangle(bar_x_dyn, fy, bar_w_dyn, fill_h, fill)
 
-    # Actual marker line (effect): thin line across bar (and a tiny bit outside)
-    # Keep it visible even in gray mode, but slightly dimmed
+    # Actual marker = effect
     marker_alpha = int(255 * (0.70 if colored else 0.45) * alpha * dim)
     marker = rl.Color(255, 255, 255, marker_alpha)
 
     a_off = int((-naego) * half)
     a_y = int(mid_y + a_off)
-    ext = int(3 * self._scale)
-    rl.draw_line(bar_x - ext, a_y, bar_x + bar_w + ext, a_y, marker)
 
-    # Optional limit ticks (subtle)
-    tick_alpha = int(255 * (0.22 + 0.08 * load) * alpha * dim)
+    ext = int(3 * self._scale)
+    rl.draw_line(bar_x_dyn - ext, a_y, bar_x_dyn + bar_w_dyn + ext, a_y, marker)
+
+    # small centered marker dot
+    dot_r = int((4 + 2 * load) * self._scale)  # grows a bit at extremes
+    dot_x = int(bar_x_dyn + bar_w_dyn / 2)
+    rl.draw_circle(dot_x, a_y, dot_r, marker)
+
+    # Subtle limit ticks
+    tick_alpha = int(255 * (0.18 + 0.10 * load) * alpha * dim)
     tick = rl.Color(255, 255, 255, tick_alpha)
-    rl.draw_line(bar_x, bar_y, bar_x + bar_w, bar_y, tick)
-    rl.draw_line(bar_x, bar_y + bar_h, bar_x + bar_w, bar_y + bar_h, tick)
+    rl.draw_line(bar_x_dyn, bar_y, bar_x_dyn + bar_w_dyn, bar_y, tick)
+    rl.draw_line(bar_x_dyn, bar_y + bar_h, bar_x_dyn + bar_w_dyn, bar_y + bar_h, tick)
