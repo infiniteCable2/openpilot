@@ -176,12 +176,14 @@ class HudRenderer(Widget):
 
     if ui_state.sm['controlsState'].lateralControlState.which() != 'angleState' or ui_state.force_enable_torque_bar:
       self._torque_bar.render(rect)
-
+      
+    if ui_state.enable_accel_bar:
+      self._long_accel_bar.render(rect)
+      
     if self.is_cruise_set:
       self._draw_set_speed(rect)
 
     self._draw_steering_wheel(rect)
-    self._long_accel_bar.render(rect)
 
   def _draw_steering_wheel(self, rect: rl.Rectangle) -> None:
     wheel_txt = self._txt_wheel_critical if self._show_wheel_critical else self._txt_wheel

@@ -17,26 +17,19 @@ def clamp(x: float, lo: float, hi: float) -> float:
 
 
 class LongitudinalAccelBar(Widget):
-  """
-  Vertical acceleration bar (straight edges) shown in the right side panel,
-  positioned left of the confidence ball.
-
-  - Thick fill: actual accel (carState.aEgo)
-  - Thin marker: desired accel (carControl.actuators.accel)
-  """
   def __init__(self, demo: bool = False, scale: float = 1.0, always: bool = False):
     super().__init__()
     self._demo = demo
     self._scale = scale
     self._always = always
 
-    # filtering for smooth UI
-    self._aego_f = FirstOrderFilter(0.0, 0.15, 1 / gui_app.target_fps)
-    self._ades_f = FirstOrderFilter(0.0, 0.15, 1 / gui_app.target_fps)
-    self._alpha_f = FirstOrderFilter(0.0, 0.10, 1 / gui_app.target_fps)
+    # Smooth motion
+    self._aego_f = FirstOrderFilter(0.0, 0.15, 1 / gui_app.target_fps)   # actual accel (effect)
+    self._ades_f = FirstOrderFilter(0.0, 0.15, 1 / gui_app.target_fps)   # desired accel (request)
+
+    self._mag_f = FirstOrderFilter(0.0, 0.20, 1 / gui_app.target_fps)
 
   def update_filter(self, aego: float, ades: float = 0.0):
-    """Demo mode helper."""
     self._aego_f.update(aego)
     self._ades_f.update(ades)
 
@@ -47,118 +40,131 @@ class LongitudinalAccelBar(Widget):
     car_state = ui_state.sm['carState']
     car_control = ui_state.sm['carControl']
 
-    self._aego_f.update(car_state.aEgo)
-    self._ades_f.update(car_control.actuators.accel)
+    # actual accel
+    aego = float(car_state.aEgo)
 
-  def _render(self, _):
-    # Side panel rect (same as ConfidenceBall)
+    # desired accel (command)
+    ades = float(car_control.actuators.accel)
+
+    self._aego_f.update(aego)
+    self._ades_f.update(ades)
+
+  @staticmethod
+  def _norm_acc(a: float) -> float:
+    # Map to [-1..1] with asymmetric scaling around 0
+    if a >= 0.0:
+      return a / max(1e-3, ACCEL_MAX)
+    else:
+      return a / max(1e-3, -ACCEL_MIN)  # negative / positive -> negative
+
+  def _render(self, rect: rl.Rectangle):
     content_rect = rl.Rectangle(
-      self.rect.x + self.rect.width - SIDE_PANEL_WIDTH,
-      self.rect.y,
+      rect.x + rect.width - SIDE_PANEL_WIDTH,
+      rect.y,
       SIDE_PANEL_WIDTH,
-      self.rect.height,
+      rect.height,
     )
 
-    # confidence ball footprint (from your reference)
+    # "rightmost" confidence ball sits at (content_rect.x + content_rect.width - status_dot_radius)
     status_dot_radius = int(24 * self._scale)
 
-    # bar geometry (smaller than full height)
-    bar_w = int(14 * self._scale)
-    bar_h = int(160 * self._scale)
-    top_pad = int(22 * self._scale)
-    gap_to_ball = int(10 * self._scale)
+    bar_w_base = 16
+    bar_w = int(bar_w_base * self._scale)
 
-    # Place bar: left of the ball (ball is drawn at far right edge)
+    # Height roughly the confidence ball vertical span (2*radius) plus some breathing room.
+    # Also clamp to not exceed panel height.
+    bar_h = int((2 * status_dot_radius + 110 * self._scale))
+    bar_h = int(clamp(bar_h, 140 * self._scale, content_rect.height - 40 * self._scale))
+
+    # Place near the top like ConfidenceBall uses, but keep it nicely within panel.
+    top_pad = int(18 * self._scale)
+
+    # Slightly closer to the confidence ball than before
+    gap_to_ball = int(6 * self._scale)
+
     bar_x = int(content_rect.x + content_rect.width - (2 * status_dot_radius) - gap_to_ball - bar_w)
     bar_y = int(content_rect.y + top_pad)
 
-    # If you want it vertically centered instead, swap line above with:
-    # bar_y = int(content_rect.y + (content_rect.height - bar_h) / 2)
+    # If we run out of space at bottom, shift upward a bit
+    if bar_y + bar_h > content_rect.y + content_rect.height - int(12 * self._scale):
+      bar_y = int(content_rect.y + content_rect.height - int(12 * self._scale) - bar_h)
 
-    # alpha behavior (similar to torque bar)
-    if self._demo:
-      self._alpha_f.update(1.0)
-    else:
-      visible = self._always or (ui_state.status not in (UIStatus.DISENGAGED,))
-      self._alpha_f.update(1.0 if visible else 0.0)
+    # Visibility: always drawn
+    alpha = 1.0 if (self._demo or self._always or True) else 0.0
 
-    alpha = clamp(self._alpha_f.x, 0.0, 1.0)
+    # Color policy: only demo/ENGAGED/LONG_ONLY are colored; everything else is gray
+    colored = self._demo or (ui_state.status in (UIStatus.ENGAGED, UIStatus.LONG_ONLY))
+    dim = 1.0 if colored else 0.55
 
-    # status-based dimming
-    engaged_like = (ui_state.status in (UIStatus.ENGAGED, UIStatus.LAT_ONLY, UIStatus.LONG_ONLY, UIStatus.OVERRIDE))
-    dim = 1.0 if (self._demo or engaged_like) else 0.55
+    # Values
+    aego = clamp(self._aego_f.x, ACCEL_MIN, ACCEL_MAX)  # effect
+    ades = clamp(self._ades_f.x, ACCEL_MIN, ACCEL_MAX)  # request
 
-    # clamp accels
-    aego = clamp(self._aego_f.x, ACCEL_MIN, ACCEL_MAX)
-    ades = clamp(self._ades_f.x, ACCEL_MIN, ACCEL_MAX)
+    naego = clamp(self._norm_acc(aego), -1.0, 1.0)
+    nades = clamp(self._norm_acc(ades), -1.0, 1.0)
 
-    # map accel to [-1..1] around 0, but with asymmetric range
-    # -> use separate scaling for + and - so visual "full scale" hits at ACCEL_MAX/ACCEL_MIN
-    def norm_acc(a: float) -> float:
-      if a >= 0:
-        return a / max(1e-3, ACCEL_MAX)
-      else:
-        return -a / max(1e-3, -ACCEL_MIN) * -1.0  # keep sign
+    mag = clamp(abs(nades), 0.0, 1.0)
+    self._mag_f.update(mag)
 
-    naego = clamp(norm_acc(aego), -1.0, 1.0)
-    nades = clamp(norm_acc(ades), -1.0, 1.0)
-
-    # colors
-    bg_alpha = int(255 * 0.22 * alpha * dim)
-    border_alpha = int(255 * 0.28 * alpha * dim)
+    # Slight intensity growth near extremes (similar "bigger/stronger" feel)
+    # This increases background alpha a bit and makes the bar look more "loaded".
+    load = self._mag_f.x
+    bg_alpha = int(255 * (0.20 + 0.08 * load) * alpha * dim)
+    border_alpha = int(255 * (0.26 + 0.10 * load) * alpha * dim)
     mid_alpha = int(255 * 0.35 * alpha * dim)
 
     bg = rl.Color(255, 255, 255, bg_alpha)
     border = rl.Color(255, 255, 255, border_alpha)
     midline = rl.Color(255, 255, 255, mid_alpha)
 
-    # base fill colors (fade to orange/red with magnitude)
-    # accel (positive): white -> yellow
-    # brake (negative): white -> orange/red
-    mag = abs(naego)
-    if naego >= 0:
-      c0 = rl.Color(255, 255, 255, int(255 * 0.90 * alpha * dim))
-      c1 = rl.Color(255, 200, 0,   int(255 * 0.95 * alpha * dim))
-      fill = blend_colors(c0, c1, clamp((mag - 0.55) / 0.45, 0.0, 1.0))
-    else:
-      c0 = rl.Color(255, 255, 255, int(255 * 0.90 * alpha * dim))
-      c1 = rl.Color(255, 115, 0,   int(255 * 0.95 * alpha * dim))
-      fill = blend_colors(c0, c1, clamp((mag - 0.55) / 0.45, 0.0, 1.0))
-
-    # if not actively engaged (but visible), gray it out
-    if (not self._demo) and (ui_state.status not in (UIStatus.ENGAGED, UIStatus.LAT_ONLY, UIStatus.LONG_ONLY)):
-      fill = rl.Color(255, 255, 255, int(255 * 0.35 * alpha * dim))
-
-    # draw background bar (straight)
+    # Background
     rl.draw_rectangle(bar_x, bar_y, bar_w, bar_h, bg)
     rl.draw_rectangle_lines(bar_x, bar_y, bar_w, bar_h, border)
 
-    # midline (0 accel)
+    # Midline at 0 m/s²
     mid_y = bar_y + bar_h // 2
     rl.draw_line(bar_x, mid_y, bar_x + bar_w, mid_y, midline)
 
-    # actual fill from midline up/down
-    # compute fill height (half bar)
+    # Fill = desired/request (what the model/controller wants)
+    # Marker = actual/effect (what happens)
     half = bar_h / 2.0
-    fill_h = int(abs(naego) * half)
+    fill_h = int(abs(nades) * half)
+
+    if colored:
+      # Fade to orange as we approach max request magnitude
+      # Positive request -> more yellow, Negative request -> more orange
+      t = clamp((abs(nades) - 0.75) * 4.0, 0.0, 1.0)
+      base_white = rl.Color(255, 255, 255, int(255 * (0.90 + 0.05 * load) * alpha * dim))
+
+      if nades >= 0:
+        hi = rl.Color(255, 200, 0, int(255 * (0.95 + 0.03 * load) * alpha * dim))   # yellow
+      else:
+        hi = rl.Color(255, 115, 0, int(255 * (0.95 + 0.03 * load) * alpha * dim))   # orange
+
+      fill = blend_colors(base_white, hi, t)
+    else:
+      fill = rl.Color(255, 255, 255, int(255 * 0.35 * alpha * dim))
 
     if fill_h > 0:
-      if naego >= 0:
+      if nades >= 0:
         fy = int(mid_y - fill_h)
         rl.draw_rectangle(bar_x, fy, bar_w, fill_h, fill)
       else:
         fy = int(mid_y)
         rl.draw_rectangle(bar_x, fy, bar_w, fill_h, fill)
 
-    # desired marker (thin horizontal line)
-    # map desired to y position
-    des_off = int((-nades) * half)  # -1 => down, +1 => up
-    des_y = int(mid_y + des_off)
-    des_color = rl.Color(255, 255, 255, int(255 * 0.70 * alpha * dim))
-    rl.draw_line(bar_x - int(3 * self._scale), des_y, bar_x + bar_w + int(3 * self._scale), des_y, des_color)
+    # Actual marker line (effect): thin line across bar (and a tiny bit outside)
+    # Keep it visible even in gray mode, but slightly dimmed
+    marker_alpha = int(255 * (0.70 if colored else 0.45) * alpha * dim)
+    marker = rl.Color(255, 255, 255, marker_alpha)
 
-    # optional: little "tick" at top/bottom to show limits
-    tick_alpha = int(255 * 0.25 * alpha * dim)
+    a_off = int((-naego) * half)
+    a_y = int(mid_y + a_off)
+    ext = int(3 * self._scale)
+    rl.draw_line(bar_x - ext, a_y, bar_x + bar_w + ext, a_y, marker)
+
+    # Optional limit ticks (subtle)
+    tick_alpha = int(255 * (0.22 + 0.08 * load) * alpha * dim)
     tick = rl.Color(255, 255, 255, tick_alpha)
     rl.draw_line(bar_x, bar_y, bar_x + bar_w, bar_y, tick)
     rl.draw_line(bar_x, bar_y + bar_h, bar_x + bar_w, bar_y + bar_h, tick)
