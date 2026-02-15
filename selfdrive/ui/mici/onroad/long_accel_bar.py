@@ -17,8 +17,6 @@ from openpilot.system.ui.lib.shader_polygon import draw_polygon, Gradient
 ACCEL_MAX = 2.0
 ACCEL_MIN = -3.5
 
-BAR_OFFSET_X = 0
-
 GearShifter = car.CarState.GearShifter
 
 
@@ -140,13 +138,10 @@ class LongitudinalAccelBar(Widget):
   def _render(self, rect: rl.Rectangle):
     # align to right edge of camera view
     bar_w = int(19 * self._scale)
-    cam_gap = int(3 * self._scale)
+    cam_gap = int(2 * self._scale)
 
     camera_right_x = rect.x + rect.width - SIDE_PANEL_WIDTH
     bar_x = int(camera_right_x + cam_gap)
-
-    # keep within the screen bounds
-    bar_x = min(bar_x, int(rect.x + rect.width - bar_w - BAR_OFFSET_X * self._scale))
 
     # vertical span similar to confidence ball travel
     status_dot_radius = int(24 * self._scale)
