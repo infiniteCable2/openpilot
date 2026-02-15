@@ -146,6 +146,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
 	{"ForceRHDForBSM", {PERSISTENT, BOOL}},
 	{"DisableCarSteerAlerts", {PERSISTENT, BOOL}},
 	{"ForceShowTorqueBar", {PERSISTENT, BOOL}},
+	{"ShowAccelBar", {PERSISTENT, BOOL}},
 
     // --- sunnypilot params --- //
     {"ApiCache_DriveStats", {PERSISTENT, JSON}},

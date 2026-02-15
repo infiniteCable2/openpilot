@@ -2,6 +2,7 @@ import pyray as rl
 from dataclasses import dataclass
 from openpilot.common.constants import CV
 from openpilot.selfdrive.ui.mici.onroad.torque_bar import TorqueBar
+from openpilot.selfdrive.ui.mici.onroad.long_accel_bar import LongitudinalAccelBar
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.multilang import tr
@@ -117,6 +118,7 @@ class HudRenderer(Widget):
 
     self._turn_intent = TurnIntent()
     self._torque_bar = TorqueBar()
+    self._long_accel_bar = LongitudinalAccelBar()
 
     self._txt_wheel: rl.Texture = gui_app.texture('icons_mici/wheel.png', 50, 50)
     self._txt_wheel_critical: rl.Texture = gui_app.texture('icons_mici/wheel_critical.png', 50, 50)
@@ -174,7 +176,10 @@ class HudRenderer(Widget):
 
     if ui_state.sm['controlsState'].lateralControlState.which() != 'angleState' or ui_state.force_enable_torque_bar:
       self._torque_bar.render(rect)
-
+      
+    if ui_state.enable_accel_bar:
+      self._long_accel_bar.render(rect)
+      
     if self.is_cruise_set:
       self._draw_set_speed(rect)
 
