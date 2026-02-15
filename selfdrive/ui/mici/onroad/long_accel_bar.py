@@ -5,7 +5,7 @@ from collections import OrderedDict
 import numpy as np
 import pyray as rl
 
-from openpilot.selfdrive.ui.mici.onroad import SIDE_PANEL_WIDTH, blend_colors
+from openpilot.selfdrive.ui.mici.onroad import blend_colors
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.lib.application import gui_app
@@ -26,11 +26,10 @@ def quantized_lru_cache(maxsize=256):
     cache = OrderedDict()
     @wraps(func)
     def wrapper(*args, **kwargs):
-      # Quantize floats for cache efficiency
       q_args = []
       for a in args:
         if isinstance(a, float):
-          q_args.append(round(a * 2) / 2)   # 0.5px precision
+          q_args.append(round(a * 2) / 2)  # 0.5px precision
         else:
           q_args.append(a)
       key = (tuple(q_args), tuple(sorted(kwargs.items())))
@@ -68,44 +67,34 @@ def rounded_rect_pts(x: float, y: float, w: float, h: float, r: float, segs: int
 
 @quantized_lru_cache(maxsize=256)
 def rounded_cap_segment_pts(x: float, y: float, w: float, h: float, r: float, *, cap: str, segs: int = 8) -> np.ndarray:
-  """
-  Segment with ONE rounded end and one flat end.
-  cap:
-    - "top"    : rounded top corners, flat bottom
-    - "bottom" : flat top, rounded bottom corners
-  """
   r = max(0.0, min(r, w * 0.5, h * 0.5))
   if r <= 0.01:
     pts = np.array([[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]], dtype=np.float32)
     return pts
 
   if cap == "top":
-    # Start at top-right arc, go down to bottom-right (flat), across, up, top-left arc
     tr = _arc(x + w - r, y + r, r, 270, 360, segs)
     tl = _arc(x + r, y + r, r, 180, 270, segs)
-
     pts = np.vstack([
-      tr,                                 # rounded top right
-      [x + w, y + r],                     # end of arc (redundant-ish but safe)
-      [x + w, y + h],                     # flat bottom-right
-      [x,     y + h],                     # flat bottom-left
-      [x,     y + r],                     # up left side to start of top-left arc
-      tl,                                 # rounded top left
+      tr,
+      [x + w, y + r],
+      [x + w, y + h],
+      [x,     y + h],
+      [x,     y + r],
+      tl,
       tr[:1]
     ]).astype(np.float32)
     return pts
 
-  # cap == "bottom"
   br = _arc(x + w - r, y + h - r, r, 0, 90, segs)
   bl = _arc(x + r, y + h - r, r, 90, 180, segs)
-
   pts = np.vstack([
-    [x + w, y],                           # flat top-right
-    [x + w, y + h - r],                   # down right side to start of arc
-    br,                                   # rounded bottom-right
-    bl,                                   # rounded bottom-left
-    [x,     y + h - r],                   # end of left arc
-    [x,     y],                           # up to flat top-left
+    [x + w, y],
+    [x + w, y + h - r],
+    br,
+    bl,
+    [x,     y + h - r],
+    [x,     y],
     [x + w, y]
   ]).astype(np.float32)
   return pts
@@ -130,7 +119,6 @@ class LongitudinalAccelBar(Widget):
   def _update_state(self):
     if self._demo:
       return
-
     car_state = ui_state.sm['carState']
     car_control = ui_state.sm['carControl']
     self._aego_f.update(float(car_state.aEgo))
@@ -144,28 +132,30 @@ class LongitudinalAccelBar(Widget):
       return a / max(1e-3, -ACCEL_MIN)
 
   def _render(self, rect: rl.Rectangle):
-    # Right-side panel frame
-    content_rect = rl.Rectangle(
-      rect.x + rect.width - SIDE_PANEL_WIDTH,
-      rect.y,
-      SIDE_PANEL_WIDTH,
-      rect.height,
-    )
+    # === Placement: align to camera-view right edge, like TorqueBar ===
+    # Your TorqueBar uses:
+    #   cx = rect.x + rect.width/2 + 8   (camera feed center)
+    # so camera feed right edge is: rect.x + rect.width/2
+    camera_right_x = rect.x + rect.width / 2
 
-    status_dot_radius = int(24 * self._scale)
-
-    # Make it a bit thicker and shift further right (smaller gap)
+    # Keep the accel bar slightly to the right of the camera feed edge
+    cam_gap = int(10 * self._scale)
     bar_w = int(19 * self._scale)
-    gap_to_ball = int(1 * self._scale)  # further right than before
 
-    # Match confidence-ball travel span
-    bar_h = int(content_rect.height - 2 * status_dot_radius)
-    bar_h = int(clamp(bar_h, 160 * self._scale, content_rect.height - 2 * status_dot_radius))
+    # Put it "just right of camera view", not further right than your previous side-panel placement
+    # (and never past the screen right edge minus a tiny margin).
+    bar_x = int(camera_right_x + cam_gap)
+    bar_x = min(bar_x, int(rect.x + rect.width - bar_w - 6 * self._scale))
 
-    bar_y = int(content_rect.y + status_dot_radius)
-    bar_x = int(content_rect.x + content_rect.width - (2 * status_dot_radius) - gap_to_ball - bar_w)
+    # Height: same travel span as ConfidenceBall in the side panel (visual parity)
+    status_dot_radius = int(24 * self._scale)
+    bar_h = int(rect.height - 2 * status_dot_radius)
+    bar_h = int(clamp(bar_h, 160 * self._scale, rect.height - 2 * status_dot_radius))
 
-    # Fade logic like TorqueBar spirit (hide on DISENGAGED unless always/demo)
+    bar_y = int(rect.y + status_dot_radius)
+
+    # === Fade logic: like TorqueBar/ConfidenceBall spirit ===
+    # - visible when demo OR always OR status not DISENGAGED
     if self._demo:
       self._alpha_f.update(1.0)
     else:
@@ -176,12 +166,12 @@ class LongitudinalAccelBar(Widget):
     if alpha <= 0.001:
       return
 
-    # Colored only in demo/ENGAGED/LONG_ONLY; otherwise gray
+    # === Color policy: DO NOT gray out for LONG_ONLY ===
     colored = self._demo or (ui_state.status in (UIStatus.ENGAGED, UIStatus.LONG_ONLY))
     dim = 1.0 if colored else 0.55
 
-    aego = clamp(self._aego_f.x, ACCEL_MIN, ACCEL_MAX)  # effect
-    ades = clamp(self._ades_f.x, ACCEL_MIN, ACCEL_MAX)  # request
+    aego = clamp(self._aego_f.x, ACCEL_MIN, ACCEL_MAX)
+    ades = clamp(self._ades_f.x, ACCEL_MIN, ACCEL_MAX)
 
     naego = clamp(self._norm_acc(aego), -1.0, 1.0)
     nades = clamp(self._norm_acc(ades), -1.0, 1.0)
@@ -190,21 +180,20 @@ class LongitudinalAccelBar(Widget):
     self._mag_f.update(mag)
     load = self._mag_f.x
 
-    # Subtle "loaded" thickness increase (like TorqueBar height growth feel)
-    extra_w = int((2.0 * load) * self._scale)  # ~0..2px
+    # Subtle thickness increase at extremes (TorqueBar "loaded" feel)
+    extra_w = int((2.0 * load) * self._scale)
     bw = bar_w + extra_w
-    bx = bar_x - extra_w  # expand left, keep it near the ball on the right
+    bx = bar_x - extra_w  # expand left only
 
-    # Rounded corners via polygon (TorqueBar-like softness)
     radius = max(2.0, 6.0 * self._scale)
 
-    # Background polygon (no outline!)
+    # Background polygon (no outline)
     bg_alpha = int(255 * (0.18 + 0.10 * load) * alpha * dim)
     bg_color = rl.Color(255, 255, 255, bg_alpha)
     bg_pts = rounded_rect_pts(float(bx), float(bar_y), float(bw), float(bar_h), float(radius), segs=9)
     draw_polygon(rect, bg_pts, color=bg_color)
 
-    # Midline (0 accel) — keep subtle
+    # Midline
     mid_alpha = int(255 * 0.30 * alpha * dim)
     midline = rl.Color(255, 255, 255, mid_alpha)
     mid_y = bar_y + bar_h // 2
@@ -221,6 +210,7 @@ class LongitudinalAccelBar(Widget):
         hi = rl.Color(255, 200, 0, int(255 * (0.92 + 0.06 * load) * alpha * dim))
       else:
         hi = rl.Color(255, 115, 0, int(255 * (0.92 + 0.06 * load) * alpha * dim))
+
       fill_start = blend_colors(base_white, hi, t)
       fill_end = blend_colors(base_white, hi, clamp(t + 0.25, 0.0, 1.0))
     else:
@@ -236,18 +226,12 @@ class LongitudinalAccelBar(Widget):
         fh = int(fill_h)
         cap = "bottom"
 
-      # cap radius can't exceed segment height
       seg_r = float(min(radius, fh * 0.5))
-
       seg_pts = rounded_cap_segment_pts(float(bx), float(fy), float(bw), float(fh), float(seg_r), cap=cap, segs=9)
 
-      # TorqueBar-like gradient: from bar center toward requested direction
-      # (horizontal gradient, subtle but gives that "shader" feel)
+      # TorqueBar-like horizontal gradient (subtle shader feel)
       cx = (bx + bw / 2.0) / rect.width
-      if nades < 0:
-        ex = (bx / rect.width)  # left
-      else:
-        ex = ((bx + bw) / rect.width)  # right
+      ex = (bx / rect.width) if (nades < 0) else ((bx + bw) / rect.width)
 
       grad = Gradient(
         start=(cx, 0),
@@ -255,25 +239,17 @@ class LongitudinalAccelBar(Widget):
         colors=[fill_start, fill_end],
         stops=[0.0, 1.0],
       )
-
       draw_polygon(rect, seg_pts, gradient=grad)
 
-    # Actual marker (effect): keep the softer “dot” like TorqueBar
+    # Actual marker (effect) with dot, softer look
     marker_alpha = int(255 * (0.70 if colored else 0.45) * alpha * dim)
     marker = rl.Color(255, 255, 255, marker_alpha)
 
     a_off = int((-naego) * half)
     a_y = int(mid_y + a_off)
 
-    # Keep marker mostly inside bar for softness
     rl.draw_line(bx, a_y, bx + bw, a_y, marker)
 
     dot_r = int((4 + 2 * load) * self._scale)
     dot_x = int(bx + bw / 2)
     rl.draw_circle(dot_x, a_y, dot_r, marker)
-
-    # Subtle limit ticks
-    tick_alpha = int(255 * (0.18 + 0.10 * load) * alpha * dim)
-    tick = rl.Color(255, 255, 255, tick_alpha)
-    rl.draw_line(bx, bar_y, bx + bw, bar_y, tick)
-    rl.draw_line(bx, bar_y + bar_h, bx + bw, bar_y + bar_h, tick)
