@@ -17,7 +17,7 @@ from openpilot.system.ui.lib.shader_polygon import draw_polygon, Gradient
 ACCEL_MAX = 2.0
 ACCEL_MIN = -3.5
 
-BAR_OFFSET_X = 3
+BAR_OFFSET_X = 0
 
 GearShifter = car.CarState.GearShifter
 
