@@ -137,8 +137,8 @@ class LongitudinalAccelBar(Widget):
   def _render(self, rect: rl.Rectangle):
     # alignment
     bar_w = int(19 * self._scale)
-    right_margin = int(12 * self._scale)
-    bar_x = int(rect.x + rect.width - bar_w + right_margin)
+    right_margin = int(24 * self._scale)
+    bar_x = int(rect.x + rect.width - bar_w - right_margin)
 
     # vertical span similar to confidence ball travel
     status_dot_radius = int(24 * self._scale)
