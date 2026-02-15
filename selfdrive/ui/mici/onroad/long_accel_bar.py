@@ -6,7 +6,7 @@ import numpy as np
 import pyray as rl
 from cereal import car
 
-from openpilot.selfdrive.ui.mici.onroad import SIDE_PANEL_WIDTH, blend_colors
+from openpilot.selfdrive.ui.mici.onroad import blend_colors
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.lib.application import gui_app
@@ -138,7 +138,8 @@ class LongitudinalAccelBar(Widget):
   def _render(self, rect: rl.Rectangle):
     # alignment
     bar_w = int(19 * self._scale)
-    bar_x = int(rect.x + rect.width - bar_w - 2 * self._scale)
+    right_margin = int(4 * self._scale)
+    bar_x = int(rect.x + rect.width - bar_w - right_margin)
 
     # vertical span similar to confidence ball travel
     status_dot_radius = int(24 * self._scale)
