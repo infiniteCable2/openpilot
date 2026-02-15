@@ -1,4 +1,3 @@
-import math
 from functools import wraps
 from collections import OrderedDict
 
@@ -138,13 +137,14 @@ class LongitudinalAccelBar(Widget):
   def _render(self, rect: rl.Rectangle):
     # alignment
     bar_w = int(19 * self._scale)
-    right_margin = int(4 * self._scale)
+    right_margin = int(12 * self._scale)
     bar_x = int(rect.x + rect.width - bar_w - right_margin)
 
     # vertical span similar to confidence ball travel
     status_dot_radius = int(24 * self._scale)
-    bar_h = int(rect.height - 2 * status_dot_radius)
-    bar_h = int(clamp(bar_h, 160 * self._scale, rect.height - 2 * status_dot_radius))
+    bar_h_max = int(rect.height - 2 * status_dot_radius)
+    bar_h_min = int(160 * self._scale)
+    bar_h = int(clamp(bar_h_max, bar_h_min, max(bar_h_min, bar_h_max)))
     bar_y = int(rect.y + status_dot_radius)
 
     # visibility logic
@@ -211,8 +211,9 @@ class LongitudinalAccelBar(Widget):
       seg_r = float(min(radius, fh * 0.5))
       seg_pts = rounded_cap_segment_pts(float(bx), float(fy), float(bw), float(fh), float(seg_r), cap=cap, segs=9)
 
-      cx = (bx + bw / 2.0) / rect.width
-      ex = (bx / rect.width) if (nades < 0) else ((bx + bw) / rect.width)
+      # gradient in widget-local coordinates
+      cx = ((bx + bw / 2.0) - rect.x) / rect.width
+      ex = (bx - rect.x) / rect.width if (nades < 0) else ((bx + bw) - rect.x) / rect.width
 
       grad = Gradient(start=(cx, 0), end=(ex, 0), colors=[fill_start, fill_end], stops=[0.0, 1.0])
       draw_polygon(rect, seg_pts, gradient=grad)
