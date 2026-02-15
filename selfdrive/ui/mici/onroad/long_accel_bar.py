@@ -138,10 +138,10 @@ class LongitudinalAccelBar(Widget):
   def _render(self, rect: rl.Rectangle):
     # align to right edge of camera view
     bar_w = int(19 * self._scale)
-    cam_gap = int(0.5 * self._scale)
+    cam_gap = int(self._scale)
 
     camera_right_x = rect.x + rect.width - SIDE_PANEL_WIDTH
-    bar_x = int(camera_right_x + cam_gap)
+    bar_x = int(camera_right_x - cam_gap)
 
     # vertical span similar to confidence ball travel
     status_dot_radius = int(24 * self._scale)
