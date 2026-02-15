@@ -126,7 +126,7 @@ class LongitudinalAccelBar(Widget):
 
   def _render(self, rect: rl.Rectangle):
     bar_w = int(19 * self._scale)
-    cam_gap = int(10 * self._scale)
+    cam_gap = int(3 * self._scale)
 
     camera_right_x = rect.x + rect.width - SIDE_PANEL_WIDTH
     bar_x = int(camera_right_x + cam_gap)
