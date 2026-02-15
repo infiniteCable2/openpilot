@@ -89,6 +89,7 @@ class UIState(UIStateSP):
     self.dark_mode: bool = False
     self.onroad_screen_timeout: bool = False
     self.force_enable_torque_bar: bool = False
+    self.enable_accel_bar: bool = False
     self.has_alert: bool = False
     self.has_status_change: bool = False
     self._status_prev: UIStatus = self.status
@@ -207,6 +208,7 @@ class UIState(UIStateSP):
     self.dark_mode = self.params.get_bool("DarkMode")
     self.onroad_screen_timeout = self.params.get_bool("DisableScreenTimer")
     self.force_enable_torque_bar = self.params.get_bool("ForceShowTorqueBar")
+    self.enable_accel_bar = self.params.get_bool("ShowAccelBar")
 
 
 class Device(DeviceSP):
