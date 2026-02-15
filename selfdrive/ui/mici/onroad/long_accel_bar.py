@@ -141,16 +141,13 @@ class LongitudinalAccelBar(Widget):
     cam_gap = int(3 * self._scale)
 
     camera_right_x = rect.x + rect.width - SIDE_PANEL_WIDTH
-    desired_x = int(camera_right_x + cam_gap)
+    bar_x = int(camera_right_x + cam_gap)
 
-    # reserve space for confidence ball
-    status_dot_radius = int(24 * self._scale)
-    right_reserve = int(2 * status_dot_radius + 2 * self._scale)
-    max_x = int(rect.x + rect.width - right_reserve - bar_w)
-
-    bar_x = min(desired_x, max_x)
+    # keep within the screen bounds
+    bar_x = min(bar_x, int(rect.x + rect.width - bar_w - 6 * self._scale))
 
     # vertical span similar to confidence ball travel
+    status_dot_radius = int(24 * self._scale)
     bar_h = int(rect.height - 2 * status_dot_radius)
     bar_h = int(clamp(bar_h, 160 * self._scale, rect.height - 2 * status_dot_radius))
     bar_y = int(rect.y + status_dot_radius)
