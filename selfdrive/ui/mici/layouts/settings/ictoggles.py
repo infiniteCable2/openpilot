@@ -1,19 +1,16 @@
-import pyray as rl
-from collections.abc import Callable
 from cereal import log
 
-from openpilot.system.ui.widgets.scroller import Scroller
+from openpilot.system.ui.widgets.scroller import NavScroller
 from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl, BigMultiParamToggle
 from openpilot.system.ui.lib.application import gui_app
-from openpilot.system.ui.widgets import NavWidget
 from openpilot.selfdrive.ui.layouts.settings.common import restart_needed_callback
 from openpilot.selfdrive.ui.ui_state import ui_state
 
 
-class ICTogglesLayoutMici(NavWidget):
-  def __init__(self, back_callback: Callable):
+class ICTogglesLayoutMici(NavScroller):
+  def __init__(self):
     super().__init__()
-    self.set_back_callback(back_callback)
+    self.set_back_callback(gui_app.pop_widget)
 
     enable_curvature_correction = BigParamControl("VW: Lateral Correction (Recommended)", "EnableCurvatureController")
     enable_long_comfort_mode    = BigParamControl("VW: Longitudinal Comfort Mode", "EnableLongComfortMode")
@@ -30,23 +27,22 @@ class ICTogglesLayoutMici(NavWidget):
     enable_accel_bar            = BigParamControl("Enable Accel Bar", "ShowAccelBar")
     road_edge_lane_change_block = BigParamControl("Block Lane Change: Road Edge Detection", "RoadEdgeLaneChangeEnabled")
     
-
-    self._scroller = Scroller([
-      enable_curvature_correction,
-      enable_long_comfort_mode,
-      enable_sl_control,
-      enable_sl_pred_control,
-      enable_sl_pred_sl,
-      enable_sl_pred_curve,
-      force_rhd_bsm,
-      disable_car_steer_alerts,
-      enable_smooth_steer,
-      enable_dark_mode,
-      enable_onroad_screen_timer,
-      force_enable_torque_bar,
-      enable_accel_bar,
-      road_edge_lane_change_block,
-    ], snap_items=False)
+   self._scroller.add_widgets([
+     enable_curvature_correction,
+     enable_long_comfort_mode,
+     enable_sl_control,
+     enable_sl_pred_control,
+     enable_sl_pred_sl,
+     enable_sl_pred_curve,
+     force_rhd_bsm,
+     disable_car_steer_alerts,
+     enable_smooth_steer,
+     enable_dark_mode,
+     enable_onroad_screen_timer,
+     force_enable_torque_bar,
+     enable_accel_bar,
+     road_edge_lane_change_block,
+   ])
 
     # Toggle lists
     self._refresh_toggles = (
@@ -77,7 +73,6 @@ class ICTogglesLayoutMici(NavWidget):
 
   def show_event(self):
     super().show_event()
-    self._scroller.show_event()
     self._update_toggles()
 
   def _update_toggles(self):
@@ -86,6 +81,3 @@ class ICTogglesLayoutMici(NavWidget):
     # Refresh toggles from params to mirror external changes
     for key, item in self._refresh_toggles:
       item.set_checked(ui_state.params.get_bool(key))
-
-  def _render(self, rect: rl.Rectangle):
-    self._scroller.render(rect)
