@@ -22,7 +22,6 @@ class ICTogglesLayoutMici(NavScroller):
     enable_smooth_steer         = BigParamControl("Steer Smoothing", "EnableSmoothSteer")
     enable_dark_mode            = BigParamControl("Dark Mode", "DarkMode")
     enable_onroad_screen_timer  = BigParamControl("Onroad Screen Timeout", "DisableScreenTimer")
-    force_enable_torque_bar     = BigParamControl("Force Enable Torque Bar", "ForceShowTorqueBar")
     enable_accel_bar            = BigParamControl("Enable Accel Bar", "ShowAccelBar")
     road_edge_lane_change_block = BigParamControl("Block Lane Change: Road Edge Detection", "RoadEdgeLaneChangeEnabled")
     
@@ -38,7 +37,6 @@ class ICTogglesLayoutMici(NavScroller):
       enable_smooth_steer,
       enable_dark_mode,
       enable_onroad_screen_timer,
-      force_enable_torque_bar,
       enable_accel_bar,
       road_edge_lane_change_block,
     ])
@@ -56,7 +54,6 @@ class ICTogglesLayoutMici(NavScroller):
       ("EnableSmoothSteer", enable_smooth_steer),
       ("DarkMode", enable_dark_mode),
       ("DisableScreenTimer", enable_onroad_screen_timer),
-      ("ForceShowTorqueBar", force_enable_torque_bar),
       ("ShowAccelBar", enable_accel_bar),
       ("RoadEdgeLaneChangeEnabled", road_edge_lane_change_block),
     )
