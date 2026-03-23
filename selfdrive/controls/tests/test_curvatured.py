@@ -12,16 +12,14 @@ class TestCurvatureDController:
     msg.liveCurvatureParameters.version = VERSION
     msg.liveCurvatureParameters.useParams = True
 
-    bias = CurvatureDLookup.unflatten([0.0] * CurvatureDLookup.total_size())
-    counts = CurvatureDLookup.unflatten([0] * CurvatureDLookup.total_size())
-
     idx = CurvatureDLookup.indices(64e-6, 22.0)
     assert idx is not None
-    bias[idx] = 20e-6
-    counts[idx] = CurvatureDLookup.FULL_CONFIDENCE_SAMPLES
-
-    msg.liveCurvatureParameters.bias = CurvatureDLookup.flatten(bias)
-    msg.liveCurvatureParameters.counts = CurvatureDLookup.flatten(counts)
+    msg.liveCurvatureParameters.currentCorrection = 20e-6
+    msg.liveCurvatureParameters.currentBias = 20e-6
+    msg.liveCurvatureParameters.currentBucketPoints = CurvatureDLookup.FULL_CONFIDENCE_SAMPLES
+    msg.liveCurvatureParameters.bucketSign = idx[0]
+    msg.liveCurvatureParameters.bucketSpeed = idx[1]
+    msg.liveCurvatureParameters.bucketCurvature = idx[2]
 
     controller.update_live_params(msg.liveCurvatureParameters)
 
@@ -34,8 +32,9 @@ class TestCurvatureDController:
     msg.liveCurvatureParameters.liveValid = False
     msg.liveCurvatureParameters.version = VERSION
     msg.liveCurvatureParameters.useParams = True
-    msg.liveCurvatureParameters.bias = []
-    msg.liveCurvatureParameters.counts = []
+    msg.liveCurvatureParameters.bucketSign = -1
+    msg.liveCurvatureParameters.bucketSpeed = -1
+    msg.liveCurvatureParameters.bucketCurvature = -1
 
     controller.update_live_params(msg.liveCurvatureParameters)
 

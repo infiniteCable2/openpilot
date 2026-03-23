@@ -25,14 +25,11 @@ class TestCurvatureEstimator:
     idx = CurvatureDLookup.indices(desired_curvature, 22.0)
     other_idx = CurvatureDLookup.indices(desired_curvature, 38.0)
 
-    bias = CurvatureDLookup.unflatten(msg.liveCurvatureParameters.bias)
-    counts = CurvatureDLookup.unflatten(msg.liveCurvatureParameters.counts)
-
     assert idx is not None
     assert other_idx is not None
-    assert counts[idx] == CurvatureDLookup.FULL_CONFIDENCE_SAMPLES
-    assert bias[idx] > 0.0
-    assert counts[other_idx] == 0
+    assert estimator.counts[idx] == CurvatureDLookup.FULL_CONFIDENCE_SAMPLES
+    assert estimator.bias[idx] > 0.0
+    assert estimator.counts[other_idx] == 0
 
   def test_center_caps_remain_tiny(self):
     estimator = get_estimator()
@@ -61,3 +58,21 @@ class TestCurvatureEstimator:
 
     assert important_bucket_count > 0
     assert estimator.get_msg().liveCurvatureParameters.calPerc == 100
+
+  def test_message_contains_only_current_bucket_state(self):
+    estimator = get_estimator()
+    desired_curvature = 64e-6
+    v_ego = 22.0
+
+    for _ in range(CurvatureDLookup.FULL_CONFIDENCE_SAMPLES):
+      estimator.add_measurement(desired_curvature, 0.0, v_ego)
+
+    estimator._update_current_lookup(desired_curvature, v_ego)
+    msg = estimator.get_msg()
+    idx = CurvatureDLookup.indices(desired_curvature, v_ego)
+
+    assert idx is not None
+    assert msg.liveCurvatureParameters.bucketSign == idx[0]
+    assert msg.liveCurvatureParameters.bucketSpeed == idx[1]
+    assert msg.liveCurvatureParameters.bucketCurvature == idx[2]
+    assert msg.liveCurvatureParameters.currentCorrection > 0.0

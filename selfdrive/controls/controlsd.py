@@ -135,10 +135,12 @@ class Controls(ControlsExt):
       self.LaC.extension.update_lateral_lag(self.lat_delay)
 
     if self.curvatured is not None:
-      curvature_params = self.sm['liveCurvatureParameters']
-      if self.sm.all_checks(['liveCurvatureParameters']):
+      if not self.enable_curvatured:
+        self.curvatured.reset()
+      elif self.sm.updated['liveCurvatureParameters'] and self.sm.all_checks(['liveCurvatureParameters']):
+        curvature_params = self.sm['liveCurvatureParameters']
         self.curvatured.update_live_params(curvature_params)
-      else:
+      elif not self.sm.alive['liveCurvatureParameters'] or not self.sm.valid['liveCurvatureParameters']:
         self.curvatured.reset()
 
     long_plan = self.sm['longitudinalPlan']

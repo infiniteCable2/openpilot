@@ -115,33 +115,37 @@ class CurvatureDLookup:
 
 class CurvatureDController(CurvatureDLookup):
   def __init__(self):
-    self.bias = np.zeros(self.shape(), dtype=np.float64)
-    self.counts = np.zeros(self.shape(), dtype=np.int32)
-    self.corrections = np.zeros(self.shape(), dtype=np.float64)
     self.use_params = False
     self.live_valid = False
+    self.current_correction = 0.0
+    self.bucket_sign = -1
+    self.bucket_speed = -1
+    self.bucket_curvature = -1
 
   def reset(self):
-    self.bias.fill(0.0)
-    self.counts.fill(0)
-    self.corrections.fill(0.0)
     self.use_params = False
     self.live_valid = False
+    self.current_correction = 0.0
+    self.bucket_sign = -1
+    self.bucket_speed = -1
+    self.bucket_curvature = -1
 
   def update_live_params(self, msg) -> None:
-    valid_shape = len(msg.bias) == self.total_size() and len(msg.counts) == self.total_size()
     self.use_params = bool(msg.useParams)
-    self.live_valid = bool(msg.liveValid) and msg.version == VERSION and valid_shape
+    valid_bucket = msg.bucketSign in (-1, 0, 1) and msg.bucketSpeed >= -1 and msg.bucketCurvature >= -1
+    self.live_valid = bool(msg.liveValid) and msg.version == VERSION and valid_bucket
 
     if not self.live_valid:
-      self.bias.fill(0.0)
-      self.counts.fill(0)
-      self.corrections.fill(0.0)
+      self.current_correction = 0.0
+      self.bucket_sign = -1
+      self.bucket_speed = -1
+      self.bucket_curvature = -1
       return
 
-    self.bias = self.unflatten(msg.bias).astype(np.float64)
-    self.counts = self.unflatten(msg.counts).astype(np.int32)
-    self.corrections = self.corrections_from_bias(self.bias, self.counts)
+    self.current_correction = float(msg.currentCorrection)
+    self.bucket_sign = int(msg.bucketSign)
+    self.bucket_speed = int(msg.bucketSpeed)
+    self.bucket_curvature = int(msg.bucketCurvature)
 
   def get_correction(self, desired_curvature: float, v_ego: float) -> float:
     if not (self.use_params and self.live_valid):
@@ -155,7 +159,9 @@ class CurvatureDController(CurvatureDLookup):
       return 0.0
 
     sign_idx, speed_idx, curvature_idx = idx
-    return float(self.corrections[sign_idx, speed_idx, curvature_idx])
+    if (sign_idx, speed_idx, curvature_idx) != (self.bucket_sign, self.bucket_speed, self.bucket_curvature):
+      return 0.0
+    return self.current_correction
 
   def apply(self, desired_curvature: float, v_ego: float) -> float:
     return float(desired_curvature + self.get_correction(desired_curvature, v_ego))

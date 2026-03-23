@@ -2308,10 +2308,14 @@ struct LiveCurvatureParametersData {
   liveValid @0 :Bool;
   version @1 :Int32;
   useParams @2 :Bool;
-  bias @3 :List(Float32);
-  counts @4 :List(Int32);
-  totalBucketPoints @5 :Int32;
-  calPerc @6 :Int8;
+  currentCorrection @3 :Float32;
+  currentBias @4 :Float32;
+  currentBucketPoints @5 :Int32;
+  totalBucketPoints @6 :Int32;
+  calPerc @7 :Int8;
+  bucketSign @8 :Int8;
+  bucketSpeed @9 :Int8;
+  bucketCurvature @10 :Int8;
 }
 
 struct LiveDelayData {

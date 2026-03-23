@@ -550,7 +550,7 @@ CONFIGS = [
   ),
   ProcessConfig(
     proc_name="curvatured",
-    pubs=["livePose", "liveCalibration", "liveDelay", "carState", "carControl", "controlsState"],
+    pubs=["livePose", "liveCalibration", "liveDelay", "carState", "carControl", "modelV2"],
     subs=["liveCurvatureParameters"],
     ignore=["logMonoTime"],
     init_callback=get_car_params_callback,
