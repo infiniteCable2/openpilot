@@ -2569,7 +2569,7 @@ struct Event {
     gnssMeasurements @91 :GnssMeasurements;
     liveParameters @61 :LiveParametersData;
     liveTorqueParameters @94 :LiveTorqueParametersData;
-    liveCurvatureParameters @148 :LiveCurvatureParametersData;
+    liveCurvatureParameters @150 :LiveCurvatureParametersData;
     liveDelay @146 : LiveDelayData;
     cameraOdometry @63 :CameraOdometry;
     thumbnail @66: Thumbnail;
