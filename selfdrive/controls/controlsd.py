@@ -181,7 +181,8 @@ class Controls(ControlsExt):
 
     # Steering PID loop and lateral MPC
     # Reset desired curvature to current to avoid violating the limits on engage
-    new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
+    model_desired_curvature = model_v2.action.desiredCurvature
+    new_desired_curvature = model_desired_curvature if CC.latActive else self.curvature
     if self.enable_smooth_steer:
       new_desired_curvature = self.smooth_steer.update(new_desired_curvature)
     if CC.latActive and self.curvatured is not None and self.enable_curvatured:
@@ -269,6 +270,7 @@ class Controls(ControlsExt):
     cs.curvature = self.curvature
     cs.longitudinalPlanMonoTime = self.sm.logMonoTime['longitudinalPlan']
     cs.lateralPlanMonoTime = self.sm.logMonoTime['modelV2']
+    cs.modelDesiredCurvature = model_v2.action.desiredCurvature
     cs.desiredCurvature = self.desired_curvature
     cs.longControlState = self.LoC.long_control_state
     cs.upAccelCmd = float(self.LoC.pid.p)

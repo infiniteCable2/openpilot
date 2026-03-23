@@ -868,6 +868,7 @@ struct ControlsState @0x97ff69c53601abf1 {
   uiAccelCmd @5 :Float32;
   ufAccelCmd @33 :Float32;
   curvature @37 :Float32;  # path curvature from vehicle model
+  modelDesiredCurvature @67 :Float32;  # raw desired curvature from modelV2 before smoothing/adaptation
   desiredCurvature @61 :Float32;  # lag adjusted curvatures used by lateral controllers
   forceDecel @51 :Bool;
 

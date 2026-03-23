@@ -37,8 +37,8 @@ class CurvatureEstimator(CurvatureDLookup):
     self.car_state_t = deque(maxlen=self.hist_len)
     self.vego = deque(maxlen=self.hist_len)
     self.steering_pressed = deque(maxlen=self.hist_len)
-    self.model_t = deque(maxlen=self.hist_len)
-    self.desired_curvature = deque(maxlen=self.hist_len)
+    self.controls_state_t = deque(maxlen=self.hist_len)
+    self.model_desired_curvature = deque(maxlen=self.hist_len)
 
     self.last_lat_inactive_t = 0.0
     self.last_override_t = 0.0
@@ -75,7 +75,7 @@ class CurvatureEstimator(CurvatureDLookup):
     self.frame += 1
 
   def _history_ready(self) -> bool:
-    return min(len(self.car_control_t), len(self.car_state_t), len(self.model_t)) == self.hist_len
+    return min(len(self.car_control_t), len(self.car_state_t), len(self.controls_state_t)) == self.hist_len
 
   @staticmethod
   def _sample_at_or_before(target_t: float, ts: deque, values: deque):
@@ -138,11 +138,11 @@ class CurvatureEstimator(CurvatureDLookup):
       self.steering_pressed.append(msg.steeringPressed)
       if msg.steeringPressed:
         self.last_override_t = t
-    elif which == "modelV2":
-      self.model_t.append(t)
-      self.desired_curvature.append(msg.action.desiredCurvature)
+    elif which == "controlsState":
+      self.controls_state_t.append(t)
+      self.model_desired_curvature.append(msg.modelDesiredCurvature)
       if self.car_state_t:
-        self._update_current_lookup(self.desired_curvature[-1], self.vego[-1])
+        self._update_current_lookup(self.model_desired_curvature[-1], self.vego[-1])
     elif which == "liveCalibration":
       self.calibrator.feed_live_calib(msg)
     elif which == "liveDelay":
@@ -159,7 +159,7 @@ class CurvatureEstimator(CurvatureDLookup):
       lat_active = self._sample_at_or_before(target_t, self.car_control_t, self.lat_active)
       steering_pressed = self._sample_at_or_before(target_t, self.car_state_t, self.steering_pressed)
       v_ego = self._sample_at_or_before(target_t, self.car_state_t, self.vego)
-      desired_curvature = self._sample_at_or_before(target_t, self.model_t, self.desired_curvature)
+      desired_curvature = self._sample_at_or_before(target_t, self.controls_state_t, self.model_desired_curvature)
 
       if any(x is None for x in (lat_active, steering_pressed, v_ego, desired_curvature)):
         return
@@ -218,7 +218,7 @@ def main():
   config_realtime_process([0, 1, 2, 3], 5)
 
   pm = messaging.PubMaster(['liveCurvatureParameters'])
-  sm = messaging.SubMaster(['carControl', 'carState', 'modelV2', 'liveCalibration', 'livePose', 'liveDelay'],
+  sm = messaging.SubMaster(['carControl', 'carState', 'controlsState', 'liveCalibration', 'livePose', 'liveDelay'],
                            poll='livePose')
 
   params = Params()
