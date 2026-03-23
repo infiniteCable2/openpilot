@@ -5,21 +5,11 @@ VERSION = 1
 
 
 class CurvatureDLookup:
-  CURVATURE_MIN_STEP = 6.7e-6  # HCA_03 Curvature scale in vw_meb.dbc
+  CURVATURE_MIN_STEP = 1.0e-6
+  DBC_CURVATURE_STEP = 6.7e-6  # HCA_03 Curvature scale in vw_meb.dbc
   SPEED_BUCKETS = np.array([0.0, 15.0, 25.0, 35.0, 55.0])
-  CURVATURE_BUCKETS = np.array([
-    0.0,
-    CURVATURE_MIN_STEP,
-    1e-5,
-    1e-4,
-    1e-3,
-  ])
-  CORRECTION_CAPS = np.array([
-    CURVATURE_MIN_STEP,
-    2.0e-5,
-    6.0e-5,
-    1.2e-4,
-  ])
+  CENTER_CURVATURE_MAX = 5.0e-5
+  CORRECTION_CAP = 1.2e-5
 
   MIN_SPEED = 5.0
   MAX_LAT_ACCEL = 2.0
@@ -27,16 +17,15 @@ class CurvatureDLookup:
   FULL_CONFIDENCE_SAMPLES = 800
   MEAN_WINDOW = 400
   MAX_SAMPLES = 5000
-  IMPORTANT_CURVATURE_BUCKETS = len(CURVATURE_BUCKETS) - 1
 
   @classmethod
-  def shape(cls) -> tuple[int, int, int]:
-    return 2, len(cls.SPEED_BUCKETS) - 1, len(cls.CURVATURE_BUCKETS) - 1
+  def shape(cls) -> tuple[int, int]:
+    return 2, len(cls.SPEED_BUCKETS) - 1
 
   @classmethod
   def total_size(cls) -> int:
-    sign_dim, speed_dim, curvature_dim = cls.shape()
-    return sign_dim * speed_dim * curvature_dim
+    sign_dim, speed_dim = cls.shape()
+    return sign_dim * speed_dim
 
   @staticmethod
   def _sign_idx(curvature: float) -> int | None:
@@ -54,18 +43,18 @@ class CurvatureDLookup:
     return int(np.clip(idx, 0, len(edges) - 2))
 
   @classmethod
-  def indices(cls, desired_curvature: float, v_ego: float) -> tuple[int, int, int] | None:
-    sign_idx = cls._sign_idx(desired_curvature)
-    speed_idx = cls._bucket_idx(cls.SPEED_BUCKETS, v_ego)
-    curvature_idx = cls._bucket_idx(cls.CURVATURE_BUCKETS, abs(desired_curvature))
-
-    if sign_idx is None or speed_idx is None or curvature_idx is None:
-      return None
-    return sign_idx, speed_idx, curvature_idx
+  def in_center_range(cls, desired_curvature: float) -> bool:
+    abs_curvature = abs(desired_curvature)
+    return cls.CURVATURE_MIN_STEP <= abs_curvature <= cls.CENTER_CURVATURE_MAX
 
   @classmethod
-  def cap_for_bucket(cls, curvature_idx: int) -> float:
-    return float(cls.CORRECTION_CAPS[curvature_idx])
+  def indices(cls, desired_curvature: float, v_ego: float) -> tuple[int, int] | None:
+    sign_idx = cls._sign_idx(desired_curvature)
+    speed_idx = cls._bucket_idx(cls.SPEED_BUCKETS, v_ego)
+
+    if sign_idx is None or speed_idx is None or not cls.in_center_range(desired_curvature):
+      return None
+    return sign_idx, speed_idx
 
   @classmethod
   def flatten(cls, values: np.ndarray) -> list:
@@ -84,16 +73,14 @@ class CurvatureDLookup:
 
   @classmethod
   def corrections_from_bias(cls, bias: np.ndarray, counts: np.ndarray) -> np.ndarray:
-    caps = cls.CORRECTION_CAPS[np.newaxis, np.newaxis, :]
     confidence = cls.confidence(counts.astype(np.float64))
     confidence = np.where(counts >= cls.MIN_APPLY_SAMPLES, confidence, 0.0)
-    return np.clip(bias, -caps, caps) * confidence
+    return np.clip(bias, -cls.CORRECTION_CAP, cls.CORRECTION_CAP) * confidence
 
   @classmethod
   def calibration_percent(cls, counts: np.ndarray) -> int:
-    important = counts[:, :, :cls.IMPORTANT_CURVATURE_BUCKETS]
-    covered = np.count_nonzero(important >= cls.MIN_APPLY_SAMPLES)
-    return int(round(100.0 * covered / important.size))
+    covered = np.count_nonzero(counts >= cls.MIN_APPLY_SAMPLES)
+    return int(round(100.0 * covered / counts.size))
 
 
 class CurvatureDController(CurvatureDLookup):
@@ -103,7 +90,6 @@ class CurvatureDController(CurvatureDLookup):
     self.current_correction = 0.0
     self.bucket_sign = -1
     self.bucket_speed = -1
-    self.bucket_curvature = -1
 
   def reset(self):
     self.use_params = False
@@ -111,14 +97,12 @@ class CurvatureDController(CurvatureDLookup):
     self.current_correction = 0.0
     self.bucket_sign = -1
     self.bucket_speed = -1
-    self.bucket_curvature = -1
 
   def update_live_params(self, msg) -> None:
     self.use_params = bool(msg.useParams)
     valid_bucket = (
       msg.bucketSign in (-1, 0, 1) and
-      -1 <= msg.bucketSpeed < len(self.SPEED_BUCKETS) - 1 and
-      -1 <= msg.bucketCurvature < len(self.CURVATURE_BUCKETS) - 1
+      -1 <= msg.bucketSpeed < len(self.SPEED_BUCKETS) - 1
     )
     self.live_valid = bool(msg.liveValid) and msg.version == VERSION and valid_bucket
 
@@ -126,13 +110,11 @@ class CurvatureDController(CurvatureDLookup):
       self.current_correction = 0.0
       self.bucket_sign = -1
       self.bucket_speed = -1
-      self.bucket_curvature = -1
       return
 
     self.current_correction = float(msg.currentCorrection)
     self.bucket_sign = int(msg.bucketSign)
     self.bucket_speed = int(msg.bucketSpeed)
-    self.bucket_curvature = int(msg.bucketCurvature)
 
   def get_correction(self, desired_curvature: float, v_ego: float) -> float:
     if not (self.use_params and self.live_valid):
@@ -145,8 +127,8 @@ class CurvatureDController(CurvatureDLookup):
     if idx is None:
       return 0.0
 
-    sign_idx, speed_idx, curvature_idx = idx
-    if (sign_idx, speed_idx, curvature_idx) != (self.bucket_sign, self.bucket_speed, self.bucket_curvature):
+    sign_idx, speed_idx = idx
+    if (sign_idx, speed_idx) != (self.bucket_sign, self.bucket_speed):
       return 0.0
     return self.current_correction
 

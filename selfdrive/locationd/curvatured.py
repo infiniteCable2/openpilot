@@ -43,7 +43,7 @@ class CurvatureEstimator(CurvatureDLookup):
     self.last_lat_inactive_t = 0.0
     self.last_override_t = 0.0
 
-    self.current_bucket = (-1, -1, -1)
+    self.current_bucket = (-1, -1)
     self.current_correction = 0.0
     self.current_bias = 0.0
     self.current_bucket_points = 0
@@ -68,7 +68,7 @@ class CurvatureEstimator(CurvatureDLookup):
                       f"steerControlType={self.CP.steerControlType}")
         self.prev_use_params = self.use_params
       if not self.use_params:
-        self.current_bucket = (-1, -1, -1)
+        self.current_bucket = (-1, -1)
         self.current_correction = 0.0
         self.current_bias = 0.0
         self.current_bucket_points = 0
@@ -94,38 +94,37 @@ class CurvatureEstimator(CurvatureDLookup):
     if idx is None:
       return
 
-    sign_idx, speed_idx, curvature_idx = idx
-    cap = self.cap_for_bucket(curvature_idx)
-    error = float(np.clip(desired_curvature - actual_curvature, -cap, cap))
+    sign_idx, speed_idx = idx
+    error = float(np.clip(desired_curvature - actual_curvature,
+                          -self.CORRECTION_CAP, self.CORRECTION_CAP))
 
-    sample_count = min(int(self.counts[sign_idx, speed_idx, curvature_idx]) + 1, self.MAX_SAMPLES)
-    self.counts[sign_idx, speed_idx, curvature_idx] = sample_count
+    sample_count = min(int(self.counts[sign_idx, speed_idx]) + 1, self.MAX_SAMPLES)
+    self.counts[sign_idx, speed_idx] = sample_count
 
     alpha = 1.0 / min(sample_count, self.MEAN_WINDOW)
-    prev_bias = float(self.bias[sign_idx, speed_idx, curvature_idx])
-    self.bias[sign_idx, speed_idx, curvature_idx] = prev_bias + alpha * (error - prev_bias)
+    prev_bias = float(self.bias[sign_idx, speed_idx])
+    self.bias[sign_idx, speed_idx] = prev_bias + alpha * (error - prev_bias)
 
   def _update_current_lookup(self, desired_curvature: float, v_ego: float) -> None:
     idx = self.indices(desired_curvature, v_ego)
     if idx is None:
-      self.current_bucket = (-1, -1, -1)
+      self.current_bucket = (-1, -1)
       self.current_correction = 0.0
       self.current_bias = 0.0
       self.current_bucket_points = 0
       return
 
-    sign_idx, speed_idx, curvature_idx = idx
+    sign_idx, speed_idx = idx
     self.current_bucket = idx
-    self.current_bias = float(self.bias[sign_idx, speed_idx, curvature_idx])
-    self.current_bucket_points = int(self.counts[sign_idx, speed_idx, curvature_idx])
+    self.current_bias = float(self.bias[sign_idx, speed_idx])
+    self.current_bucket_points = int(self.counts[sign_idx, speed_idx])
 
     if self.current_bucket_points < self.MIN_APPLY_SAMPLES:
       self.current_correction = 0.0
       return
 
     confidence = float(self.confidence(self.current_bucket_points))
-    cap = self.cap_for_bucket(curvature_idx)
-    self.current_correction = float(np.clip(self.current_bias, -cap, cap) * confidence)
+    self.current_correction = float(np.clip(self.current_bias, -self.CORRECTION_CAP, self.CORRECTION_CAP) * confidence)
 
   def handle_log(self, t: float, which: str, msg) -> None:
     if which == "carControl":
@@ -198,7 +197,6 @@ class CurvatureEstimator(CurvatureDLookup):
     live_curvature_parameters.calPerc = self.calibration_percent(self.counts)
     live_curvature_parameters.bucketSign = int(self.current_bucket[0])
     live_curvature_parameters.bucketSpeed = int(self.current_bucket[1])
-    live_curvature_parameters.bucketCurvature = int(self.current_bucket[2])
     return msg
 
   def maybe_log_status(self, t: float, sm) -> None:
@@ -239,7 +237,7 @@ def main():
             except Exception:
               cloudlog.exception(f"curvatured handle_log failed service={which}")
 
-      if sm.frame % 10 == 0:
+      if sm.frame % 20 == 0:
         t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
         estimator.maybe_log_status(t, sm)
         pm.send('liveCurvatureParameters', estimator.get_msg(valid=sm.all_checks()))

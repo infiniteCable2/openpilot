@@ -16,7 +16,7 @@ class TestCurvatureEstimator:
 
   def test_speed_buckets_are_independent(self):
     estimator = get_estimator()
-    desired_curvature = 64e-6
+    desired_curvature = 32e-6
 
     for _ in range(CurvatureDLookup.FULL_CONFIDENCE_SAMPLES):
       estimator.add_measurement(desired_curvature, 0.0, 22.0)
@@ -33,35 +33,31 @@ class TestCurvatureEstimator:
 
   def test_center_caps_remain_tiny(self):
     estimator = get_estimator()
-    desired_curvature = 6e-6
+    desired_curvature = CurvatureDLookup.CURVATURE_MIN_STEP
 
     for _ in range(CurvatureDLookup.MAX_SAMPLES):
       estimator.add_measurement(desired_curvature, -1e-3, 16.0)
 
     idx = CurvatureDLookup.indices(desired_curvature, 16.0)
     assert idx is not None
-    assert estimator.bias[idx] <= CurvatureDLookup.CORRECTION_CAPS[0]
+    assert estimator.bias[idx] <= CurvatureDLookup.CORRECTION_CAP
 
   def test_calibration_percent_tracks_coverage(self):
     estimator = get_estimator()
     assert estimator.get_msg().liveCurvatureParameters.calPerc == 0
 
-    important_bucket_count = 2 * (len(CurvatureDLookup.SPEED_BUCKETS) - 1) * CurvatureDLookup.IMPORTANT_CURVATURE_BUCKETS
     for sign in (-1.0, 1.0):
       for speed_idx in range(len(CurvatureDLookup.SPEED_BUCKETS) - 1):
         v_ego = 0.5 * (CurvatureDLookup.SPEED_BUCKETS[speed_idx] + CurvatureDLookup.SPEED_BUCKETS[speed_idx + 1])
-        for curvature_idx in range(CurvatureDLookup.IMPORTANT_CURVATURE_BUCKETS):
-          desired_curvature = sign * 0.5 * (CurvatureDLookup.CURVATURE_BUCKETS[curvature_idx] +
-                                            CurvatureDLookup.CURVATURE_BUCKETS[curvature_idx + 1])
-          for _ in range(CurvatureDLookup.MIN_APPLY_SAMPLES):
-            estimator.add_measurement(desired_curvature, 0.0, v_ego)
+        desired_curvature = sign * 32e-6
+        for _ in range(CurvatureDLookup.MIN_APPLY_SAMPLES):
+          estimator.add_measurement(desired_curvature, 0.0, v_ego)
 
-    assert important_bucket_count > 0
     assert estimator.get_msg().liveCurvatureParameters.calPerc == 100
 
   def test_message_contains_only_current_bucket_state(self):
     estimator = get_estimator()
-    desired_curvature = 64e-6
+    desired_curvature = 32e-6
     v_ego = 22.0
 
     for _ in range(CurvatureDLookup.FULL_CONFIDENCE_SAMPLES):
@@ -74,5 +70,4 @@ class TestCurvatureEstimator:
     assert idx is not None
     assert msg.liveCurvatureParameters.bucketSign == idx[0]
     assert msg.liveCurvatureParameters.bucketSpeed == idx[1]
-    assert msg.liveCurvatureParameters.bucketCurvature == idx[2]
     assert msg.liveCurvatureParameters.currentCorrection > 0.0
