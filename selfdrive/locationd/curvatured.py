@@ -7,6 +7,7 @@ import cereal.messaging as messaging
 from cereal import car
 from openpilot.common.params import Params
 from openpilot.common.realtime import config_realtime_process, DT_MDL
+from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.controls.lib.curvatured import CurvatureDLookup, VERSION
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.sunnypilot import PARAMS_UPDATE_PERIOD
@@ -16,6 +17,7 @@ HISTORY = 1.5
 MAX_YAW_RATE_STD = 1.0
 MIN_ENGAGE_BUFFER = 1.5
 ALLOWED_CARS = ['volkswagen']
+STATUS_LOG_INTERVAL = 10.0
 
 
 class CurvatureEstimator(CurvatureDLookup):
@@ -48,13 +50,23 @@ class CurvatureEstimator(CurvatureDLookup):
 
     self.use_params = False
     self.enable_curvatured = False
+    self.prev_use_params = None
+    self.last_status_log_t = 0.0
     self.update_use_params(force=True)
+
+    cloudlog.info(f"curvatured init brand={self.CP.brand} fingerprint={self.CP.carFingerprint} "
+                  f"steerControlType={self.CP.steerControlType} history={HISTORY:.2f}s")
 
   def update_use_params(self, force: bool = False):
     if force or self.frame % int(PARAMS_UPDATE_PERIOD / DT_MDL) == 0:
       self.enable_curvatured = self.params.get_bool("EnableCurvatureD")
       self.use_params = self.enable_curvatured and self.CP.brand in ALLOWED_CARS and \
                         self.CP.steerControlType == car.CarParams.SteerControlType.curvatureDEPRECATED
+      if self.prev_use_params != self.use_params:
+        cloudlog.info(f"curvatured use_params={self.use_params} toggle={self.enable_curvatured} "
+                      f"brand={self.CP.brand} allowed={self.CP.brand in ALLOWED_CARS} "
+                      f"steerControlType={self.CP.steerControlType}")
+        self.prev_use_params = self.use_params
       if not self.use_params:
         self.current_bucket = (-1, -1, -1)
         self.current_correction = 0.0
@@ -150,7 +162,7 @@ class CurvatureEstimator(CurvatureDLookup):
       v_ego = self._sample_at_or_before(target_t, self.car_state_t, self.vego)
       desired_curvature = self._sample_at_or_before(target_t, self.model_t, self.desired_curvature)
 
-      if None in (lat_active, steering_pressed, v_ego, desired_curvature):
+      if any(x is None for x in (lat_active, steering_pressed, v_ego, desired_curvature)):
         return
 
       if not bool(lat_active) or bool(steering_pressed) or float(v_ego) < self.MIN_SPEED:
@@ -189,6 +201,20 @@ class CurvatureEstimator(CurvatureDLookup):
     live_curvature_parameters.bucketCurvature = int(self.current_bucket[2])
     return msg
 
+  def maybe_log_status(self, t: float, sm) -> None:
+    if t < self.last_status_log_t + STATUS_LOG_INTERVAL:
+      return
+
+    invalid = [s for s in sm.valid.keys() if not sm.valid[s]]
+    not_alive = [s for s in sm.alive.keys() if not sm.alive[s]]
+    self.last_status_log_t = t
+
+    cloudlog.info(f"curvatured status use_params={self.use_params} checks={sm.all_checks()} "
+                  f"lag={self.lag:.3f} total_points={int(self.counts.sum())} "
+                  f"bucket={self.current_bucket} bucket_points={self.current_bucket_points} "
+                  f"corr={self.current_correction:.8f} cal={self.calibration_percent(self.counts)} "
+                  f"invalid={invalid} not_alive={not_alive}")
+
 
 def main():
   config_realtime_process([0, 1, 2, 3], 5)
@@ -201,16 +227,24 @@ def main():
   estimator = CurvatureEstimator(messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams))
 
   while True:
-    sm.update()
-    estimator.update_use_params()
+    try:
+      sm.update()
+      estimator.update_use_params()
 
-    if estimator.use_params and sm.all_checks():
-      for which in sm.updated.keys():
-        if sm.updated[which]:
-          estimator.handle_log(sm.logMonoTime[which] * 1e-9, which, sm[which])
+      if estimator.use_params and sm.all_checks():
+        for which in sm.updated.keys():
+          if sm.updated[which]:
+            try:
+              estimator.handle_log(sm.logMonoTime[which] * 1e-9, which, sm[which])
+            except Exception:
+              cloudlog.exception(f"curvatured handle_log failed service={which}")
 
-    if sm.frame % 10 == 0:
-      pm.send('liveCurvatureParameters', estimator.get_msg(valid=sm.all_checks()))
+      if sm.frame % 10 == 0:
+        t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
+        estimator.maybe_log_status(t, sm)
+        pm.send('liveCurvatureParameters', estimator.get_msg(valid=sm.all_checks()))
+    except Exception:
+      cloudlog.exception("curvatured main loop failed")
 
 
 if __name__ == "__main__":

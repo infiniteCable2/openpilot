@@ -115,7 +115,11 @@ class CurvatureDController(CurvatureDLookup):
 
   def update_live_params(self, msg) -> None:
     self.use_params = bool(msg.useParams)
-    valid_bucket = msg.bucketSign in (-1, 0, 1) and msg.bucketSpeed >= -1 and msg.bucketCurvature >= -1
+    valid_bucket = (
+      msg.bucketSign in (-1, 0, 1) and
+      -1 <= msg.bucketSpeed < len(self.SPEED_BUCKETS) - 1 and
+      -1 <= msg.bucketCurvature < len(self.CURVATURE_BUCKETS) - 1
+    )
     self.live_valid = bool(msg.liveValid) and msg.version == VERSION and valid_bucket
 
     if not self.live_valid:
