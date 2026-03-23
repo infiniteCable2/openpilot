@@ -11,6 +11,7 @@ from openpilot.common.swaglog import cloudlog
 
 from opendbc.car.car_helpers import interfaces
 from opendbc.car.vehicle_model import VehicleModel
+from openpilot.selfdrive.controls.lib.curvatured import CurvatureDController
 from openpilot.selfdrive.controls.lib.drive_helpers import clip_curvature
 from openpilot.selfdrive.controls.lib.latcontrol import LatControl
 from openpilot.selfdrive.controls.lib.latcontrol_pid import LatControlPID
@@ -45,7 +46,7 @@ class Controls(ControlsExt):
 
     self.CI = interfaces[self.CP.carFingerprint](self.CP, self.CP_SP)
 
-    self.sm = messaging.SubMaster(['liveDelay', 'liveParameters', 'liveTorqueParameters', 'modelV2', 'selfdriveState',
+    self.sm = messaging.SubMaster(['liveDelay', 'liveParameters', 'liveTorqueParameters', 'liveCurvatureParameters', 'modelV2', 'selfdriveState',
                                    'liveCalibration', 'livePose', 'longitudinalPlan', 'carState', 'carOutput',
                                    'driverMonitoringState', 'onroadEvents', 'driverAssistance', 'liveDelay'] + self.sm_services_ext,
                                   poll='selfdriveState')
@@ -57,6 +58,7 @@ class Controls(ControlsExt):
     self.desired_curvature = 0.0
 
     self.enable_curvature_controller = self.params.get_bool("EnableCurvatureController")
+    self.enable_curvatured = self.params.get_bool("EnableCurvatureD")
     self.enable_speed_limit_control = self.params.get_bool("EnableSpeedLimitControl")
     self.enable_speed_limit_predicative = self.params.get_bool("EnableSpeedLimitPredicative")
     self.enable_pred_react_to_speed_limits = self.params.get_bool("EnableSLPredReactToSL")
@@ -72,6 +74,7 @@ class Controls(ControlsExt):
 
     self.LoC = LongControl(self.CP, self.CP_SP)
     self.VM = VehicleModel(self.CP)
+    self.curvatured = CurvatureDController() if self.CP.steerControlType == car.CarParams.SteerControlType.curvatureDEPRECATED else None
     self.LaC: LatControl
     if (self.CP.steerControlType == car.CarParams.SteerControlType.angle or
         self.CP.steerControlType == car.CarParams.SteerControlType.curvatureDEPRECATED):
@@ -95,6 +98,7 @@ class Controls(ControlsExt):
     if self.param_counter >= 100:
       self.param_counter = 0
       self.enable_curvature_controller = self.params.get_bool("EnableCurvatureController")
+      self.enable_curvatured = self.params.get_bool("EnableCurvatureD")
       self.enable_smooth_steer = self.params.get_bool("EnableSmoothSteer")
       self.enable_speed_limit_control = self.params.get_bool("EnableSpeedLimitControl")
       self.enable_speed_limit_predicative = self.params.get_bool("EnableSpeedLimitPredicative")
@@ -129,6 +133,13 @@ class Controls(ControlsExt):
       self.LaC.extension.update_model_v2(self.sm['modelV2'])
 
       self.LaC.extension.update_lateral_lag(self.lat_delay)
+
+    if self.curvatured is not None:
+      curvature_params = self.sm['liveCurvatureParameters']
+      if self.sm.all_checks(['liveCurvatureParameters']):
+        self.curvatured.update_live_params(curvature_params)
+      else:
+        self.curvatured.reset()
 
     long_plan = self.sm['longitudinalPlan']
     model_v2 = self.sm['modelV2']
@@ -171,6 +182,8 @@ class Controls(ControlsExt):
     new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
     if self.enable_smooth_steer:
       new_desired_curvature = self.smooth_steer.update(new_desired_curvature)
+    if CC.latActive and self.curvatured is not None and self.enable_curvatured:
+      new_desired_curvature = self.curvatured.apply(new_desired_curvature, CS.vEgo)
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
     lat_delay = self.sm["liveDelay"].lateralDelay + LAT_SMOOTH_SECONDS
 

@@ -15,6 +15,9 @@ DESCRIPTIONS = {
   "EnableCurvatureController": tr_noop(
     "Enables curvature PID post-processing additionally to QFK curvature offset"
   ),
+  "EnableCurvatureD": tr_noop(
+    "Learns small speed-dependent curvature bias corrections around center. Experimental and only used on curvature-based steering paths."
+  ),
   "EnableLongComfortMode": tr_noop(
     "Enables longitudinal jerk and accel deviation limit control for safe and comfortable driving"
   ),
@@ -128,6 +131,12 @@ class ICTogglesLayout(Widget):
         lambda: tr("Onroad Screen Timeout"),
         DESCRIPTIONS["DisableScreenTimer"],
         "eye_closed.png",
+        False,
+      ),
+      "EnableCurvatureD": (
+        lambda: tr("CurvatureD Bias Learning"),
+        DESCRIPTIONS["EnableCurvatureD"],
+        "chffr_wheel.png",
         False,
       ),
     }
