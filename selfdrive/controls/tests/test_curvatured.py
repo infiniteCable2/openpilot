@@ -38,3 +38,28 @@ class TestCurvatureDController:
     controller.update_live_params(msg.liveCurvatureParameters)
 
     assert controller.apply(32e-6, 20.0) == 32e-6
+
+  def test_apply_fades_near_center_limits(self):
+    controller = CurvatureDController()
+    msg = messaging.new_message('liveCurvatureParameters')
+    msg.liveCurvatureParameters.liveValid = True
+    msg.liveCurvatureParameters.version = VERSION
+    msg.liveCurvatureParameters.useParams = True
+
+    idx = CurvatureDLookup.indices(32e-6, 22.0)
+    assert idx is not None
+    msg.liveCurvatureParameters.currentCorrection = 10e-6
+    msg.liveCurvatureParameters.bucketSign = idx[0]
+    msg.liveCurvatureParameters.bucketSpeed = idx[1]
+
+    controller.update_live_params(msg.liveCurvatureParameters)
+
+    mid = controller.get_correction(32e-6, 22.0)
+    low = controller.get_correction(2e-6, 22.0)
+    high = controller.get_correction(4.5e-5, 22.0)
+
+    assert mid > 0.0
+    assert 0.0 < low < mid
+    assert 0.0 < high < mid
+    assert controller.get_correction(CurvatureDLookup.CURVATURE_MIN_STEP, 22.0) == 0.0
+    assert controller.get_correction(CurvatureDLookup.CENTER_CURVATURE_MAX, 22.0) == 0.0

@@ -9,6 +9,8 @@ class CurvatureDLookup:
   DBC_CURVATURE_STEP = 6.7e-6  # HCA_03 Curvature scale in vw_meb.dbc
   SPEED_BUCKETS = np.array([0.0, 15.0, 25.0, 35.0, 55.0])
   CENTER_CURVATURE_MAX = 5.0e-5
+  CENTER_FADE_IN_END = 3.0e-6
+  CENTER_FADE_OUT_START = 4.0e-5
   CORRECTION_CAP = 1.2e-5
 
   MIN_SPEED = 5.0
@@ -46,6 +48,26 @@ class CurvatureDLookup:
   def in_center_range(cls, desired_curvature: float) -> bool:
     abs_curvature = abs(desired_curvature)
     return cls.CURVATURE_MIN_STEP <= abs_curvature <= cls.CENTER_CURVATURE_MAX
+
+  @staticmethod
+  def _smoothstep(value: float) -> float:
+    value = float(np.clip(value, 0.0, 1.0))
+    return value * value * (3.0 - 2.0 * value)
+
+  @classmethod
+  def center_weight(cls, desired_curvature: float) -> float:
+    abs_curvature = abs(desired_curvature)
+    if abs_curvature <= cls.CURVATURE_MIN_STEP or abs_curvature >= cls.CENTER_CURVATURE_MAX:
+      return 0.0
+
+    weight = 1.0
+    if abs_curvature < cls.CENTER_FADE_IN_END:
+      fade = (abs_curvature - cls.CURVATURE_MIN_STEP) / max(cls.CENTER_FADE_IN_END - cls.CURVATURE_MIN_STEP, 1e-9)
+      weight *= cls._smoothstep(fade)
+    if abs_curvature > cls.CENTER_FADE_OUT_START:
+      fade = (cls.CENTER_CURVATURE_MAX - abs_curvature) / max(cls.CENTER_CURVATURE_MAX - cls.CENTER_FADE_OUT_START, 1e-9)
+      weight *= cls._smoothstep(fade)
+    return float(np.clip(weight, 0.0, 1.0))
 
   @classmethod
   def indices(cls, desired_curvature: float, v_ego: float) -> tuple[int, int] | None:
@@ -130,7 +152,7 @@ class CurvatureDController(CurvatureDLookup):
     sign_idx, speed_idx = idx
     if (sign_idx, speed_idx) != (self.bucket_sign, self.bucket_speed):
       return 0.0
-    return self.current_correction
+    return self.current_correction * self.center_weight(desired_curvature)
 
   def apply(self, desired_curvature: float, v_ego: float) -> float:
     return float(desired_curvature + self.get_correction(desired_curvature, v_ego))
