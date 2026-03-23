@@ -33,14 +33,14 @@ class TestCurvatureEstimator:
 
   def test_center_caps_remain_tiny(self):
     estimator = get_estimator()
-    desired_curvature = 1.5e-6
+    desired_curvature = 6e-6
 
     for _ in range(CurvatureDLookup.MAX_SAMPLES):
       estimator.add_measurement(desired_curvature, -1e-3, 16.0)
 
     idx = CurvatureDLookup.indices(desired_curvature, 16.0)
     assert idx is not None
-    assert estimator.bias[idx] <= CurvatureDLookup.CORRECTION_CAPS[1]
+    assert estimator.bias[idx] <= CurvatureDLookup.CORRECTION_CAPS[0]
 
   def test_calibration_percent_tracks_coverage(self):
     estimator = get_estimator()

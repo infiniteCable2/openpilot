@@ -5,37 +5,20 @@ VERSION = 1
 
 
 class CurvatureDLookup:
-  SPEED_BUCKETS = np.array([0.0, 8.0, 16.0, 24.0, 32.0, 40.0, 55.0])
+  CURVATURE_MIN_STEP = 6.7e-6  # HCA_03 Curvature scale in vw_meb.dbc
+  SPEED_BUCKETS = np.array([0.0, 15.0, 25.0, 35.0, 55.0])
   CURVATURE_BUCKETS = np.array([
     0.0,
-    1e-6,
-    2e-6,
-    4e-6,
-    8e-6,
-    16e-6,
-    32e-6,
-    64e-6,
-    128e-6,
-    256e-6,
-    512e-6,
+    CURVATURE_MIN_STEP,
+    1e-5,
+    1e-4,
     1e-3,
-    2e-3,
-    4e-3,
   ])
   CORRECTION_CAPS = np.array([
-    2e-6,
-    3e-6,
-    4e-6,
-    6e-6,
-    8e-6,
-    1.2e-5,
-    1.8e-5,
-    2.6e-5,
-    3.8e-5,
-    5.0e-5,
-    6.2e-5,
-    7.5e-5,
-    9.0e-5,
+    CURVATURE_MIN_STEP,
+    2.0e-5,
+    6.0e-5,
+    1.2e-4,
   ])
 
   MIN_SPEED = 5.0
@@ -44,7 +27,7 @@ class CurvatureDLookup:
   FULL_CONFIDENCE_SAMPLES = 800
   MEAN_WINDOW = 400
   MAX_SAMPLES = 5000
-  IMPORTANT_CURVATURE_BUCKETS = 8
+  IMPORTANT_CURVATURE_BUCKETS = len(CURVATURE_BUCKETS) - 1
 
   @classmethod
   def shape(cls) -> tuple[int, int, int]:

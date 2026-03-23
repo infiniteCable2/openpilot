@@ -12,7 +12,7 @@ from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.sunnypilot import PARAMS_UPDATE_PERIOD
 from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 
-HISTORY = 3.0
+HISTORY = 1.5
 MAX_YAW_RATE_STD = 1.0
 MIN_ENGAGE_BUFFER = 1.5
 ALLOWED_CARS = ['volkswagen']
@@ -64,6 +64,18 @@ class CurvatureEstimator(CurvatureDLookup):
 
   def _history_ready(self) -> bool:
     return min(len(self.car_control_t), len(self.car_state_t), len(self.model_t)) == self.hist_len
+
+  @staticmethod
+  def _sample_at_or_before(target_t: float, ts: deque, values: deque):
+    if len(ts) == 0:
+      return None
+    if target_t < ts[0]:
+      return None
+
+    for i in range(len(ts) - 1, -1, -1):
+      if ts[i] <= target_t:
+        return values[i]
+    return None
 
   def add_measurement(self, desired_curvature: float, actual_curvature: float, v_ego: float) -> None:
     idx = self.indices(desired_curvature, v_ego)
@@ -133,12 +145,15 @@ class CurvatureEstimator(CurvatureDLookup):
         return
 
       target_t = t - self.lag
-      lat_active = bool(np.interp(target_t, self.car_control_t, self.lat_active))
-      steering_pressed = bool(np.interp(target_t, self.car_state_t, self.steering_pressed))
-      v_ego = float(np.interp(target_t, self.car_state_t, self.vego))
-      desired_curvature = float(np.interp(target_t, self.model_t, self.desired_curvature))
+      lat_active = self._sample_at_or_before(target_t, self.car_control_t, self.lat_active)
+      steering_pressed = self._sample_at_or_before(target_t, self.car_state_t, self.steering_pressed)
+      v_ego = self._sample_at_or_before(target_t, self.car_state_t, self.vego)
+      desired_curvature = self._sample_at_or_before(target_t, self.model_t, self.desired_curvature)
 
-      if not lat_active or steering_pressed or v_ego < self.MIN_SPEED:
+      if None in (lat_active, steering_pressed, v_ego, desired_curvature):
+        return
+
+      if not bool(lat_active) or bool(steering_pressed) or float(v_ego) < self.MIN_SPEED:
         return
 
       device_pose = Pose.from_live_pose(msg)
@@ -148,6 +163,8 @@ class CurvatureEstimator(CurvatureDLookup):
       if yaw_rate_std >= MAX_YAW_RATE_STD:
         return
 
+      v_ego = float(v_ego)
+      desired_curvature = float(desired_curvature)
       actual_curvature = yaw_rate / max(v_ego, 0.1)
       if max(abs(desired_curvature), abs(actual_curvature)) * (v_ego ** 2) > self.MAX_LAT_ACCEL:
         return
@@ -191,13 +208,8 @@ def main():
       for which in sm.updated.keys():
         if sm.updated[which]:
           estimator.handle_log(sm.logMonoTime[which] * 1e-9, which, sm[which])
-    else:
-      if sm.updated["modelV2"]:
-        estimator.handle_log(sm.logMonoTime["modelV2"] * 1e-9, "modelV2", sm["modelV2"])
-      if sm.updated["carState"]:
-        estimator.handle_log(sm.logMonoTime["carState"] * 1e-9, "carState", sm["carState"])
 
-    if sm.frame % 5 == 0:
+    if sm.frame % 10 == 0:
       pm.send('liveCurvatureParameters', estimator.get_msg(valid=sm.all_checks()))
 
 
