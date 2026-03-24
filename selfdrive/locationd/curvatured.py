@@ -97,7 +97,7 @@ class CurvatureEstimator(CurvatureDLookup):
   def update_use_params(self, force: bool = False):
     if force or self.frame % int(PARAMS_UPDATE_PERIOD / DT_MDL) == 0:
       self.enable_curvatured = self.params.get_bool("EnableCurvatureD")
-      self.use_params = self.enable_curvatured and self.CP.brand in ALLOWED_CARS and \
+      self.use_params = self.CP.brand in ALLOWED_CARS and \
                         self.CP.steerControlType == car.CarParams.SteerControlType.curvatureDEPRECATED
       if self.prev_use_params != self.use_params:
         cloudlog.info(f"curvatured use_params={self.use_params} toggle={self.enable_curvatured} "

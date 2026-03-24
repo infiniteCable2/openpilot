@@ -135,16 +135,10 @@ class Controls(ControlsExt):
 
       self.LaC.extension.update_lateral_lag(self.lat_delay)
 
-    if self.curvatured is not None:
+    if self.CP.steerControlType == car.CarParams.SteerControlType.curvatureDEPRECATED:
       curvature_params = self.sm['liveCurvatureParameters']
-      if not self.enable_curvatured:
-        self.curvatured.reset()
-      elif self.sm.all_checks(['liveCurvatureParameters']) and curvature_params.useParams:
+      if self.sm.all_checks(['liveCurvatureParameters']) and curvature_params.useParams:
         self.curvatured.update_live_params(curvature_params)
-      elif self.sm.updated['liveCurvatureParameters']:
-        self.curvatured.update_live_params(curvature_params)
-      elif not self.sm.alive['liveCurvatureParameters']:
-        self.curvatured.reset()
 
     long_plan = self.sm['longitudinalPlan']
     model_v2 = self.sm['modelV2']
@@ -188,7 +182,7 @@ class Controls(ControlsExt):
     new_desired_curvature = self.model_desired_curvature if CC.latActive else self.curvature
     if self.enable_smooth_steer:
       new_desired_curvature = self.smooth_steer.update(new_desired_curvature)
-    if CC.latActive and self.curvatured is not None and self.enable_curvatured:
+    if CC.latActive and self.CP.steerControlType == car.CarParams.SteerControlType.curvatureDEPRECATED and self.enable_curvatured:
       new_desired_curvature = self.curvatured.apply(new_desired_curvature, CS.vEgo)
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
     lat_delay = self.sm["liveDelay"].lateralDelay + LAT_SMOOTH_SECONDS
