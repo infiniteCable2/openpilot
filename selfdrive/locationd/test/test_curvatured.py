@@ -55,7 +55,7 @@ class TestCurvatureEstimator:
 
     assert estimator.get_msg().liveCurvatureParameters.calPerc == 100
 
-  def test_message_contains_only_current_bucket_state(self):
+  def test_message_contains_stable_bucket_arrays(self):
     estimator = get_estimator()
     desired_curvature = 32e-6
     v_ego = 22.0
@@ -71,3 +71,10 @@ class TestCurvatureEstimator:
     assert msg.liveCurvatureParameters.bucketSign == idx[0]
     assert msg.liveCurvatureParameters.bucketSpeed == idx[1]
     assert msg.liveCurvatureParameters.currentCorrection > 0.0
+    assert len(msg.liveCurvatureParameters.corrections) == CurvatureDLookup.total_size()
+    assert len(msg.liveCurvatureParameters.counts) == CurvatureDLookup.total_size()
+    assert len(msg.liveCurvatureParameters.biases) == CurvatureDLookup.total_size()
+    flat_idx = idx[0] * (len(CurvatureDLookup.SPEED_BUCKETS) - 1) + idx[1]
+    assert msg.liveCurvatureParameters.corrections[flat_idx] > 0.0
+    assert msg.liveCurvatureParameters.counts[flat_idx] == CurvatureDLookup.FULL_CONFIDENCE_SAMPLES
+    assert msg.liveCurvatureParameters.biases[flat_idx] > 0.0

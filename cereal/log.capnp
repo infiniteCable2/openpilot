@@ -2316,6 +2316,9 @@ struct LiveCurvatureParametersData {
   calPerc @7 :Int8;
   bucketSign @8 :Int8;
   bucketSpeed @9 :Int8;
+  corrections @10 :List(Float32);
+  counts @11 :List(Int32);
+  biases @12 :List(Float32);
 }
 
 struct LiveDelayData {

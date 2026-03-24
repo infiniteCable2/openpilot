@@ -107,11 +107,9 @@ class CurvatureDLookup:
 
 class CurvatureDController(CurvatureDLookup):
   def __init__(self):
-    self.use_params = False
-    self.live_valid = False
-    self.current_correction = 0.0
-    self.bucket_sign = -1
-    self.bucket_speed = -1
+    self.corrections = np.zeros(self.shape(), dtype=np.float32)
+    self.counts = np.zeros(self.shape(), dtype=np.int32)
+    self.reset()
 
   def reset(self):
     self.use_params = False
@@ -119,21 +117,26 @@ class CurvatureDController(CurvatureDLookup):
     self.current_correction = 0.0
     self.bucket_sign = -1
     self.bucket_speed = -1
+    self.corrections.fill(0.0)
+    self.counts.fill(0)
 
   def update_live_params(self, msg) -> None:
     self.use_params = bool(msg.useParams)
+    corrections = list(msg.corrections)
+    counts = list(msg.counts)
+    valid_shape = len(corrections) == self.total_size() and len(counts) == self.total_size()
     valid_bucket = (
       msg.bucketSign in (-1, 0, 1) and
       -1 <= msg.bucketSpeed < len(self.SPEED_BUCKETS) - 1
     )
-    self.live_valid = bool(msg.liveValid) and msg.version == VERSION and valid_bucket
+    self.live_valid = bool(msg.liveValid) and msg.version == VERSION and valid_bucket and valid_shape
 
     if not self.live_valid:
-      self.current_correction = 0.0
-      self.bucket_sign = -1
-      self.bucket_speed = -1
+      self.reset()
       return
 
+    self.corrections = self.unflatten(corrections).astype(np.float32)
+    self.counts = self.unflatten(counts).astype(np.int32)
     self.current_correction = float(msg.currentCorrection)
     self.bucket_sign = int(msg.bucketSign)
     self.bucket_speed = int(msg.bucketSpeed)
@@ -150,9 +153,8 @@ class CurvatureDController(CurvatureDLookup):
       return 0.0
 
     sign_idx, speed_idx = idx
-    if (sign_idx, speed_idx) != (self.bucket_sign, self.bucket_speed):
-      return 0.0
-    return self.current_correction * self.center_weight(desired_curvature)
+    bucket_correction = float(self.corrections[sign_idx, speed_idx])
+    return bucket_correction * self.center_weight(desired_curvature)
 
   def apply(self, desired_curvature: float, v_ego: float) -> float:
     return float(desired_curvature + self.get_correction(desired_curvature, v_ego))

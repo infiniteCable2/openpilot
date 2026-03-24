@@ -4,7 +4,7 @@ from collections import deque
 import numpy as np
 
 import cereal.messaging as messaging
-from cereal import car
+from cereal import car, log
 from openpilot.common.params import Params
 from openpilot.common.realtime import config_realtime_process, DT_MDL
 from openpilot.common.swaglog import cloudlog
@@ -52,10 +52,43 @@ class CurvatureEstimator(CurvatureDLookup):
     self.enable_curvatured = False
     self.prev_use_params = None
     self.last_status_log_t = 0.0
+
+    self._restore_cached_params()
     self.update_use_params(force=True)
 
     cloudlog.info(f"curvatured init brand={self.CP.brand} fingerprint={self.CP.carFingerprint} "
                   f"steerControlType={self.CP.steerControlType} history={HISTORY:.2f}s")
+
+  @staticmethod
+  def get_restore_key(CP: car.CarParams, version: int):
+    return (CP.carFingerprint, CP.brand, CP.steerControlType.raw, version)
+
+  def _restore_cached_params(self) -> None:
+    params_cache = self.params.get("CarParamsPrevRoute")
+    curvature_cache = self.params.get("LiveCurvatureParameters")
+    if params_cache is None or curvature_cache is None:
+      return
+
+    try:
+      with log.Event.from_bytes(curvature_cache) as log_evt:
+        cache_lcp = log_evt.liveCurvatureParameters
+      with car.CarParams.from_bytes(params_cache) as msg:
+        cache_CP = msg
+
+      if self.get_restore_key(cache_CP, cache_lcp.version) != self.get_restore_key(self.CP, VERSION):
+        return
+
+      biases = list(cache_lcp.biases)
+      counts = list(cache_lcp.counts)
+      if len(biases) != self.total_size() or len(counts) != self.total_size():
+        raise ValueError("invalid curvature cache shape")
+
+      self.bias = self.unflatten(biases).astype(np.float32)
+      self.counts = self.unflatten(counts).astype(np.int32)
+      cloudlog.info("restored curvature params from cache")
+    except Exception:
+      cloudlog.exception("failed to restore cached curvature params")
+      self.params.remove("LiveCurvatureParameters")
 
   def update_use_params(self, force: bool = False):
     if force or self.frame % int(PARAMS_UPDATE_PERIOD / DT_MDL) == 0:
@@ -182,12 +215,13 @@ class CurvatureEstimator(CurvatureDLookup):
 
       self.add_measurement(desired_curvature, actual_curvature, v_ego)
 
-  def get_msg(self, valid: bool = True):
+  def get_msg(self, valid: bool = True, live_valid: bool = True):
     msg = messaging.new_message('liveCurvatureParameters')
     msg.valid = valid
 
     live_curvature_parameters = msg.liveCurvatureParameters
-    live_curvature_parameters.liveValid = bool(np.isfinite(self.bias).all())
+    corrections = self.corrections_from_bias(self.bias, self.counts)
+    live_curvature_parameters.liveValid = bool(live_valid) and bool(np.isfinite(self.bias).all())
     live_curvature_parameters.version = VERSION
     live_curvature_parameters.useParams = self.use_params
     live_curvature_parameters.currentCorrection = self.current_correction
@@ -197,6 +231,9 @@ class CurvatureEstimator(CurvatureDLookup):
     live_curvature_parameters.calPerc = self.calibration_percent(self.counts)
     live_curvature_parameters.bucketSign = int(self.current_bucket[0])
     live_curvature_parameters.bucketSpeed = int(self.current_bucket[1])
+    live_curvature_parameters.corrections = self.flatten(corrections)
+    live_curvature_parameters.counts = self.flatten(self.counts)
+    live_curvature_parameters.biases = self.flatten(self.bias)
     return msg
 
   def maybe_log_status(self, t: float, sm) -> None:
@@ -229,8 +266,8 @@ def main():
       sm.update()
       estimator.update_use_params()
 
-      if estimator.use_params and sm.all_checks():
-        for which in sm.updated.keys():
+      if estimator.use_params:
+        for which in sorted(sm.updated.keys(), key=lambda x: sm.logMonoTime[x]):
           if sm.updated[which]:
             try:
               estimator.handle_log(sm.logMonoTime[which] * 1e-9, which, sm[which])
@@ -240,7 +277,10 @@ def main():
       if sm.frame % 20 == 0:
         t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
         estimator.maybe_log_status(t, sm)
-        pm.send('liveCurvatureParameters', estimator.get_msg(valid=sm.all_checks()))
+        pm.send('liveCurvatureParameters', estimator.get_msg(valid=True, live_valid=sm.all_checks()))
+
+      if sm.frame % 1200 == 0:
+        params.put_nonblocking("LiveCurvatureParameters", estimator.get_msg(valid=True, live_valid=True).to_bytes())
     except Exception:
       cloudlog.exception("curvatured main loop failed")
 

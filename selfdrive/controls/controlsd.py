@@ -48,7 +48,7 @@ class Controls(ControlsExt):
 
     self.sm = messaging.SubMaster(['liveDelay', 'liveParameters', 'liveTorqueParameters', 'liveCurvatureParameters', 'modelV2', 'selfdriveState',
                                    'liveCalibration', 'livePose', 'longitudinalPlan', 'carState', 'carOutput',
-                                   'driverMonitoringState', 'onroadEvents', 'driverAssistance', 'liveDelay'] + self.sm_services_ext,
+                                   'driverMonitoringState', 'onroadEvents', 'driverAssistance'] + self.sm_services_ext,
                                   poll='selfdriveState')
     self.pm = messaging.PubMaster(['carControl', 'controlsState'] + self.pm_services_ext)
 
@@ -136,12 +136,14 @@ class Controls(ControlsExt):
       self.LaC.extension.update_lateral_lag(self.lat_delay)
 
     if self.curvatured is not None:
+      curvature_params = self.sm['liveCurvatureParameters']
       if not self.enable_curvatured:
         self.curvatured.reset()
-      elif self.sm.updated['liveCurvatureParameters'] and self.sm.all_checks(['liveCurvatureParameters']):
-        curvature_params = self.sm['liveCurvatureParameters']
+      elif self.sm.all_checks(['liveCurvatureParameters']) and curvature_params.useParams:
         self.curvatured.update_live_params(curvature_params)
-      elif not self.sm.alive['liveCurvatureParameters'] or not self.sm.valid['liveCurvatureParameters']:
+      elif self.sm.updated['liveCurvatureParameters']:
+        self.curvatured.update_live_params(curvature_params)
+      elif not self.sm.alive['liveCurvatureParameters']:
         self.curvatured.reset()
 
     long_plan = self.sm['longitudinalPlan']

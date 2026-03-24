@@ -4,6 +4,21 @@ from openpilot.selfdrive.controls.lib.curvatured import CurvatureDController, Cu
 
 
 class TestCurvatureDController:
+  @staticmethod
+  def _set_bucket(msg, idx, correction):
+    corrections = [0.0] * CurvatureDLookup.total_size()
+    counts = [0] * CurvatureDLookup.total_size()
+    flat_idx = idx[0] * (len(CurvatureDLookup.SPEED_BUCKETS) - 1) + idx[1]
+    corrections[flat_idx] = correction
+    counts[flat_idx] = CurvatureDLookup.FULL_CONFIDENCE_SAMPLES
+    msg.liveCurvatureParameters.corrections = corrections
+    msg.liveCurvatureParameters.counts = counts
+    msg.liveCurvatureParameters.biases = corrections
+    msg.liveCurvatureParameters.currentCorrection = correction
+    msg.liveCurvatureParameters.currentBias = correction
+    msg.liveCurvatureParameters.currentBucketPoints = CurvatureDLookup.FULL_CONFIDENCE_SAMPLES
+    msg.liveCurvatureParameters.bucketSign = idx[0]
+    msg.liveCurvatureParameters.bucketSpeed = idx[1]
 
   def test_apply_uses_matching_bucket_only(self):
     controller = CurvatureDController()
@@ -14,11 +29,7 @@ class TestCurvatureDController:
 
     idx = CurvatureDLookup.indices(32e-6, 22.0)
     assert idx is not None
-    msg.liveCurvatureParameters.currentCorrection = 20e-6
-    msg.liveCurvatureParameters.currentBias = 20e-6
-    msg.liveCurvatureParameters.currentBucketPoints = CurvatureDLookup.FULL_CONFIDENCE_SAMPLES
-    msg.liveCurvatureParameters.bucketSign = idx[0]
-    msg.liveCurvatureParameters.bucketSpeed = idx[1]
+    self._set_bucket(msg, idx, 20e-6)
 
     controller.update_live_params(msg.liveCurvatureParameters)
 
@@ -32,6 +43,9 @@ class TestCurvatureDController:
     msg.liveCurvatureParameters.liveValid = False
     msg.liveCurvatureParameters.version = VERSION
     msg.liveCurvatureParameters.useParams = True
+    msg.liveCurvatureParameters.corrections = [0.0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.counts = [0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.biases = [0.0] * CurvatureDLookup.total_size()
     msg.liveCurvatureParameters.bucketSign = -1
     msg.liveCurvatureParameters.bucketSpeed = -1
 
@@ -48,9 +62,7 @@ class TestCurvatureDController:
 
     idx = CurvatureDLookup.indices(32e-6, 22.0)
     assert idx is not None
-    msg.liveCurvatureParameters.currentCorrection = 10e-6
-    msg.liveCurvatureParameters.bucketSign = idx[0]
-    msg.liveCurvatureParameters.bucketSpeed = idx[1]
+    self._set_bucket(msg, idx, 10e-6)
 
     controller.update_live_params(msg.liveCurvatureParameters)
 
