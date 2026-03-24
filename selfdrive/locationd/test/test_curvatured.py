@@ -1,6 +1,9 @@
+import numpy as np
+
 from cereal import car
 
-from openpilot.selfdrive.locationd.curvatured import CurvatureEstimator
+from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
+from openpilot.selfdrive.locationd.curvatured import CurvatureEstimator, MAX_LEARN_ROLL_LATERAL_ACCEL
 from openpilot.selfdrive.controls.lib.curvatured import CurvatureDLookup
 
 
@@ -78,3 +81,12 @@ class TestCurvatureEstimator:
     assert msg.liveCurvatureParameters.corrections[flat_idx] > 0.0
     assert msg.liveCurvatureParameters.counts[flat_idx] == CurvatureDLookup.FULL_CONFIDENCE_SAMPLES
     assert msg.liveCurvatureParameters.biases[flat_idx] > 0.0
+
+  def test_learning_is_blocked_for_larger_roll(self):
+    estimator = get_estimator()
+
+    small_roll = np.arcsin(0.5 * MAX_LEARN_ROLL_LATERAL_ACCEL / ACCELERATION_DUE_TO_GRAVITY)
+    large_roll = np.arcsin(1.5 * MAX_LEARN_ROLL_LATERAL_ACCEL / ACCELERATION_DUE_TO_GRAVITY)
+
+    assert estimator.roll_learning_allowed(float(small_roll))
+    assert not estimator.roll_learning_allowed(float(large_roll))

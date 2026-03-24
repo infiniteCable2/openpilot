@@ -5,9 +5,11 @@ import numpy as np
 
 import cereal.messaging as messaging
 from cereal import car, log
+from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
 from openpilot.common.params import Params
 from openpilot.common.realtime import config_realtime_process, DT_MDL
 from openpilot.common.swaglog import cloudlog
+from openpilot.selfdrive.controls.lib.drive_helpers import MAX_LATERAL_ACCEL_NO_ROLL
 from openpilot.selfdrive.controls.lib.curvatured import CurvatureDLookup, VERSION
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.sunnypilot import PARAMS_UPDATE_PERIOD
@@ -18,6 +20,8 @@ MAX_YAW_RATE_STD = 1.0
 MIN_ENGAGE_BUFFER = 1.5
 ALLOWED_CARS = ['volkswagen']
 STATUS_LOG_INTERVAL = 10.0
+ROLL_LEARN_FRACTION_OF_MAX_LAT_ACCEL = 0.2
+MAX_LEARN_ROLL_LATERAL_ACCEL = MAX_LATERAL_ACCEL_NO_ROLL * ROLL_LEARN_FRACTION_OF_MAX_LAT_ACCEL
 
 
 class CurvatureEstimator(CurvatureDLookup):
@@ -201,6 +205,8 @@ class CurvatureEstimator(CurvatureDLookup):
         return
 
       device_pose = Pose.from_live_pose(msg)
+      if not self.roll_learning_allowed(device_pose.orientation.roll):
+        return
       calibrated_pose = self.calibrator.build_calibrated_pose(device_pose)
       yaw_rate = calibrated_pose.angular_velocity.yaw
       yaw_rate_std = calibrated_pose.angular_velocity.yaw_std
@@ -235,6 +241,10 @@ class CurvatureEstimator(CurvatureDLookup):
     live_curvature_parameters.counts = self.flatten(self.counts)
     live_curvature_parameters.biases = self.flatten(self.bias)
     return msg
+
+  @staticmethod
+  def roll_learning_allowed(roll: float) -> bool:
+    return abs(np.sin(float(roll)) * ACCELERATION_DUE_TO_GRAVITY) <= MAX_LEARN_ROLL_LATERAL_ACCEL
 
   def maybe_log_status(self, t: float, sm) -> None:
     if t < self.last_status_log_t + STATUS_LOG_INTERVAL:
