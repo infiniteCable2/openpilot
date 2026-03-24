@@ -139,10 +139,11 @@ class Controls(ControlsExt):
       curvature_params = self.sm['liveCurvatureParameters']
       if not self.enable_curvatured:
         self.curvatured.reset()
-      elif self.sm.all_checks(['liveCurvatureParameters']) and curvature_params.useParams:
-        self.curvatured.update_live_params(curvature_params)
       elif self.sm.updated['liveCurvatureParameters']:
-        self.curvatured.update_live_params(curvature_params)
+        if self.sm.all_checks(['liveCurvatureParameters']) and curvature_params.useParams:
+          self.curvatured.update_live_params(curvature_params)
+        else:
+          self.curvatured.reset()
       elif not self.sm.alive['liveCurvatureParameters']:
         self.curvatured.reset()
 

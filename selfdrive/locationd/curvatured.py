@@ -7,7 +7,7 @@ import cereal.messaging as messaging
 from cereal import car, log
 from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
 from openpilot.common.params import Params
-from openpilot.common.realtime import config_realtime_process, DT_MDL
+from openpilot.common.realtime import DT_MDL
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.controls.lib.drive_helpers import MAX_LATERAL_ACCEL_NO_ROLL
 from openpilot.selfdrive.controls.lib.curvatured import CurvatureDLookup, VERSION
@@ -262,14 +262,13 @@ class CurvatureEstimator(CurvatureDLookup):
 
 
 def main():
-  config_realtime_process([0, 1, 2, 3], 5)
-
   pm = messaging.PubMaster(['liveCurvatureParameters'])
   sm = messaging.SubMaster(['carControl', 'carState', 'controlsState', 'liveCalibration', 'livePose', 'liveDelay'],
                            poll='livePose')
 
   params = Params()
   estimator = CurvatureEstimator(messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams))
+  cloudlog.info("curvatured running without realtime scheduling")
 
   while True:
     try:
