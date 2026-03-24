@@ -272,28 +272,23 @@ def main():
   estimator = CurvatureEstimator(messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams))
 
   while True:
-    try:
-      sm.update()
-      estimator.update_use_params()
+    sm.update()
+    if sm.all_checks():
+      for which in sm.updated.keys():
+        if sm.updated[which]:
+          estimator.handle_log(sm.logMonoTime[which] * 1e-9, which, sm[which])
 
-      if estimator.use_params:
-        for which in sorted(sm.updated.keys(), key=lambda x: sm.logMonoTime[x]):
-          if sm.updated[which]:
-            try:
-              estimator.handle_log(sm.logMonoTime[which] * 1e-9, which, sm[which])
-            except Exception:
-              cloudlog.exception(f"curvatured handle_log failed service={which}")
+    estimator.update_use_params()
 
-      # 4Hz driven by livePose, matching torqued/lagd cadence
-      if sm.frame % 5 == 0:
-        t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
-        estimator.maybe_log_status(t, sm)
-        pm.send('liveCurvatureParameters', estimator.get_msg(valid=True, live_valid=sm.all_checks()))
+    # 4Hz driven by livePose, matching torqued/lagd cadence
+    if sm.frame % 5 == 0:
+      t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
+      estimator.maybe_log_status(t, sm)
+      pm.send('liveCurvatureParameters', estimator.get_msg(valid=sm.all_checks(), live_valid=sm.all_checks()))
 
-      if sm.frame % 1200 == 0:
-        params.put_nonblocking("LiveCurvatureParameters", estimator.get_msg(valid=True, live_valid=True).to_bytes())
-    except Exception:
-      cloudlog.exception("curvatured main loop failed")
+    if sm.frame % 1200 == 0:
+      params.put_nonblocking("LiveCurvatureParameters",
+                             estimator.get_msg(valid=sm.all_checks(), live_valid=sm.all_checks()).to_bytes())
 
 
 if __name__ == "__main__":
