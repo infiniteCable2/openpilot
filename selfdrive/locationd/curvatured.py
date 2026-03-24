@@ -284,7 +284,8 @@ def main():
             except Exception:
               cloudlog.exception(f"curvatured handle_log failed service={which}")
 
-      if sm.frame % 20 == 0:
+      # 4Hz driven by livePose, matching torqued/lagd cadence
+      if sm.frame % 5 == 0:
         t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
         estimator.maybe_log_status(t, sm)
         pm.send('liveCurvatureParameters', estimator.get_msg(valid=True, live_valid=sm.all_checks()))
