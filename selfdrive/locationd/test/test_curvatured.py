@@ -16,15 +16,19 @@ def get_estimator():
 
 
 class TestCurvatureEstimator:
+  @staticmethod
+  def _train_speed_fit(estimator, sign: float, v_ego: float):
+    for desired_curvature in (sign * 8e-6, sign * 2e-5, sign * 5e-5, sign * 1.2e-4):
+      for _ in range(int(CurvatureDLookup.FIT_MIN_TOTAL_SAMPLES / 4)):
+        estimator.add_measurement(desired_curvature, desired_curvature * 0.6, v_ego)
 
-  def test_speed_buckets_are_independent(self):
+  def test_speed_anchors_are_independent(self):
     estimator = get_estimator()
     desired_curvature = 32e-6
 
-    for _ in range(CurvatureDLookup.FULL_CONFIDENCE_SAMPLES):
-      estimator.add_measurement(desired_curvature, 0.0, 22.0)
+    for _ in range(int(CurvatureDLookup.FULL_CONFIDENCE_SAMPLES)):
+      estimator.add_measurement(desired_curvature, desired_curvature * 0.7, 22.0)
 
-    msg = estimator.get_msg()
     idx = CurvatureDLookup.indices(desired_curvature, 22.0)
     other_idx = CurvatureDLookup.indices(desired_curvature, 38.0)
 
@@ -32,11 +36,11 @@ class TestCurvatureEstimator:
     assert other_idx is not None
     assert estimator.counts[idx] == CurvatureDLookup.FULL_CONFIDENCE_SAMPLES
     assert estimator.bias[idx] > 0.0
-    assert estimator.counts[other_idx] == 0
+    assert estimator.counts[other_idx] == 0.0
 
-  def test_center_caps_remain_tiny(self):
+  def test_bucket_bias_cap_remains_tiny(self):
     estimator = get_estimator()
-    desired_curvature = CurvatureDLookup.CURVATURE_MIN_STEP
+    desired_curvature = 8e-6
 
     for _ in range(CurvatureDLookup.MAX_SAMPLES):
       estimator.add_measurement(desired_curvature, -1e-3, 16.0)
@@ -45,27 +49,22 @@ class TestCurvatureEstimator:
     assert idx is not None
     assert estimator.bias[idx] <= CurvatureDLookup.CORRECTION_CAP
 
-  def test_calibration_percent_tracks_coverage(self):
+  def test_calibration_percent_tracks_speed_fit_coverage(self):
     estimator = get_estimator()
     assert estimator.get_msg().liveCurvatureParameters.calPerc == 0
 
     for sign in (-1.0, 1.0):
-      for speed_idx in range(len(CurvatureDLookup.SPEED_BUCKETS) - 1):
-        v_ego = 0.5 * (CurvatureDLookup.SPEED_BUCKETS[speed_idx] + CurvatureDLookup.SPEED_BUCKETS[speed_idx + 1])
-        desired_curvature = sign * 32e-6
-        for _ in range(CurvatureDLookup.MIN_APPLY_SAMPLES):
-          estimator.add_measurement(desired_curvature, 0.0, v_ego)
+      for v_ego in CurvatureDLookup.SPEED_ANCHORS:
+        self._train_speed_fit(estimator, sign, float(v_ego))
 
     assert estimator.get_msg().liveCurvatureParameters.calPerc == 100
 
-  def test_message_contains_stable_bucket_arrays(self):
+  def test_message_contains_fit_arrays_and_current_bucket(self):
     estimator = get_estimator()
     desired_curvature = 32e-6
     v_ego = 22.0
 
-    for _ in range(CurvatureDLookup.FULL_CONFIDENCE_SAMPLES):
-      estimator.add_measurement(desired_curvature, 0.0, v_ego)
-
+    self._train_speed_fit(estimator, 1.0, v_ego)
     estimator._update_current_lookup(desired_curvature, v_ego)
     msg = estimator.get_msg()
     idx = CurvatureDLookup.indices(desired_curvature, v_ego)
@@ -73,14 +72,14 @@ class TestCurvatureEstimator:
     assert idx is not None
     assert msg.liveCurvatureParameters.bucketSign == idx[0]
     assert msg.liveCurvatureParameters.bucketSpeed == idx[1]
+    assert msg.liveCurvatureParameters.bucketCurvature == idx[2]
     assert msg.liveCurvatureParameters.currentCorrection > 0.0
+    assert len(msg.liveCurvatureParameters.fitAmplitudes) == CurvatureDLookup.fit_total_size()
+    assert len(msg.liveCurvatureParameters.fitScales) == CurvatureDLookup.fit_total_size()
+    assert len(msg.liveCurvatureParameters.fitValid) == CurvatureDLookup.fit_total_size()
     assert len(msg.liveCurvatureParameters.corrections) == CurvatureDLookup.total_size()
     assert len(msg.liveCurvatureParameters.counts) == CurvatureDLookup.total_size()
     assert len(msg.liveCurvatureParameters.biases) == CurvatureDLookup.total_size()
-    flat_idx = idx[0] * (len(CurvatureDLookup.SPEED_BUCKETS) - 1) + idx[1]
-    assert msg.liveCurvatureParameters.corrections[flat_idx] > 0.0
-    assert msg.liveCurvatureParameters.counts[flat_idx] == CurvatureDLookup.FULL_CONFIDENCE_SAMPLES
-    assert msg.liveCurvatureParameters.biases[flat_idx] > 0.0
 
   def test_learning_is_blocked_for_larger_roll(self):
     estimator = get_estimator()

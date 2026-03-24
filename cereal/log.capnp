@@ -2319,6 +2319,10 @@ struct LiveCurvatureParametersData {
   corrections @10 :List(Float32);
   counts @11 :List(Int32);
   biases @12 :List(Float32);
+  bucketCurvature @13 :Int8;
+  fitAmplitudes @14 :List(Float32);
+  fitScales @15 :List(Float32);
+  fitValid @16 :List(Bool);
 }
 
 struct LiveDelayData {
