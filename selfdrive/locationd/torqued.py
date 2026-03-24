@@ -10,6 +10,7 @@ from openpilot.common.params import Params
 from openpilot.common.realtime import config_realtime_process, DT_MDL
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.swaglog import cloudlog
+from openpilot.selfdrive.locationd.curvatured import CurvatureEstimator
 from openpilot.selfdrive.locationd.helpers import PointBuckets, ParameterEstimator, PoseCalibrator, Pose
 from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 from openpilot.sunnypilot.selfdrive.locationd.torqued_ext import TorqueEstimatorExt
@@ -252,31 +253,47 @@ def main(demo=False):
   config_realtime_process([0, 1, 2, 3], 5)
 
   DEBUG = bool(int(os.getenv("DEBUG", "0")))
+  torque_services = ['carControl', 'carOutput', 'carState', 'liveCalibration', 'livePose', 'liveDelay']
+  curvature_services = ['carControl', 'carState', 'controlsState', 'liveCalibration', 'livePose', 'liveDelay']
 
-  pm = messaging.PubMaster(['liveTorqueParameters'])
-  sm = messaging.SubMaster(['carControl', 'carOutput', 'carState', 'liveCalibration', 'livePose', 'liveDelay'], poll='livePose')
+  pm = messaging.PubMaster(['liveTorqueParameters', 'liveCurvatureParameters'])
+  sm = messaging.SubMaster(sorted(set(torque_services + curvature_services)), poll='livePose')
 
   params = Params()
-  estimator = TorqueEstimator(messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams))
+  CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
+  estimator = TorqueEstimator(CP)
+  curvature_estimator = CurvatureEstimator(CP)
 
   while True:
     sm.update()
-    if sm.all_checks():
-      for which in sm.updated.keys():
-        if sm.updated[which]:
-          t = sm.logMonoTime[which] * 1e-9
+    torque_valid = sm.all_checks(torque_services)
+    curvature_valid = sm.all_checks(curvature_services)
+
+    for which in sm.updated.keys():
+      if sm.updated[which]:
+        t = sm.logMonoTime[which] * 1e-9
+        if torque_valid and which in torque_services:
           estimator.handle_log(t, which, sm[which])
+        if curvature_valid and which in curvature_services:
+          curvature_estimator.handle_log(t, which, sm[which])
 
     TorqueEstimatorExt.update_use_params(estimator)
+    curvature_estimator.update_use_params()
 
     # 4Hz driven by livePose
     if sm.frame % 5 == 0:
-      pm.send('liveTorqueParameters', estimator.get_msg(valid=sm.all_checks(), with_points=DEBUG))
+      pm.send('liveTorqueParameters', estimator.get_msg(valid=torque_valid, with_points=DEBUG))
+      t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
+      curvature_estimator.maybe_log_status(t, sm, curvature_services, curvature_valid)
+      pm.send('liveCurvatureParameters', curvature_estimator.get_msg(valid=curvature_valid, live_valid=curvature_valid))
 
     # Cache points every 60 seconds while onroad
     if sm.frame % 240 == 0:
-      msg = estimator.get_msg(valid=sm.all_checks(), with_points=True)
-      params.put_nonblocking("LiveTorqueParameters", msg.to_bytes())
+      params.put_nonblocking("LiveTorqueParameters", estimator.get_msg(valid=torque_valid, with_points=True).to_bytes())
+
+    if sm.frame % 1200 == 0:
+      params.put_nonblocking("LiveCurvatureParameters",
+                             curvature_estimator.get_msg(valid=curvature_valid, live_valid=curvature_valid).to_bytes())
 
 
 if __name__ == "__main__":

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from collections import deque
 
 import numpy as np
@@ -7,7 +6,7 @@ import cereal.messaging as messaging
 from cereal import car, log
 from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
 from openpilot.common.params import Params
-from openpilot.common.realtime import config_realtime_process, DT_MDL
+from openpilot.common.realtime import DT_MDL
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.controls.lib.drive_helpers import MAX_LATERAL_ACCEL_NO_ROLL
 from openpilot.selfdrive.controls.lib.curvatured import CurvatureDLookup, VERSION
@@ -246,50 +245,18 @@ class CurvatureEstimator(CurvatureDLookup):
   def roll_learning_allowed(roll: float) -> bool:
     return abs(np.sin(float(roll)) * ACCELERATION_DUE_TO_GRAVITY) <= MAX_LEARN_ROLL_LATERAL_ACCEL
 
-  def maybe_log_status(self, t: float, sm) -> None:
+  def maybe_log_status(self, t: float, sm, services: list[str] | None = None, valid: bool | None = None) -> None:
     if t < self.last_status_log_t + STATUS_LOG_INTERVAL:
       return
 
-    invalid = [s for s in sm.valid.keys() if not sm.valid[s]]
-    not_alive = [s for s in sm.alive.keys() if not sm.alive[s]]
+    tracked_services = list(sm.valid.keys()) if services is None else services
+    invalid = [s for s in tracked_services if not sm.valid[s]]
+    not_alive = [s for s in tracked_services if not sm.alive[s]]
     self.last_status_log_t = t
 
-    cloudlog.info(f"curvatured status use_params={self.use_params} checks={sm.all_checks()} "
+    checks = sm.all_checks(tracked_services) if valid is None else valid
+    cloudlog.info(f"curvatured status use_params={self.use_params} checks={checks} "
                   f"lag={self.lag:.3f} total_points={int(self.counts.sum())} "
                   f"bucket={self.current_bucket} bucket_points={self.current_bucket_points} "
                   f"corr={self.current_correction:.8f} cal={self.calibration_percent(self.counts)} "
                   f"invalid={invalid} not_alive={not_alive}")
-
-
-def main():
-  config_realtime_process([0, 1, 2, 3], 5)
-
-  pm = messaging.PubMaster(['liveCurvatureParameters'])
-  sm = messaging.SubMaster(['carControl', 'carState', 'controlsState', 'liveCalibration', 'livePose', 'liveDelay'],
-                           poll='livePose')
-
-  params = Params()
-  estimator = CurvatureEstimator(messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams))
-
-  while True:
-    sm.update()
-    if sm.all_checks():
-      for which in sm.updated.keys():
-        if sm.updated[which]:
-          estimator.handle_log(sm.logMonoTime[which] * 1e-9, which, sm[which])
-
-    estimator.update_use_params()
-
-    # 4Hz driven by livePose, matching torqued/lagd cadence
-    if sm.frame % 5 == 0:
-      t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
-      estimator.maybe_log_status(t, sm)
-      pm.send('liveCurvatureParameters', estimator.get_msg(valid=sm.all_checks(), live_valid=sm.all_checks()))
-
-    if sm.frame % 1200 == 0:
-      params.put_nonblocking("LiveCurvatureParameters",
-                             estimator.get_msg(valid=sm.all_checks(), live_valid=sm.all_checks()).to_bytes())
-
-
-if __name__ == "__main__":
-  main()
