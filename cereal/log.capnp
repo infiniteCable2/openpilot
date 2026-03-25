@@ -2305,26 +2305,6 @@ struct LiveTorqueParametersData {
   calPerc @13 :Int8;
 }
 
-struct LiveCurvatureParametersData {
-  liveValid @0 :Bool;
-  version @1 :Int32;
-  useParams @2 :Bool;
-  currentCorrection @3 :Float32;
-  currentBias @4 :Float32;
-  currentBucketPoints @5 :Int32;
-  totalBucketPoints @6 :Int32;
-  calPerc @7 :Int8;
-  bucketSign @8 :Int8;
-  bucketSpeed @9 :Int8;
-  corrections @10 :List(Float32);
-  counts @11 :List(Int32);
-  biases @12 :List(Float32);
-  bucketCurvature @13 :Int8;
-  fitAmplitudes @14 :List(Float32);
-  fitScales @15 :List(Float32);
-  fitValid @16 :List(Bool);
-}
-
 struct LiveDelayData {
   lateralDelay @0 :Float32;
   validBlocks @1 :Int32;
@@ -2580,7 +2560,6 @@ struct Event {
     gnssMeasurements @91 :GnssMeasurements;
     liveParameters @61 :LiveParametersData;
     liveTorqueParameters @94 :LiveTorqueParametersData;
-    liveCurvatureParameters @150 :LiveCurvatureParametersData;
     liveDelay @146 : LiveDelayData;
     cameraOdometry @63 :CameraOdometry;
     thumbnail @66: Thumbnail;
@@ -2678,7 +2657,7 @@ struct Event {
     customReserved16 @142 :Custom.CustomReserved16;
     customReserved17 @143 :Custom.CustomReserved17;
     customReserved18 @144 :Custom.CustomReserved18;
-    customReserved19 @145 :Custom.CustomReserved19;
+    liveCurvatureParameters @145 :Custom.LiveCurvatureParameters;
 
     # *********** legacy + deprecated ***********
     model @9 :Legacy.ModelData; # TODO: rename modelV2 and mark this as deprecated

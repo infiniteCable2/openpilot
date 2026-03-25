@@ -229,22 +229,22 @@ class CurvatureEstimator(CurvatureDLookup):
     msg = messaging.new_message('liveCurvatureParameters')
     msg.valid = valid
 
-    live_curvature_parameters = msg.liveCurvatureParameters
-    live_curvature_parameters.liveValid = bool(live_valid) and bool(np.isfinite(self.bias).all()) and bool(np.isfinite(self.fit_corrections).all())
-    live_curvature_parameters.version = VERSION
-    live_curvature_parameters.useParams = self.use_params
-    live_curvature_parameters.currentCorrection = self.current_correction
-    live_curvature_parameters.currentBias = self.current_bias
-    live_curvature_parameters.currentBucketPoints = self.current_bucket_points
-    live_curvature_parameters.totalBucketPoints = int(round(float(self.counts.sum())))
-    live_curvature_parameters.calPerc = self.calibration_percent(self.counts)
-    live_curvature_parameters.bucketSign = 0
-    live_curvature_parameters.bucketSpeed = int(self.current_bucket[0])
-    live_curvature_parameters.bucketCurvature = int(self.current_bucket[1])
-    live_curvature_parameters.corrections = self.flatten(self.fit_corrections)
-    live_curvature_parameters.counts = self.flatten(np.rint(self.counts).astype(np.int32))
-    live_curvature_parameters.biases = self.flatten(self.bias)
-    live_curvature_parameters.fitValid = self.flatten(self.fit_valid)
+    curvature_params = msg.liveCurvatureParameters
+    curvature_params.liveValid = bool(live_valid) and bool(np.isfinite(self.bias).all()) and bool(np.isfinite(self.fit_corrections).all())
+    curvature_params.version = VERSION
+    curvature_params.useParams = self.use_params
+    curvature_params.currentCorrection = self.current_correction
+    curvature_params.currentBias = self.current_bias
+    curvature_params.currentBucketPoints = self.current_bucket_points
+    curvature_params.totalBucketPoints = int(round(float(self.counts.sum())))
+    curvature_params.calPerc = self.calibration_percent(self.counts)
+    curvature_params.bucketSign = 0
+    curvature_params.bucketSpeed = int(self.current_bucket[0])
+    curvature_params.bucketCurvature = int(self.current_bucket[1])
+    curvature_params.corrections = self.flatten(self.fit_corrections)
+    curvature_params.counts = self.flatten(np.rint(self.counts).astype(np.int32))
+    curvature_params.biases = self.flatten(self.bias)
+    curvature_params.fitValid = self.flatten(self.fit_valid)
     return msg
 
   @staticmethod

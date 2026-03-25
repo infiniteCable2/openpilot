@@ -43,7 +43,6 @@ _services: dict[str, tuple] = {
   "errorLogMessage": (True, 0., 1),
   "liveCalibration": (True, 4., 4),
   "liveTorqueParameters": (True, 4., 1),
-  "liveCurvatureParameters": (True, 4., 1),
   "liveDelay": (True, 4., 1),
   "androidLog": (True, 0.),
   "carState": (True, 100., 10),
@@ -116,6 +115,7 @@ _services: dict[str, tuple] = {
   "customReservedRawData0": (True, 0.),
   "customReservedRawData1": (True, 0.),
   "customReservedRawData2": (True, 0.),
+  "liveCurvatureParameters": (True, 4., 1),
 }
 SERVICE_LIST = {name: Service(*vals) for
                 idx, (name, vals) in enumerate(_services.items())}
