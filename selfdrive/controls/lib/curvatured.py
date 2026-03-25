@@ -71,6 +71,17 @@ class CurvatureDLookup:
     return int(np.argmin(np.abs(cls.SPEED_ANCHORS - v)))
 
   @classmethod
+  def learning_speed_weights(cls, v_ego: float) -> list[tuple[int, float]]:
+    v = float(v_ego)
+    if v < cls.MIN_SPEED:
+      return []
+
+    low, high, alpha = cls.speed_interp(v)
+    if low == high:
+      return [(low, 1.0)]
+    return [(low, 1.0 - alpha), (high, alpha)]
+
+  @classmethod
   def indices(cls, curvature: float, v_ego: float) -> tuple[int, int] | None:
     speed_idx = cls.speed_index(v_ego)
     curvature_idx = cls.curvature_index(curvature)
@@ -138,10 +149,6 @@ class CurvatureDLookup:
     return float(direction * (desired_curvature - actual_curvature))
 
   @classmethod
-  def build_curve_valid(cls, counts: np.ndarray) -> np.ndarray:
-    return counts >= cls.MIN_BUCKET_POINTS[None, :]
-
-  @classmethod
   def build_fit_corrections(cls, bias: np.ndarray, counts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     fit_corrections = np.zeros(cls.bucket_shape(), dtype=np.float32)
     fit_valid = np.zeros(cls.bucket_shape(), dtype=bool)
@@ -164,13 +171,19 @@ class CurvatureDLookup:
       if len(smoothed) >= 3:
         smoothed[1:-1] = 0.25 * interp[:-2] + 0.5 * interp[1:-1] + 0.25 * interp[2:]
 
+      local_strength = 0.5 + 0.5 * np.clip(
+        (counts[speed_idx, valid_idx] - cls.MIN_BUCKET_POINTS[valid_idx]) /
+        np.maximum(cls.FULL_CONFIDENCE_SAMPLES - cls.MIN_BUCKET_POINTS[valid_idx], 1.0),
+        0.0, 1.0
+      ).astype(np.float64)
+      interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
       confidence = cls.confidence(total_points)
-      smoothed *= confidence
+      smoothed *= confidence * interpolated_strength
       for curvature_idx, curvature in enumerate(cls.CURVATURE_BUCKET_CENTERS):
         smoothed[curvature_idx] *= cls.curvature_window(float(curvature))
 
       fit_corrections[speed_idx] = np.clip(smoothed, -cls.MAX_CORRECTION, cls.MAX_CORRECTION)
-      fit_valid[speed_idx] = True
+      fit_valid[speed_idx, valid_idx[0]:valid_idx[-1] + 1] = True
 
     return fit_corrections, fit_valid
 
@@ -196,7 +209,24 @@ class CurvatureDLookup:
       idx = np.flatnonzero(valid_mask)
       if len(idx) == 0:
         return 0.0
-      return float(np.interp(log_curvature, log_centers[idx], curve[idx]))
+
+      base_value = float(np.interp(log_curvature, log_centers[idx], curve[idx]))
+      first_valid = int(idx[0])
+      last_valid = int(idx[-1])
+
+      fade = 1.0
+      if abs_curvature < cls.CURVATURE_BUCKET_EDGES[first_valid]:
+        if first_valid == 0:
+          return 0.0
+        fade_span = cls.CURVATURE_BUCKET_EDGES[first_valid] - cls.CURVATURE_BUCKET_EDGES[first_valid - 1]
+        fade = cls.smoothstep((abs_curvature - cls.CURVATURE_BUCKET_EDGES[first_valid - 1]) / max(fade_span, 1e-9))
+      elif abs_curvature > cls.CURVATURE_BUCKET_EDGES[last_valid + 1]:
+        if last_valid >= len(cls.CURVATURE_BUCKET_CENTERS) - 1:
+          return 0.0
+        fade_span = cls.CURVATURE_BUCKET_EDGES[last_valid + 2] - cls.CURVATURE_BUCKET_EDGES[last_valid + 1]
+        fade = 1.0 - cls.smoothstep((abs_curvature - cls.CURVATURE_BUCKET_EDGES[last_valid + 1]) / max(fade_span, 1e-9))
+
+      return float(base_value * np.clip(fade, 0.0, 1.0))
 
     low_val = curve_value(low_curve, low_valid)
     high_val = curve_value(high_curve, high_valid)

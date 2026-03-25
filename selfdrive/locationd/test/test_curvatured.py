@@ -27,15 +27,42 @@ class TestCurvatureEstimator:
   def test_left_and_right_feed_the_same_bucket_curve(self):
     estimator = get_estimator()
     desired_curvature = 32e-6
+    v_ego = 22.0
 
     for _ in range(40):
-      estimator.add_measurement(desired_curvature, desired_curvature * 0.7, 22.0)
-      estimator.add_measurement(-desired_curvature, -desired_curvature * 0.7, 22.0)
+      estimator.add_measurement(desired_curvature, desired_curvature * 0.7, v_ego)
+      estimator.add_measurement(-desired_curvature, -desired_curvature * 0.7, v_ego)
 
-    idx = CurvatureDLookup.indices(desired_curvature, 22.0)
-    assert idx is not None
-    assert estimator.counts[idx] == 80.0
-    assert estimator.bias[idx] > 0.0
+    curvature_idx = CurvatureDLookup.curvature_index(desired_curvature)
+    assert curvature_idx is not None
+    speed_weights = CurvatureDLookup.learning_speed_weights(v_ego)
+    assert len(speed_weights) == 2
+
+    total = 0.0
+    for speed_idx, weight in speed_weights:
+      bucket_count = float(estimator.counts[speed_idx, curvature_idx])
+      total += bucket_count
+      assert np.isclose(bucket_count, 80.0 * weight)
+      assert estimator.bias[speed_idx, curvature_idx] > 0.0
+
+    assert np.isclose(total, 80.0)
+
+  def test_learning_is_weighted_between_neighbor_speed_anchors(self):
+    estimator = get_estimator()
+    desired_curvature = 32e-6
+    low_speed = float(CurvatureDLookup.SPEED_ANCHORS[2])
+    high_speed = float(CurvatureDLookup.SPEED_ANCHORS[3])
+    v_ego = 0.25 * low_speed + 0.75 * high_speed
+
+    estimator.add_measurement(desired_curvature, desired_curvature * 0.6, v_ego)
+
+    curvature_idx = CurvatureDLookup.curvature_index(desired_curvature)
+    assert curvature_idx is not None
+    speed_weights = CurvatureDLookup.learning_speed_weights(v_ego)
+    assert len(speed_weights) == 2
+
+    for speed_idx, weight in speed_weights:
+      assert np.isclose(float(estimator.counts[speed_idx, curvature_idx]), weight)
 
   def test_bucket_bias_cap_remains_tiny(self):
     estimator = get_estimator()
@@ -75,6 +102,23 @@ class TestCurvatureEstimator:
     assert len(msg.liveCurvatureParameters.counts) == CurvatureDLookup.total_size()
     assert len(msg.liveCurvatureParameters.biases) == CurvatureDLookup.total_size()
     assert len(msg.liveCurvatureParameters.fitValid) == CurvatureDLookup.total_size()
+
+  def test_fit_valid_is_limited_to_supported_curvature_range(self):
+    estimator = get_estimator()
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[3])
+
+    for desired_curvature in (8e-6, 2e-5, 5e-5, 1.2e-4):
+      for _ in range(40):
+        estimator.add_measurement(desired_curvature, desired_curvature * 0.6, v_ego)
+
+    msg = estimator.get_msg().liveCurvatureParameters
+    fit_valid = CurvatureDLookup.unflatten_bucket(list(msg.fitValid), dtype=bool)
+    speed_idx = 3
+    valid_idx = np.flatnonzero(fit_valid[speed_idx])
+
+    assert len(valid_idx) > 0
+    assert valid_idx[0] > 0
+    assert valid_idx[-1] < len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS) - 1
 
   def test_learning_is_blocked_for_larger_roll(self):
     estimator = get_estimator()

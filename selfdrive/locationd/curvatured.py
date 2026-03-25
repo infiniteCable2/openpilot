@@ -129,20 +129,29 @@ class CurvatureEstimator(CurvatureDLookup):
     return None
 
   def add_measurement(self, desired_curvature: float, actual_curvature: float, v_ego: float) -> None:
-    idx = self.indices(desired_curvature, v_ego)
-    if idx is None:
+    curvature_idx = self.curvature_index(desired_curvature)
+    speed_weights = self.learning_speed_weights(v_ego)
+    if curvature_idx is None or len(speed_weights) == 0:
       return
 
-    speed_idx, curvature_idx = idx
     error = float(np.clip(self.projected_error(desired_curvature, actual_curvature),
                           -self.CORRECTION_CAP, self.CORRECTION_CAP))
 
-    sample_count = min(float(self.counts[speed_idx, curvature_idx]) + 1.0, self.MAX_SAMPLES)
-    self.counts[speed_idx, curvature_idx] = sample_count
+    for speed_idx, weight in speed_weights:
+      if weight <= 0.0:
+        continue
 
-    alpha = 1.0 / min(sample_count, self.MEAN_WINDOW)
-    prev_bias = float(self.bias[speed_idx, curvature_idx])
-    self.bias[speed_idx, curvature_idx] = prev_bias + alpha * (error - prev_bias)
+      prev_count = float(self.counts[speed_idx, curvature_idx])
+      sample_count = min(prev_count + float(weight), self.MAX_SAMPLES)
+      delta = sample_count - prev_count
+      if delta <= 0.0:
+        continue
+
+      self.counts[speed_idx, curvature_idx] = sample_count
+      alpha = delta / min(sample_count, self.MEAN_WINDOW)
+      prev_bias = float(self.bias[speed_idx, curvature_idx])
+      self.bias[speed_idx, curvature_idx] = prev_bias + alpha * (error - prev_bias)
+
     self.fit_corrections, self.fit_valid = self.build_fit_corrections(self.bias, self.counts)
 
   def _update_current_lookup(self, desired_curvature: float, v_ego: float) -> None:

@@ -85,3 +85,28 @@ class TestCurvatureDController:
     controller.update_live_params(msg.liveCurvatureParameters)
 
     assert controller.apply(32e-6, 20.0) == 32e-6
+
+  def test_correction_fades_outside_supported_curvature_range(self):
+    controller = CurvatureDController()
+    msg = messaging.new_message('liveCurvatureParameters')
+    msg.liveCurvatureParameters.liveValid = True
+    msg.liveCurvatureParameters.version = VERSION
+    msg.liveCurvatureParameters.useParams = True
+    msg.liveCurvatureParameters.counts = [0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.biases = [0.0] * CurvatureDLookup.total_size()
+
+    self._set_curve(msg, 3, {
+      4: 4e-6,
+      5: 8e-6,
+      6: 6e-6,
+    })
+    controller.update_live_params(msg.liveCurvatureParameters)
+
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[3])
+    inside = controller.get_correction(5.0e-5, v_ego)
+    lower_fade = controller.get_correction(1.0e-5, v_ego)
+    upper_fade = controller.get_correction(2.0e-4, v_ego)
+
+    assert inside > 0.0
+    assert 0.0 <= lower_fade < inside
+    assert 0.0 <= upper_fade < inside
