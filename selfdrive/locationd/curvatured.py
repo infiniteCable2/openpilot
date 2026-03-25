@@ -34,9 +34,8 @@ class CurvatureEstimator(CurvatureDLookup):
 
     self.bias = np.zeros(self.bucket_shape(), dtype=np.float32)
     self.counts = np.zeros(self.bucket_shape(), dtype=np.float32)
-    self.fit_amplitudes = np.zeros(self.fit_shape(), dtype=np.float32)
-    self.fit_scales = np.full(self.fit_shape(), self.CURVATURE_BUCKET_EDGES[5], dtype=np.float32)
-    self.fit_valid = np.zeros(self.fit_shape(), dtype=bool)
+    self.fit_corrections = np.zeros(self.bucket_shape(), dtype=np.float32)
+    self.fit_valid = np.zeros(self.bucket_shape(), dtype=bool)
 
     self.car_control_t = deque(maxlen=self.hist_len)
     self.lat_active = deque(maxlen=self.hist_len)
@@ -49,7 +48,7 @@ class CurvatureEstimator(CurvatureDLookup):
     self.last_lat_inactive_t = 0.0
     self.last_override_t = 0.0
 
-    self.current_bucket = (-1, -1, -1)
+    self.current_bucket = (-1, -1)
     self.current_correction = 0.0
     self.current_bias = 0.0
     self.current_bucket_points = 0
@@ -86,19 +85,12 @@ class CurvatureEstimator(CurvatureDLookup):
 
       biases = list(cache_lcp.biases)
       counts = list(cache_lcp.counts)
-      fit_amplitudes = list(cache_lcp.fitAmplitudes)
-      fit_scales = list(cache_lcp.fitScales)
-      fit_valid = list(cache_lcp.fitValid)
       if len(biases) != self.total_size() or len(counts) != self.total_size():
         raise ValueError("invalid curvature cache shape")
-      if len(fit_amplitudes) != self.fit_total_size() or len(fit_scales) != self.fit_total_size() or len(fit_valid) != self.fit_total_size():
-        raise ValueError("invalid curvature fit cache shape")
 
       self.bias = self.unflatten_bucket(biases).astype(np.float32)
       self.counts = self.unflatten_bucket(counts).astype(np.float32)
-      self.fit_amplitudes = self.unflatten_fit(fit_amplitudes).astype(np.float32)
-      self.fit_scales = self.unflatten_fit(fit_scales).astype(np.float32)
-      self.fit_valid = self.unflatten_fit(fit_valid, dtype=bool)
+      self.fit_corrections, self.fit_valid = self.build_fit_corrections(self.bias, self.counts)
       cloudlog.info("restored curvature params from cache")
     except Exception:
       cloudlog.exception("failed to restore cached curvature params")
@@ -115,7 +107,7 @@ class CurvatureEstimator(CurvatureDLookup):
                       f"steerControlType={self.CP.steerControlType}")
         self.prev_use_params = self.use_params
       if not self.use_params:
-        self.current_bucket = (-1, -1, -1)
+        self.current_bucket = (-1, -1)
         self.current_correction = 0.0
         self.current_bias = 0.0
         self.current_bucket_points = 0
@@ -141,44 +133,39 @@ class CurvatureEstimator(CurvatureDLookup):
     if idx is None:
       return
 
-    sign_idx, speed_idx, curvature_idx = idx
-    error = float(np.clip(desired_curvature - actual_curvature,
+    speed_idx, curvature_idx = idx
+    error = float(np.clip(self.projected_error(desired_curvature, actual_curvature),
                           -self.CORRECTION_CAP, self.CORRECTION_CAP))
 
-    sample_count = min(float(self.counts[sign_idx, speed_idx, curvature_idx]) + 1.0, self.MAX_SAMPLES)
-    self.counts[sign_idx, speed_idx, curvature_idx] = sample_count
+    sample_count = min(float(self.counts[speed_idx, curvature_idx]) + 1.0, self.MAX_SAMPLES)
+    self.counts[speed_idx, curvature_idx] = sample_count
 
     alpha = 1.0 / min(sample_count, self.MEAN_WINDOW)
-    prev_bias = float(self.bias[sign_idx, speed_idx, curvature_idx])
-    self.bias[sign_idx, speed_idx, curvature_idx] = prev_bias + alpha * (error - prev_bias)
-    self.fit_amplitudes, self.fit_scales, self.fit_valid = self.fit_params_from_buckets(self.bias, self.counts)
+    prev_bias = float(self.bias[speed_idx, curvature_idx])
+    self.bias[speed_idx, curvature_idx] = prev_bias + alpha * (error - prev_bias)
+    self.fit_corrections, self.fit_valid = self.build_fit_corrections(self.bias, self.counts)
 
   def _update_current_lookup(self, desired_curvature: float, v_ego: float) -> None:
     idx = self.indices(desired_curvature, v_ego)
     if idx is None:
-      self.current_bucket = (-1, -1, -1)
+      self.current_bucket = (-1, -1)
       self.current_correction = 0.0
       self.current_bias = 0.0
       self.current_bucket_points = 0
       return
 
-    sign_idx, speed_idx, curvature_idx = idx
+    speed_idx, curvature_idx = idx
     self.current_bucket = idx
-    self.current_bias = float(self.bias[sign_idx, speed_idx, curvature_idx])
+    self.current_bias = float(self.bias[speed_idx, curvature_idx])
     self.current_bucket_points = self.bucket_points_for_index(self.counts, idx)
 
-    if not self.fit_valid[sign_idx, speed_idx]:
+    if not self.fit_valid[speed_idx].any():
       self.current_correction = 0.0
       return
 
-    total_points = float(self.counts[sign_idx, speed_idx].sum())
-    confidence = float(self.confidence(total_points))
-    self.current_correction = self.correction_from_fit(
-      desired_curvature,
-      float(self.fit_amplitudes[sign_idx, speed_idx]),
-      float(self.fit_scales[sign_idx, speed_idx]),
-      confidence,
-    )
+    direction = 1.0 if desired_curvature >= 0.0 else -1.0
+    projected = self.interp_curve_value(self.fit_corrections, self.fit_valid, v_ego, abs(desired_curvature))
+    self.current_correction = float(direction * projected)
 
   def handle_log(self, t: float, which: str, msg) -> None:
     if which == "carControl":
@@ -243,23 +230,20 @@ class CurvatureEstimator(CurvatureDLookup):
     msg.valid = valid
 
     live_curvature_parameters = msg.liveCurvatureParameters
-    corrections = self.corrections_from_fit(self.fit_amplitudes, self.fit_scales, self.fit_valid, self.counts)
-    live_curvature_parameters.liveValid = bool(live_valid) and bool(np.isfinite(self.bias).all()) and bool(np.isfinite(self.fit_amplitudes).all()) and bool(np.isfinite(self.fit_scales).all())
+    live_curvature_parameters.liveValid = bool(live_valid) and bool(np.isfinite(self.bias).all()) and bool(np.isfinite(self.fit_corrections).all())
     live_curvature_parameters.version = VERSION
     live_curvature_parameters.useParams = self.use_params
     live_curvature_parameters.currentCorrection = self.current_correction
     live_curvature_parameters.currentBias = self.current_bias
     live_curvature_parameters.currentBucketPoints = self.current_bucket_points
     live_curvature_parameters.totalBucketPoints = int(round(float(self.counts.sum())))
-    live_curvature_parameters.calPerc = self.calibration_percent(self.fit_valid)
-    live_curvature_parameters.bucketSign = int(self.current_bucket[0])
-    live_curvature_parameters.bucketSpeed = int(self.current_bucket[1])
-    live_curvature_parameters.bucketCurvature = int(self.current_bucket[2])
-    live_curvature_parameters.corrections = self.flatten(corrections)
+    live_curvature_parameters.calPerc = self.calibration_percent(self.counts)
+    live_curvature_parameters.bucketSign = 0
+    live_curvature_parameters.bucketSpeed = int(self.current_bucket[0])
+    live_curvature_parameters.bucketCurvature = int(self.current_bucket[1])
+    live_curvature_parameters.corrections = self.flatten(self.fit_corrections)
     live_curvature_parameters.counts = self.flatten(np.rint(self.counts).astype(np.int32))
     live_curvature_parameters.biases = self.flatten(self.bias)
-    live_curvature_parameters.fitAmplitudes = self.flatten(self.fit_amplitudes)
-    live_curvature_parameters.fitScales = self.flatten(self.fit_scales)
     live_curvature_parameters.fitValid = self.flatten(self.fit_valid)
     return msg
 
@@ -280,5 +264,5 @@ class CurvatureEstimator(CurvatureDLookup):
     cloudlog.info(f"curvatured status use_params={self.use_params} checks={checks} "
                   f"lag={self.lag:.3f} total_points={int(round(float(self.counts.sum())))} "
                   f"bucket={self.current_bucket} bucket_points={self.current_bucket_points} "
-                  f"corr={self.current_correction:.8f} cal={self.calibration_percent(self.fit_valid)} "
+                  f"corr={self.current_correction:.8f} cal={self.calibration_percent(self.counts)} "
                   f"invalid={invalid} not_alive={not_alive}")

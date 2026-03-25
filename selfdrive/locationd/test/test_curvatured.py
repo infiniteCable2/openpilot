@@ -17,26 +17,25 @@ def get_estimator():
 
 class TestCurvatureEstimator:
   @staticmethod
-  def _train_speed_fit(estimator, sign: float, v_ego: float):
-    for desired_curvature in (sign * 8e-6, sign * 2e-5, sign * 5e-5, sign * 1.2e-4):
-      for _ in range(int(CurvatureDLookup.FIT_MIN_TOTAL_SAMPLES / 4)):
-        estimator.add_measurement(desired_curvature, desired_curvature * 0.6, v_ego)
+  def _train_speed_curve(estimator, v_ego: float):
+    for desired_curvature in (8e-6, 2e-5, 5e-5, 1.2e-4):
+      for sign in (-1.0, 1.0):
+        for _ in range(int(CurvatureDLookup.FIT_MIN_TOTAL_SAMPLES / 4)):
+          desired = sign * desired_curvature
+          estimator.add_measurement(desired, desired * 0.6, v_ego)
 
-  def test_speed_anchors_are_independent(self):
+  def test_left_and_right_feed_the_same_bucket_curve(self):
     estimator = get_estimator()
     desired_curvature = 32e-6
 
-    for _ in range(int(CurvatureDLookup.FULL_CONFIDENCE_SAMPLES)):
+    for _ in range(40):
       estimator.add_measurement(desired_curvature, desired_curvature * 0.7, 22.0)
+      estimator.add_measurement(-desired_curvature, -desired_curvature * 0.7, 22.0)
 
     idx = CurvatureDLookup.indices(desired_curvature, 22.0)
-    other_idx = CurvatureDLookup.indices(desired_curvature, 38.0)
-
     assert idx is not None
-    assert other_idx is not None
-    assert estimator.counts[idx] == CurvatureDLookup.FULL_CONFIDENCE_SAMPLES
+    assert estimator.counts[idx] == 80.0
     assert estimator.bias[idx] > 0.0
-    assert estimator.counts[other_idx] == 0.0
 
   def test_bucket_bias_cap_remains_tiny(self):
     estimator = get_estimator()
@@ -49,37 +48,33 @@ class TestCurvatureEstimator:
     assert idx is not None
     assert estimator.bias[idx] <= CurvatureDLookup.CORRECTION_CAP
 
-  def test_calibration_percent_tracks_speed_fit_coverage(self):
+  def test_calibration_percent_tracks_valid_speed_curves(self):
     estimator = get_estimator()
     assert estimator.get_msg().liveCurvatureParameters.calPerc == 0
 
-    for sign in (-1.0, 1.0):
-      for v_ego in CurvatureDLookup.SPEED_ANCHORS:
-        self._train_speed_fit(estimator, sign, float(v_ego))
+    for v_ego in CurvatureDLookup.SPEED_ANCHORS:
+      self._train_speed_curve(estimator, float(v_ego))
 
     assert estimator.get_msg().liveCurvatureParameters.calPerc == 100
 
-  def test_message_contains_fit_arrays_and_current_bucket(self):
+  def test_message_contains_symmetric_fit_curve(self):
     estimator = get_estimator()
     desired_curvature = 32e-6
     v_ego = 22.0
 
-    self._train_speed_fit(estimator, 1.0, v_ego)
+    self._train_speed_curve(estimator, v_ego)
     estimator._update_current_lookup(desired_curvature, v_ego)
     msg = estimator.get_msg()
     idx = CurvatureDLookup.indices(desired_curvature, v_ego)
 
     assert idx is not None
-    assert msg.liveCurvatureParameters.bucketSign == idx[0]
-    assert msg.liveCurvatureParameters.bucketSpeed == idx[1]
-    assert msg.liveCurvatureParameters.bucketCurvature == idx[2]
+    assert msg.liveCurvatureParameters.bucketSpeed == idx[0]
+    assert msg.liveCurvatureParameters.bucketCurvature == idx[1]
     assert msg.liveCurvatureParameters.currentCorrection > 0.0
-    assert len(msg.liveCurvatureParameters.fitAmplitudes) == CurvatureDLookup.fit_total_size()
-    assert len(msg.liveCurvatureParameters.fitScales) == CurvatureDLookup.fit_total_size()
-    assert len(msg.liveCurvatureParameters.fitValid) == CurvatureDLookup.fit_total_size()
     assert len(msg.liveCurvatureParameters.corrections) == CurvatureDLookup.total_size()
     assert len(msg.liveCurvatureParameters.counts) == CurvatureDLookup.total_size()
     assert len(msg.liveCurvatureParameters.biases) == CurvatureDLookup.total_size()
+    assert len(msg.liveCurvatureParameters.fitValid) == CurvatureDLookup.total_size()
 
   def test_learning_is_blocked_for_larger_roll(self):
     estimator = get_estimator()

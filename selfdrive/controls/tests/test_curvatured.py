@@ -5,34 +5,36 @@ from openpilot.selfdrive.controls.lib.curvatured import CurvatureDController, Cu
 
 class TestCurvatureDController:
   @staticmethod
-  def _set_fit(msg, sign_idx: int, speed_idx: int, amplitude: float, scale: float):
-    fit_amplitudes = list(msg.liveCurvatureParameters.fitAmplitudes)
-    fit_scales = list(msg.liveCurvatureParameters.fitScales)
+  def _set_curve(msg, speed_idx: int, values: dict[int, float]):
+    corrections = list(msg.liveCurvatureParameters.corrections)
     fit_valid = list(msg.liveCurvatureParameters.fitValid)
-    if len(fit_amplitudes) != CurvatureDLookup.fit_total_size():
-      fit_amplitudes = [0.0] * CurvatureDLookup.fit_total_size()
-    if len(fit_scales) != CurvatureDLookup.fit_total_size():
-      fit_scales = [CurvatureDLookup.CURVATURE_BUCKET_EDGES[5]] * CurvatureDLookup.fit_total_size()
-    if len(fit_valid) != CurvatureDLookup.fit_total_size():
-      fit_valid = [False] * CurvatureDLookup.fit_total_size()
-    flat_idx = sign_idx * len(CurvatureDLookup.SPEED_ANCHORS) + speed_idx
-    fit_amplitudes[flat_idx] = amplitude
-    fit_scales[flat_idx] = scale
-    fit_valid[flat_idx] = True
-    msg.liveCurvatureParameters.fitAmplitudes = fit_amplitudes
-    msg.liveCurvatureParameters.fitScales = fit_scales
+    if len(corrections) != CurvatureDLookup.total_size():
+      corrections = [0.0] * CurvatureDLookup.total_size()
+    if len(fit_valid) != CurvatureDLookup.total_size():
+      fit_valid = [False] * CurvatureDLookup.total_size()
+
+    width = len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS)
+    for curvature_idx, value in values.items():
+      flat_idx = speed_idx * width + curvature_idx
+      corrections[flat_idx] = value
+      fit_valid[flat_idx] = True
+
+    msg.liveCurvatureParameters.corrections = corrections
     msg.liveCurvatureParameters.fitValid = fit_valid
 
-  def test_apply_interpolates_between_neighbor_speed_fits(self):
+  def test_apply_interpolates_between_neighbor_speed_curves(self):
     controller = CurvatureDController()
     msg = messaging.new_message('liveCurvatureParameters')
     msg.liveCurvatureParameters.liveValid = True
     msg.liveCurvatureParameters.version = VERSION
     msg.liveCurvatureParameters.useParams = True
+    msg.liveCurvatureParameters.counts = [0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.biases = [0.0] * CurvatureDLookup.total_size()
 
-    sign_idx = CurvatureDLookup.sign_index(32e-6)
-    self._set_fit(msg, sign_idx, 2, 0.15, 5e-5)
-    self._set_fit(msg, sign_idx, 3, 0.45, 5e-5)
+    curvature_idx = CurvatureDLookup.curvature_index(32e-6)
+    assert curvature_idx is not None
+    self._set_curve(msg, 2, {curvature_idx: 4e-6})
+    self._set_curve(msg, 3, {curvature_idx: 12e-6})
     controller.update_live_params(msg.liveCurvatureParameters)
 
     low_speed = float(CurvatureDLookup.SPEED_ANCHORS[2])
@@ -47,38 +49,39 @@ class TestCurvatureDController:
     assert high > low
     assert low < mid < high
 
+  def test_negative_curvature_uses_same_curve_with_negative_sign(self):
+    controller = CurvatureDController()
+    msg = messaging.new_message('liveCurvatureParameters')
+    msg.liveCurvatureParameters.liveValid = True
+    msg.liveCurvatureParameters.version = VERSION
+    msg.liveCurvatureParameters.useParams = True
+    msg.liveCurvatureParameters.counts = [0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.biases = [0.0] * CurvatureDLookup.total_size()
+
+    curvature_idx = CurvatureDLookup.curvature_index(32e-6)
+    assert curvature_idx is not None
+    self._set_curve(msg, 3, {curvature_idx: 8e-6})
+    controller.update_live_params(msg.liveCurvatureParameters)
+
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[3])
+    pos = controller.get_correction(32e-6, v_ego)
+    neg = controller.get_correction(-32e-6, v_ego)
+
+    assert pos > 0.0
+    assert neg < 0.0
+    assert abs(pos + neg) < 1e-12
+
   def test_invalid_message_disables_corrections(self):
     controller = CurvatureDController()
     msg = messaging.new_message('liveCurvatureParameters')
     msg.liveCurvatureParameters.liveValid = False
     msg.liveCurvatureParameters.version = VERSION
     msg.liveCurvatureParameters.useParams = True
-    msg.liveCurvatureParameters.fitAmplitudes = [0.0] * CurvatureDLookup.fit_total_size()
-    msg.liveCurvatureParameters.fitScales = [CurvatureDLookup.CURVATURE_BUCKET_EDGES[5]] * CurvatureDLookup.fit_total_size()
-    msg.liveCurvatureParameters.fitValid = [False] * CurvatureDLookup.fit_total_size()
+    msg.liveCurvatureParameters.corrections = [0.0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.counts = [0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.biases = [0.0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.fitValid = [False] * CurvatureDLookup.total_size()
 
     controller.update_live_params(msg.liveCurvatureParameters)
 
     assert controller.apply(32e-6, 20.0) == 32e-6
-
-  def test_apply_fades_near_center_limits(self):
-    controller = CurvatureDController()
-    msg = messaging.new_message('liveCurvatureParameters')
-    msg.liveCurvatureParameters.liveValid = True
-    msg.liveCurvatureParameters.version = VERSION
-    msg.liveCurvatureParameters.useParams = True
-
-    sign_idx = CurvatureDLookup.sign_index(32e-6)
-    self._set_fit(msg, sign_idx, 3, 0.35, 5e-5)
-    controller.update_live_params(msg.liveCurvatureParameters)
-
-    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[3])
-    mid = controller.get_correction(32e-6, v_ego)
-    low = controller.get_correction(1.5e-6, v_ego)
-    high = controller.get_correction(8e-4, v_ego)
-
-    assert mid > 0.0
-    assert 0.0 < low < mid
-    assert 0.0 < high < mid
-    assert controller.get_correction(CurvatureDLookup.CURVATURE_MIN_STEP, v_ego) == 0.0
-    assert controller.get_correction(CurvatureDLookup.CURVATURE_MAX, v_ego) == 0.0
