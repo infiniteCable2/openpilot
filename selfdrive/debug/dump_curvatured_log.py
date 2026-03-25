@@ -43,7 +43,12 @@ def decode_cached_param(init_data):
       "byte_len": len(raw_value),
       "decoded": None,
       "error": None,
+      "redacted": False,
     }
+
+    if len(raw_value) == 0:
+      result["redacted"] = True
+      return result
 
     try:
       with log.Event.from_bytes(raw_value) as evt:
@@ -195,7 +200,9 @@ def main() -> None:
     return
 
   print(f"initData cache bytes: {cached['byte_len']}")
-  if cached["decoded"] is not None:
+  if cached["redacted"]:
+    print("initData cache: redacted (DONT_LOG)")
+  elif cached["decoded"] is not None:
     print_message_summary("decoded initData cache", cached["decoded"])
   else:
     print(f"initData cache decode error: {cached['error']}")
