@@ -16,7 +16,7 @@ DESCRIPTIONS = {
     "Enables curvature PID post-processing additionally to QFK curvature offset"
   ),
   "EnableCurvatureD": tr_noop(
-    "Learns small speed-dependent curvature bias corrections around center. Experimental and only used on curvature-based steering paths."
+    "Learns speed- and curvature-dependent steering corrections around center for dynamic steering behavior. Experimental and only used on curvature-based steering paths."
   ),
   "EnableLongComfortMode": tr_noop(
     "Enables longitudinal jerk and accel deviation limit control for safe and comfortable driving"
@@ -134,7 +134,7 @@ class ICTogglesLayout(Widget):
         False,
       ),
       "EnableCurvatureD": (
-        lambda: tr("CurvatureD Bias Learning"),
+        lambda: tr("Enable Dynamic Steering Learner"),
         DESCRIPTIONS["EnableCurvatureD"],
         "chffr_wheel.png",
         False,

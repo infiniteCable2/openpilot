@@ -23,7 +23,7 @@ class ICTogglesLayoutMici(NavScroller):
     enable_dark_mode            = BigParamControl("Dark Mode", "DarkMode")
     enable_onroad_screen_timer  = BigParamControl("Onroad Screen Timeout", "DisableScreenTimer")
     enable_accel_bar            = BigParamControl("Enable Accel Bar", "ShowAccelBar")
-    enable_curvatured           = BigParamControl("CurvatureD Bias Learning", "EnableCurvatureD")
+    enable_curvatured           = BigParamControl("Enable Dynamic Steering Learner", "EnableCurvatureD")
     
     self._scroller.add_widgets([
       enable_curvature_correction,
