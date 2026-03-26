@@ -2,13 +2,14 @@ import numpy as np
 
 from cereal import car
 
+from opendbc.car.volkswagen.values import CAR
 from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
 from openpilot.selfdrive.locationd.curvatured import CurvatureEstimator, CurvatureDLookup, MAX_LEARN_ROLL_LATERAL_ACCEL
 
 
 def get_estimator():
   CP = car.CarParams.new_message()
-  CP.carFingerprint = "VOLKSWAGEN_TEST"
+  CP.carFingerprint = CAR.CUPRA_BORN_MK1
   CP.brand = "volkswagen"
   CP.steerControlType = car.CarParams.SteerControlType.curvatureDEPRECATED
   return CurvatureEstimator(CP)

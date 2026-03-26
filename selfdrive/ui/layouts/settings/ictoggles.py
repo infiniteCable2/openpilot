@@ -143,6 +143,7 @@ class ICTogglesLayout(Widget):
 
     self._toggles = {}
     self._locked_toggles = set()
+    self._offroad_only_toggles = {"EnableCurvatureD"}
     for param, (title, desc, icon, needs_restart) in self._toggle_defs.items():
       toggle = toggle_item(
         title,
@@ -173,6 +174,7 @@ class ICTogglesLayout(Widget):
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
 
     ui_state.add_engaged_transition_callback(self._update_toggles)
+    ui_state.add_offroad_transition_callback(self._update_toggles)
 
   def _update_state(self):
     return
@@ -194,6 +196,10 @@ class ICTogglesLayout(Widget):
     for toggle_def in self._toggle_defs:
       if self._toggle_defs[toggle_def][3] and toggle_def not in self._locked_toggles:
         self._toggles[toggle_def].action_item.set_enabled(not ui_state.engaged)
+
+    for toggle_def in self._offroad_only_toggles:
+      if toggle_def not in self._locked_toggles:
+        self._toggles[toggle_def].action_item.set_enabled(ui_state.is_offroad())
 
   def _render(self, rect):
     self._scroller.render(rect)

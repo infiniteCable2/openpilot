@@ -58,11 +58,14 @@ class ICTogglesLayoutMici(NavScroller):
       ("EnableCurvatureD", enable_curvatured),
     )
 
+    enable_curvatured.set_enabled(lambda: ui_state.is_offroad())
+
     if ui_state.params.get_bool("ShowDebugInfo"):
       gui_app.set_show_touches(True)
       gui_app.set_show_fps(True)
 
     ui_state.add_engaged_transition_callback(self._update_toggles)
+    ui_state.add_offroad_transition_callback(self._update_toggles)
 
   def _update_state(self):
     super()._update_state()
