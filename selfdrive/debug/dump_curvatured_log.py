@@ -78,7 +78,26 @@ def message_summary(msg) -> dict:
   }
 
 
-def print_message_summary(title: str, payload) -> None:
+def print_bucket_window(counts: np.ndarray, biases: np.ndarray, corrections: np.ndarray,
+                        fit_valid: np.ndarray, speed_idx: int, focus_idx: int, window: int) -> None:
+  start = max(0, focus_idx - window)
+  end = min(len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS) - 1, focus_idx + window)
+  print(f"    bucket window around {focus_idx}:")
+  for curvature_idx in range(start, end + 1):
+    marker = "*" if curvature_idx == focus_idx else " "
+    bucket_range = curvature_bucket_label(curvature_idx)
+    bucket_points = int(round(float(counts[speed_idx, curvature_idx])))
+    bucket_bias = float(biases[speed_idx, curvature_idx])
+    bucket_corr = float(corrections[speed_idx, curvature_idx])
+    bucket_valid = bool(fit_valid[speed_idx, curvature_idx])
+    print(
+      f"    {marker} idx={curvature_idx} range={bucket_range} "
+      f"points={bucket_points} fitValid={bucket_valid} "
+      f"bias={bucket_bias:.8f} corr={bucket_corr:.8f}"
+    )
+
+
+def print_message_summary(title: str, payload, bucket_window: int) -> None:
   counts = CurvatureDLookup.unflatten_bucket(list(payload.counts))
   biases = CurvatureDLookup.unflatten_bucket(list(payload.biases))
   corrections = CurvatureDLookup.unflatten_bucket(list(payload.corrections))
@@ -92,8 +111,9 @@ def print_message_summary(title: str, payload) -> None:
   print(f"  totalBucketPoints: {int(payload.totalBucketPoints)}")
   print(f"  currentCorrection: {float(payload.currentCorrection):.8f}")
   print(f"  currentBias: {float(payload.currentBias):.8f}")
+  print(f"  currentBucket: ({int(payload.bucketSpeed)}, {int(payload.bucketCurvature)})")
 
-  speed_lines = []
+  speed_entries = []
   for speed_idx in range(len(CurvatureDLookup.SPEED_ANCHORS)):
     speed_counts = counts[speed_idx]
     speed_valid = CurvatureDLookup.speed_curve_valid(counts, speed_idx)
@@ -108,17 +128,21 @@ def print_message_summary(title: str, payload) -> None:
     best_corr = float(corrections[speed_idx, best_idx])
     best_bucket = curvature_bucket_label(best_idx)
     fit_points = int(np.count_nonzero(fit_valid[speed_idx]))
-    speed_lines.append(
+    focus_idx = best_idx
+    if int(payload.bucketSpeed) == speed_idx and int(payload.bucketCurvature) >= 0:
+      focus_idx = int(payload.bucketCurvature)
+    speed_entries.append((speed_idx, focus_idx,
       f"  {speed_label(speed_idx)}: valid={speed_valid} total={total_points} "
       f"validBuckets={valid_bucket_count} fitPoints={fit_points} "
       f"topBucket={best_idx} ({best_bucket}) points={best_points} "
-      f"bias={best_bias:.8f} corr={best_corr:.8f}"
+      f"bias={best_bias:.8f} corr={best_corr:.8f}")
     )
 
-  if speed_lines:
+  if speed_entries:
     print("  speed anchors:")
-    for line in speed_lines:
+    for speed_idx, focus_idx, line in speed_entries:
       print(line)
+      print_bucket_window(counts, biases, corrections, fit_valid, speed_idx, focus_idx, bucket_window)
 
 
 def main() -> None:
@@ -140,6 +164,7 @@ def main() -> None:
     help="LogReader mode: r=rlog, q=qlog, a=auto, i=auto interactive",
   )
   parser.add_argument("--limit", type=int, default=5, help="How many liveCurvatureParameters events to sample")
+  parser.add_argument("--bucket-window", type=int, default=2, help="How many neighboring buckets around the focus bucket to print")
   args = parser.parse_args()
 
   target = args.route_or_segment_name.strip()
@@ -186,7 +211,7 @@ def main() -> None:
       if idx in printed:
         continue
       printed.add(idx)
-      print_message_summary(f"sample event #{idx}", curvature_msgs[idx].liveCurvatureParameters)
+      print_message_summary(f"sample event #{idx}", curvature_msgs[idx].liveCurvatureParameters, args.bucket_window)
   else:
     print("No liveCurvatureParameters events found.")
 
@@ -203,7 +228,7 @@ def main() -> None:
   if cached["redacted"]:
     print("initData cache: redacted (DONT_LOG)")
   elif cached["decoded"] is not None:
-    print_message_summary("decoded initData cache", cached["decoded"])
+    print_message_summary("decoded initData cache", cached["decoded"], args.bucket_window)
   else:
     print(f"initData cache decode error: {cached['error']}")
 
