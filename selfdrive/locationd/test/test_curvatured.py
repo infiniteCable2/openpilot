@@ -3,8 +3,7 @@ import numpy as np
 from cereal import car
 
 from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
-from openpilot.selfdrive.locationd.curvatured import CurvatureEstimator, MAX_LEARN_ROLL_LATERAL_ACCEL
-from openpilot.selfdrive.controls.lib.curvatured import CurvatureDLookup
+from openpilot.selfdrive.locationd.curvatured import CurvatureEstimator, CurvatureDLookup, MAX_LEARN_ROLL_LATERAL_ACCEL
 
 
 def get_estimator():

@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from cereal import log
-from openpilot.selfdrive.controls.lib.curvatured import CurvatureDLookup
+from openpilot.selfdrive.locationd.curvatured import CurvatureDLookup
 from openpilot.tools.lib.logreader import LogReader, ReadMode
 
 

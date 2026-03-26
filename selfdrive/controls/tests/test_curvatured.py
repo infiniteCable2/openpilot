@@ -1,6 +1,7 @@
 import cereal.messaging as messaging
 
-from openpilot.selfdrive.controls.lib.curvatured import CurvatureDController, CurvatureDLookup, VERSION
+from openpilot.selfdrive.controls.lib.curvatured import CurvatureDController
+from openpilot.selfdrive.locationd.curvatured import CurvatureDLookup, VERSION
 
 
 class TestCurvatureDController:
