@@ -111,3 +111,22 @@ class TestCurvatureDController:
     assert inside > 0.0
     assert 0.0 <= lower_fade < inside
     assert 0.0 <= upper_fade < inside
+
+  def test_outer_bucket_range_is_supported(self):
+    controller = CurvatureDController()
+    msg = messaging.new_message('liveCurvatureParameters')
+    msg.liveCurvatureParameters.liveValid = True
+    msg.liveCurvatureParameters.version = VERSION
+    msg.liveCurvatureParameters.useParams = True
+    msg.liveCurvatureParameters.counts = [0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.biases = [0.0] * CurvatureDLookup.total_size()
+
+    outer_idx = CurvatureDLookup.curvature_index(3.0e-3)
+    assert outer_idx is not None
+    self._set_curve(msg, 3, {outer_idx: 8.0e-5})
+    controller.update_live_params(msg.liveCurvatureParameters)
+
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[3])
+    outer = controller.get_correction(3.0e-3, v_ego)
+
+    assert outer > 0.0

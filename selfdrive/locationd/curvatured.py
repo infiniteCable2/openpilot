@@ -21,6 +21,28 @@ ALLOWED_CARS = ['volkswagen']
 STATUS_LOG_INTERVAL = 10.0
 MAX_LEARN_ROLL_LATERAL_ACCEL = 0.10
 
+# CurvatureD learns a small, center-focused curvature correction on top of the model/controller target.
+# The goal is not to replace the steering model, but to reduce subtle dynamic-steering mismatch that can
+# show up as light ping-pong or center softness around straight driving and shallow bends.
+#
+# Important magnitude intuition:
+# - The corrected range mainly targets small steering wheel angles around center, not large cornering input.
+# - Rough real-world feel for this vehicle family:
+#   - regular straight / gentle highway lane-keeping tends to stay below ~5e-4
+#   - ~1e-3 is still only around a few degrees at the steering wheel (~3 deg order of magnitude)
+#   - ~5e-3 is already a clearly visible steering input (~16 deg order of magnitude)
+# - In other words, CurvatureD mainly works from near-center out into modest bends, while larger low-speed cornering
+#   curvature is only part of the outer fade range and not the primary target.
+#
+# Safety / scope:
+# - Learning is gated by valid upstream pose/calibration, low roll, low yaw uncertainty, no steering override,
+#   and bounded lateral acceleration.
+# - Corrections are bounded by a relative cap envelope on log-curvature:
+#   - up to 100% of local curvature in the center-focused range
+#   - smoothly reduced through medium curvature
+#   - tapering toward 0 near the outer learning limit
+# - A separate hard absolute cap remains only as a safety backstop.
+
 
 class CurvatureDLookup:
   SPEED_ANCHORS = np.array([20.0, 40.0, 60.0, 80.0, 100.0, 120.0, 140.0], dtype=np.float32) / 3.6
@@ -36,23 +58,27 @@ class CurvatureDLookup:
     2.56e-4,
     5.12e-4,
     1.024e-3,
+    2.048e-3,
+    4.096e-3,
   ], dtype=np.float32)
   CURVATURE_BUCKET_CENTERS = np.sqrt(CURVATURE_BUCKET_EDGES[:-1] * CURVATURE_BUCKET_EDGES[1:]).astype(np.float32)
   CURVATURE_MIN_STEP = float(CURVATURE_BUCKET_EDGES[0])
-  IMPORTANT_CURVATURE_MAX = float(CURVATURE_BUCKET_EDGES[8])
+  IMPORTANT_CURVATURE_MAX = float(CURVATURE_BUCKET_EDGES[10])
   CURVATURE_MAX = float(CURVATURE_BUCKET_EDGES[-1])
 
   MIN_SPEED = float(SPEED_ANCHORS[0] * 0.5)
   MAX_LAT_ACCEL = 2.5
-  MAX_CORRECTION = 3.0e-5
-  CORRECTION_CAP = MAX_CORRECTION
+  HARD_MAX_CORRECTION = 3.0e-4
+  RELATIVE_CAP_FULL_CURVATURE = 1.0e-4
+  RELATIVE_CAP_MID_CURVATURE = 1.024e-3
+  RELATIVE_CAP_MID_RATIO = 0.25
 
   MAX_SAMPLES = 600
   MEAN_WINDOW = 180.0
   FULL_CONFIDENCE_SAMPLES = 180.0
   FIT_MIN_TOTAL_SAMPLES = 120.0
   FIT_MIN_VALID_BUCKETS = 4
-  MIN_BUCKET_POINTS = np.array([20, 20, 18, 16, 14, 12, 10, 8, 6, 6], dtype=np.float32)
+  MIN_BUCKET_POINTS = np.array([20, 20, 18, 16, 14, 12, 10, 8, 6, 6, 4, 4], dtype=np.float32)
 
   @classmethod
   def bucket_shape(cls) -> tuple[int, int]:
@@ -161,6 +187,29 @@ class CurvatureDLookup:
     return float(np.clip(fade_in * fade_out, 0.0, 1.0))
 
   @classmethod
+  def correction_cap(cls, curvature: float) -> float:
+    abs_curvature = abs(float(curvature))
+    if abs_curvature <= cls.CURVATURE_MIN_STEP:
+      return 0.0
+
+    if abs_curvature <= cls.RELATIVE_CAP_FULL_CURVATURE:
+      relative_cap = 1.0
+    elif abs_curvature <= cls.RELATIVE_CAP_MID_CURVATURE:
+      log_low = math.log(cls.RELATIVE_CAP_FULL_CURVATURE)
+      log_high = math.log(cls.RELATIVE_CAP_MID_CURVATURE)
+      alpha = cls.smoothstep((math.log(abs_curvature) - log_low) / max(log_high - log_low, 1e-9))
+      relative_cap = (1.0 - alpha) + alpha * cls.RELATIVE_CAP_MID_RATIO
+    elif abs_curvature < cls.CURVATURE_MAX:
+      log_low = math.log(cls.RELATIVE_CAP_MID_CURVATURE)
+      log_high = math.log(cls.CURVATURE_MAX)
+      alpha = cls.smoothstep((math.log(abs_curvature) - log_low) / max(log_high - log_low, 1e-9))
+      relative_cap = (1.0 - alpha) * cls.RELATIVE_CAP_MID_RATIO
+    else:
+      relative_cap = 0.0
+
+    return float(min(cls.HARD_MAX_CORRECTION, max(relative_cap, 0.0) * abs_curvature))
+
+  @classmethod
   def projected_error(cls, desired_curvature: float, actual_curvature: float) -> float:
     direction = 1.0 if desired_curvature >= 0.0 else -1.0
     return float(direction * (desired_curvature - actual_curvature))
@@ -170,6 +219,7 @@ class CurvatureDLookup:
     fit_corrections = np.zeros(cls.bucket_shape(), dtype=np.float32)
     fit_valid = np.zeros(cls.bucket_shape(), dtype=bool)
     log_centers = np.log(cls.CURVATURE_BUCKET_CENTERS.astype(np.float64))
+    bucket_caps = np.asarray([cls.correction_cap(float(curvature)) for curvature in cls.CURVATURE_BUCKET_CENTERS], dtype=np.float64)
 
     for speed_idx in range(len(cls.SPEED_ANCHORS)):
       curve_valid = counts[speed_idx] >= cls.MIN_BUCKET_POINTS
@@ -181,7 +231,7 @@ class CurvatureDLookup:
 
       valid_idx = np.flatnonzero(curve_valid)
       valid_log_x = log_centers[valid_idx]
-      valid_y = np.clip(bias[speed_idx, valid_idx], -cls.CORRECTION_CAP, cls.CORRECTION_CAP).astype(np.float64)
+      valid_y = np.clip(bias[speed_idx, valid_idx], -bucket_caps[valid_idx], bucket_caps[valid_idx]).astype(np.float64)
 
       interp = np.interp(log_centers, valid_log_x, valid_y).astype(np.float32)
       smoothed = interp.copy()
@@ -199,7 +249,7 @@ class CurvatureDLookup:
       for curvature_idx, curvature in enumerate(cls.CURVATURE_BUCKET_CENTERS):
         smoothed[curvature_idx] *= cls.curvature_window(float(curvature))
 
-      fit_corrections[speed_idx] = np.clip(smoothed, -cls.MAX_CORRECTION, cls.MAX_CORRECTION)
+      fit_corrections[speed_idx] = np.clip(smoothed, -bucket_caps, bucket_caps)
       fit_valid[speed_idx, valid_idx[0]:valid_idx[-1] + 1] = True
 
     return fit_corrections, fit_valid
@@ -363,8 +413,8 @@ class CurvatureEstimator(CurvatureDLookup):
     if curvature_idx is None or len(speed_weights) == 0:
       return
 
-    error = float(np.clip(self.projected_error(desired_curvature, actual_curvature),
-                          -self.CORRECTION_CAP, self.CORRECTION_CAP))
+    error_cap = self.correction_cap(desired_curvature)
+    error = float(np.clip(self.projected_error(desired_curvature, actual_curvature), -error_cap, error_cap))
 
     for speed_idx, weight in speed_weights:
       if weight <= 0.0:

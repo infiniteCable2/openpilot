@@ -73,7 +73,14 @@ class TestCurvatureEstimator:
 
     idx = CurvatureDLookup.indices(desired_curvature, 16.0)
     assert idx is not None
-    assert estimator.bias[idx] <= CurvatureDLookup.CORRECTION_CAP
+    assert estimator.bias[idx] <= CurvatureDLookup.correction_cap(desired_curvature)
+
+  def test_relative_correction_cap_envelope(self):
+    assert np.isclose(CurvatureDLookup.correction_cap(1.0e-5), 1.0e-5)
+    assert np.isclose(CurvatureDLookup.correction_cap(1.0e-4), 1.0e-4)
+    assert np.isclose(CurvatureDLookup.correction_cap(1.024e-3), 0.25 * 1.024e-3)
+    assert CurvatureDLookup.correction_cap(3.0e-3) < CurvatureDLookup.correction_cap(1.024e-3)
+    assert CurvatureDLookup.correction_cap(CurvatureDLookup.CURVATURE_MAX) == 0.0
 
   def test_calibration_percent_tracks_valid_speed_curves(self):
     estimator = get_estimator()
