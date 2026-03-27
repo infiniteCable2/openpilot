@@ -102,6 +102,9 @@ _services: dict[str, tuple] = {
   "modelDataV2SP": (True, 20., None, QueueSize.BIG),
   "liveLocationKalman": (True, 20.),
 
+  # infiniteCable
+  "liveCurvatureParameters": (True, 4., 1),
+
   # debug
   "uiDebug": (True, 0., 1),
   "testJoystick": (True, 0.),
@@ -115,7 +118,6 @@ _services: dict[str, tuple] = {
   "customReservedRawData0": (True, 0.),
   "customReservedRawData1": (True, 0.),
   "customReservedRawData2": (True, 0.),
-  "liveCurvatureParameters": (True, 4., 1),
 }
 SERVICE_LIST = {name: Service(*vals) for
                 idx, (name, vals) in enumerate(_services.items())}
