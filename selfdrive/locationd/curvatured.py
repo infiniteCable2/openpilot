@@ -554,3 +554,16 @@ class CurvatureEstimator(CurvatureDLookup):
                   f"bucket={self.current_bucket} bucket_points={self.current_bucket_points} "
                   f"corr={self.current_correction:.8f} cal={self.calibration_percent(self.counts)} "
                   f"invalid={invalid} not_alive={not_alive}")
+
+
+# Standalone CurvatureD reference:
+# CurvatureD currently runs inside torqued. To restore it as a dedicated process later,
+# add a small main() here that mirrors the old pattern:
+# - config_realtime_process(...)
+# - SubMaster(curvature_services, poll='livePose')
+# - PubMaster(['liveCurvatureParameters'])
+# - CurvatureEstimator(CP)
+# - sm.update() loop with handle_log(...), update_use_params(), get_msg(...), cache writes
+#
+# When doing that, comment out the CurvatureEstimator integration in selfdrive/locationd/torqued.py
+# so liveCurvatureParameters is only produced from one place.

@@ -251,6 +251,10 @@ class TorqueEstimator(ParameterEstimator, TorqueEstimatorExt):
 
 def main(demo=False):
   config_realtime_process([0, 1, 2, 3], 5)
+  # Standalone CurvatureD reference:
+  # If CurvatureD is split back into its own process, comment out the CurvatureEstimator
+  # import/creation below, remove liveCurvatureParameters from this PubMaster, and stop
+  # forwarding curvature_services / curvature_estimator messages from this loop.
 
   DEBUG = bool(int(os.getenv("DEBUG", "0")))
   torque_services = ['carControl', 'carOutput', 'carState', 'liveCalibration', 'livePose', 'liveDelay']
