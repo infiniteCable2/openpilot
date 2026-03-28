@@ -18,6 +18,9 @@ class DynamicSteeringLearnerGraphConfig:
   height: int = 392
   right_margin: int = 30
   bottom_gap_to_battery: int = 20
+  top_gap_to_speed: int = 20
+  speed_display_bottom_y: int = 360
+  aspect_ratio: float = 896 / 392
   padding: int = 25
   plot_padding_left: int = 73
   plot_padding_right: int = 25
@@ -69,12 +72,16 @@ class DynamicSteeringLearnerGraph(Widget):
     battery_line_height = int(BATTERY_CONFIG.line_height * BATTERY_CONFIG.scale_factor)
     battery_panel_height = battery_line_height * 4
     battery_panel_margin = BATTERY_CONFIG.panel_margin
+    graph_bottom = rect.y + rect.height - CONFIG.bottom_gap_to_battery - battery_panel_height - battery_panel_margin
+    graph_top = rect.y + CONFIG.speed_display_bottom_y + CONFIG.top_gap_to_speed
+    graph_height = max(CONFIG.height, int(graph_bottom - graph_top))
+    graph_width = int(graph_height * CONFIG.aspect_ratio)
+
     graph_rect = rl.Rectangle(
-      rect.x + rect.width - CONFIG.width - battery_panel_margin,
-      rect.y + rect.height - CONFIG.height - CONFIG.bottom_gap_to_battery
-      - battery_panel_height - battery_panel_margin,
-      CONFIG.width,
-      CONFIG.height,
+      rect.x + rect.width - graph_width - battery_panel_margin,
+      graph_bottom - graph_height,
+      graph_width,
+      graph_height,
     )
     rl.draw_rectangle_rounded(graph_rect, 0.08, 8, self._panel_bg)
 
