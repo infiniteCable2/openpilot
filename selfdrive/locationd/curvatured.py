@@ -534,6 +534,13 @@ class CurvatureEstimator(CurvatureDLookup):
     self.current_correction = float(direction * projected)
 
   def handle_log(self, t: float, which: str, msg) -> None:
+    if not self.use_params:
+      if which == "liveCalibration":
+        self.calibrator.feed_live_calib(msg)
+      elif which == "liveDelay":
+        self.lag = get_lat_delay(self.params, msg.lateralDelay)
+      return
+
     if which == "carControl":
       self.car_control_t.append(t)
       self.lat_active.append(msg.latActive)
@@ -599,14 +606,14 @@ class CurvatureEstimator(CurvatureDLookup):
     curvature_params.liveValid = bool(live_valid) and bool(np.isfinite(self.bias).all()) and bool(np.isfinite(self.fit_corrections).all())
     curvature_params.version = VERSION
     curvature_params.useParams = self.use_params
-    curvature_params.currentCorrection = self.current_correction
-    curvature_params.currentBias = self.current_bias
-    curvature_params.currentBucketPoints = self.current_bucket_points
+    curvature_params.currentCorrection = self.current_correction if self.use_params else 0.0
+    curvature_params.currentBias = self.current_bias if self.use_params else 0.0
+    curvature_params.currentBucketPoints = self.current_bucket_points if self.use_params else 0
     curvature_params.totalBucketPoints = int(round(float(self.counts.sum())))
     curvature_params.calPerc = self.calibration_percent(self.counts)
     curvature_params.bucketSign = 0
-    curvature_params.bucketSpeed = int(self.current_bucket[0])
-    curvature_params.bucketCurvature = int(self.current_bucket[1])
+    curvature_params.bucketSpeed = int(self.current_bucket[0]) if self.use_params else -1
+    curvature_params.bucketCurvature = int(self.current_bucket[1]) if self.use_params else -1
     curvature_params.corrections = self.flatten(self.fit_corrections)
     curvature_params.counts = self.flatten(np.rint(self.counts).astype(np.int32))
     curvature_params.biases = self.flatten(self.bias)
