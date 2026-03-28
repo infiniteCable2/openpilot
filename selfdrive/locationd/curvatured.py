@@ -275,6 +275,51 @@ class CurvatureDLookup:
     return fit_corrections, fit_valid
 
   @classmethod
+  def build_preview_corrections(cls, bias: np.ndarray, counts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    preview_corrections = np.zeros(cls.bucket_shape(), dtype=np.float32)
+    preview_valid = np.zeros(cls.bucket_shape(), dtype=bool)
+    log_centers = np.log(cls.CURVATURE_BUCKET_CENTERS.astype(np.float64))
+    bucket_caps = np.asarray([cls.correction_cap(float(curvature)) for curvature in cls.CURVATURE_BUCKET_CENTERS], dtype=np.float64)
+
+    for speed_idx in range(len(cls.SPEED_ANCHORS)):
+      raw_valid = np.asarray(counts[speed_idx] > 0.0, dtype=bool)
+      curve_valid = np.zeros_like(raw_valid, dtype=bool)
+      for curvature_idx, is_valid in enumerate(raw_valid):
+        if not is_valid:
+          break
+        curve_valid[curvature_idx] = True
+      if not curve_valid.any():
+        continue
+
+      total_points = float(counts[speed_idx].sum())
+      if total_points <= 0.0:
+        continue
+
+      valid_idx = np.flatnonzero(curve_valid)
+      valid_log_x = log_centers[valid_idx]
+      valid_y = np.clip(bias[speed_idx, valid_idx], -bucket_caps[valid_idx], bucket_caps[valid_idx]).astype(np.float64)
+
+      interp = np.interp(log_centers, valid_log_x, valid_y).astype(np.float32)
+      smoothed = interp.copy()
+      if len(smoothed) >= 3:
+        smoothed[1:-1] = 0.25 * interp[:-2] + 0.5 * interp[1:-1] + 0.25 * interp[2:]
+
+      local_strength = np.clip(
+        counts[speed_idx, valid_idx] / np.maximum(cls.MIN_BUCKET_POINTS[valid_idx], 1.0),
+        0.0, 1.0
+      ).astype(np.float64)
+      interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
+      confidence = cls.confidence(total_points)
+      smoothed *= confidence * interpolated_strength
+      for curvature_idx, curvature in enumerate(cls.CURVATURE_BUCKET_CENTERS):
+        smoothed[curvature_idx] *= cls.curvature_window(float(curvature))
+
+      preview_corrections[speed_idx] = np.clip(smoothed, -bucket_caps, bucket_caps)
+      preview_valid[speed_idx] = curve_valid
+
+    return preview_corrections, preview_valid
+
+  @classmethod
   def interp_curve_value(cls, fit_corrections: np.ndarray, fit_valid: np.ndarray,
                          v_ego: float, abs_curvature: float) -> float:
     if abs_curvature < cls.CURVATURE_MIN_STEP or abs_curvature > cls.CURVATURE_MAX:
