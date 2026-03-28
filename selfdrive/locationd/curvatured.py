@@ -59,11 +59,10 @@ class CurvatureDLookup:
     5.12e-4,
     1.024e-3,
     2.048e-3,
-    4.096e-3,
   ], dtype=np.float32)
   CURVATURE_BUCKET_CENTERS = np.sqrt(CURVATURE_BUCKET_EDGES[:-1] * CURVATURE_BUCKET_EDGES[1:]).astype(np.float32)
   CURVATURE_MIN_STEP = float(CURVATURE_BUCKET_EDGES[0])
-  IMPORTANT_CURVATURE_MAX = float(CURVATURE_BUCKET_EDGES[10])
+  IMPORTANT_CURVATURE_MAX = float(CURVATURE_BUCKET_EDGES[9])
   CURVATURE_MAX = float(CURVATURE_BUCKET_EDGES[-1])
 
   MIN_SPEED = float(SPEED_ANCHORS[0] * 0.5)
@@ -76,9 +75,8 @@ class CurvatureDLookup:
   MAX_SAMPLES = 600
   MEAN_WINDOW = 180.0
   FULL_CONFIDENCE_SAMPLES = 180.0
-  FIT_MIN_TOTAL_SAMPLES = 120.0
-  FIT_MIN_VALID_BUCKETS = 4
-  MIN_BUCKET_POINTS = np.array([20, 20, 18, 16, 14, 12, 10, 8, 6, 6, 4, 4], dtype=np.float32)
+  FIT_MIN_TOTAL_SAMPLES = 240.0
+  MIN_BUCKET_POINTS = np.array([20, 20, 18, 16, 14, 12, 10, 8, 6, 6, 4], dtype=np.float32)
 
   @classmethod
   def bucket_shape(cls) -> tuple[int, int]:
@@ -162,7 +160,7 @@ class CurvatureDLookup:
     bucket_counts = counts[speed_idx]
     valid_bucket_count = int(np.count_nonzero(bucket_counts >= cls.MIN_BUCKET_POINTS))
     total_points = float(bucket_counts.sum())
-    return valid_bucket_count >= cls.FIT_MIN_VALID_BUCKETS and total_points >= cls.FIT_MIN_TOTAL_SAMPLES
+    return valid_bucket_count == len(cls.CURVATURE_BUCKET_CENTERS) and total_points >= cls.FIT_MIN_TOTAL_SAMPLES
 
   @classmethod
   def calibration_percent(cls, counts: np.ndarray) -> int:
@@ -223,7 +221,7 @@ class CurvatureDLookup:
 
     for speed_idx in range(len(cls.SPEED_ANCHORS)):
       curve_valid = counts[speed_idx] >= cls.MIN_BUCKET_POINTS
-      if int(np.count_nonzero(curve_valid)) < cls.FIT_MIN_VALID_BUCKETS:
+      if not bool(np.all(curve_valid)):
         continue
       total_points = float(counts[speed_idx].sum())
       if total_points < cls.FIT_MIN_TOTAL_SAMPLES:
@@ -250,7 +248,7 @@ class CurvatureDLookup:
         smoothed[curvature_idx] *= cls.curvature_window(float(curvature))
 
       fit_corrections[speed_idx] = np.clip(smoothed, -bucket_caps, bucket_caps)
-      fit_valid[speed_idx, valid_idx[0]:valid_idx[-1] + 1] = True
+      fit_valid[speed_idx] = curve_valid
 
     return fit_corrections, fit_valid
 

@@ -121,12 +121,12 @@ class TestCurvatureDController:
     msg.liveCurvatureParameters.counts = [0] * CurvatureDLookup.total_size()
     msg.liveCurvatureParameters.biases = [0.0] * CurvatureDLookup.total_size()
 
-    outer_idx = CurvatureDLookup.curvature_index(3.0e-3)
+    outer_idx = CurvatureDLookup.curvature_index(1.5e-3)
     assert outer_idx is not None
     self._set_curve(msg, 3, {outer_idx: 8.0e-5})
     controller.update_live_params(msg.liveCurvatureParameters)
 
     v_ego = float(CurvatureDLookup.SPEED_ANCHORS[3])
-    outer = controller.get_correction(3.0e-3, v_ego)
+    outer = controller.get_correction(1.5e-3, v_ego)
 
     assert outer > 0.0

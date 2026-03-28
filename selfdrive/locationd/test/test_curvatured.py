@@ -18,10 +18,10 @@ def get_estimator():
 class TestCurvatureEstimator:
   @staticmethod
   def _train_speed_curve(estimator, v_ego: float):
-    for desired_curvature in (8e-6, 2e-5, 5e-5, 1.2e-4):
+    for desired_curvature in CurvatureDLookup.CURVATURE_BUCKET_CENTERS:
       for sign in (-1.0, 1.0):
-        for _ in range(int(CurvatureDLookup.FIT_MIN_TOTAL_SAMPLES / 4)):
-          desired = sign * desired_curvature
+        for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[CurvatureDLookup.curvature_index(float(desired_curvature))]) + 2):
+          desired = sign * float(desired_curvature)
           estimator.add_measurement(desired, desired * 0.6, v_ego)
 
   def test_left_and_right_feed_the_same_bucket_curve(self):
@@ -110,22 +110,27 @@ class TestCurvatureEstimator:
     assert len(msg.liveCurvatureParameters.biases) == CurvatureDLookup.total_size()
     assert len(msg.liveCurvatureParameters.fitValid) == CurvatureDLookup.total_size()
 
-  def test_fit_valid_is_limited_to_supported_curvature_range(self):
+  def test_fit_valid_requires_full_bucket_coverage(self):
     estimator = get_estimator()
     v_ego = float(CurvatureDLookup.SPEED_ANCHORS[3])
 
-    for desired_curvature in (8e-6, 2e-5, 5e-5, 1.2e-4):
-      for _ in range(40):
-        estimator.add_measurement(desired_curvature, desired_curvature * 0.6, v_ego)
+    for desired_curvature in CurvatureDLookup.CURVATURE_BUCKET_CENTERS[:-1]:
+      for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[CurvatureDLookup.curvature_index(float(desired_curvature))]) + 2):
+        estimator.add_measurement(float(desired_curvature), float(desired_curvature) * 0.6, v_ego)
 
     msg = estimator.get_msg().liveCurvatureParameters
     fit_valid = CurvatureDLookup.unflatten_bucket(list(msg.fitValid), dtype=bool)
     speed_idx = 3
-    valid_idx = np.flatnonzero(fit_valid[speed_idx])
 
-    assert len(valid_idx) > 0
-    assert valid_idx[0] > 0
-    assert valid_idx[-1] < len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS) - 1
+    assert not fit_valid[speed_idx].any()
+
+    last_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[-1])
+    for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[-1]) + 2):
+      estimator.add_measurement(last_curvature, last_curvature * 0.6, v_ego)
+
+    msg = estimator.get_msg().liveCurvatureParameters
+    fit_valid = CurvatureDLookup.unflatten_bucket(list(msg.fitValid), dtype=bool)
+    assert fit_valid[speed_idx].all()
 
   def test_learning_is_blocked_for_larger_roll(self):
     estimator = get_estimator()
