@@ -118,31 +118,23 @@ class TestCurvatureEstimator:
     assert len(msg.liveCurvatureParameters.biases) == CurvatureDLookup.total_size()
     assert len(msg.liveCurvatureParameters.fitValid) == CurvatureDLookup.total_size()
 
-  def test_fit_valid_grows_contiguously_from_center(self):
+  def test_fit_valid_allows_noncontiguous_supported_buckets(self):
     estimator = get_estimator()
     speed_idx = len(CurvatureDLookup.SPEED_ANCHORS) - 1
     v_ego = float(CurvatureDLookup.SPEED_ANCHORS[speed_idx])
     required = CurvatureDLookup.required_valid_bucket_count(speed_idx)
+    selected_indices = list(range(0, required - 1)) + [required]
 
-    for desired_curvature in CurvatureDLookup.CURVATURE_BUCKET_CENTERS[:required - 1]:
-      bucket_idx = CurvatureDLookup.curvature_index(float(desired_curvature))
-      assert bucket_idx is not None
-      for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[bucket_idx]) + 40):
-        estimator.add_measurement(float(desired_curvature), float(desired_curvature) * 0.6, v_ego)
-
-    msg = estimator.get_msg().liveCurvatureParameters
-    fit_valid = CurvatureDLookup.unflatten_bucket(list(msg.fitValid), dtype=bool)
-
-    assert not fit_valid[speed_idx].any()
-
-    next_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[required - 1])
-    for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[required - 1]) + 40):
-      estimator.add_measurement(next_curvature, next_curvature * 0.6, v_ego)
+    for bucket_idx in selected_indices:
+      desired_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[bucket_idx])
+      for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[bucket_idx]) + 120):
+        estimator.add_measurement(desired_curvature, desired_curvature * 0.6, v_ego)
 
     msg = estimator.get_msg().liveCurvatureParameters
     fit_valid = CurvatureDLookup.unflatten_bucket(list(msg.fitValid), dtype=bool)
-    assert fit_valid[speed_idx, :required].all()
-    assert not fit_valid[speed_idx, required:].any()
+
+    assert fit_valid[speed_idx, selected_indices].all()
+    assert not fit_valid[speed_idx, required - 1]
 
   def test_learning_is_blocked_for_larger_roll(self):
     estimator = get_estimator()

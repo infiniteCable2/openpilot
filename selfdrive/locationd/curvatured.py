@@ -162,21 +162,11 @@ class CurvatureDLookup:
 
   @classmethod
   def speed_curve_valid(cls, counts: np.ndarray, speed_idx: int) -> bool:
-    contiguous_valid = cls.contiguous_valid_mask(counts[speed_idx])
-    valid_bucket_count = int(np.count_nonzero(contiguous_valid))
+    valid_mask = np.asarray(counts[speed_idx] >= cls.MIN_BUCKET_POINTS, dtype=bool)
+    valid_bucket_count = int(np.count_nonzero(valid_mask))
     total_points = float(counts[speed_idx].sum())
     required_bucket_count = cls.required_valid_bucket_count(speed_idx)
     return valid_bucket_count >= required_bucket_count and total_points >= cls.FIT_MIN_TOTAL_SAMPLES
-
-  @classmethod
-  def contiguous_valid_mask(cls, bucket_counts: np.ndarray) -> np.ndarray:
-    valid_mask = np.asarray(bucket_counts >= cls.MIN_BUCKET_POINTS, dtype=bool)
-    contiguous = np.zeros_like(valid_mask, dtype=bool)
-    for idx, is_valid in enumerate(valid_mask):
-      if not is_valid:
-        break
-      contiguous[idx] = True
-    return contiguous
 
   @classmethod
   def required_valid_bucket_count(cls, speed_idx: int) -> int:
@@ -243,7 +233,7 @@ class CurvatureDLookup:
     bucket_caps = np.asarray([cls.correction_cap(float(curvature)) for curvature in cls.CURVATURE_BUCKET_CENTERS], dtype=np.float64)
 
     for speed_idx in range(len(cls.SPEED_ANCHORS)):
-      curve_valid = cls.contiguous_valid_mask(counts[speed_idx])
+      curve_valid = np.asarray(counts[speed_idx] >= cls.MIN_BUCKET_POINTS, dtype=bool)
       if int(np.count_nonzero(curve_valid)) < cls.required_valid_bucket_count(speed_idx):
         continue
       total_points = float(counts[speed_idx].sum())
@@ -283,12 +273,7 @@ class CurvatureDLookup:
     bucket_caps = np.asarray([cls.correction_cap(float(curvature)) for curvature in cls.CURVATURE_BUCKET_CENTERS], dtype=np.float64)
 
     for speed_idx in range(len(cls.SPEED_ANCHORS)):
-      raw_valid = np.asarray(counts[speed_idx] > 0.0, dtype=bool)
-      curve_valid = np.zeros_like(raw_valid, dtype=bool)
-      for curvature_idx, is_valid in enumerate(raw_valid):
-        if not is_valid:
-          break
-        curve_valid[curvature_idx] = True
+      curve_valid = np.asarray(counts[speed_idx] > 0.0, dtype=bool)
       if not curve_valid.any():
         continue
 
