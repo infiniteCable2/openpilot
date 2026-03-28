@@ -14,15 +14,15 @@ from openpilot.system.ui.widgets import Widget
 
 @dataclass(frozen=True)
 class DynamicSteeringLearnerGraphConfig:
-  width: int = 640
-  height: int = 280
+  width: int = 896
+  height: int = 392
   right_margin: int = 30
   bottom_gap_to_battery: int = 20
-  padding: int = 18
-  plot_padding_left: int = 52
-  plot_padding_right: int = 18
-  plot_padding_top: int = 42
-  plot_padding_bottom: int = 34
+  padding: int = 25
+  plot_padding_left: int = 73
+  plot_padding_right: int = 25
+  plot_padding_top: int = 59
+  plot_padding_bottom: int = 48
   sample_points: int = 121
 
 
@@ -66,10 +66,13 @@ class DynamicSteeringLearnerGraph(Widget):
     if sm.recv_frame["carState"] < ui_state.started_frame or sm.recv_frame["controlsState"] < ui_state.started_frame:
       return
 
+    battery_line_height = int(BATTERY_CONFIG.line_height * BATTERY_CONFIG.scale_factor)
+    battery_panel_height = battery_line_height * 4
+    battery_panel_margin = BATTERY_CONFIG.panel_margin
     graph_rect = rl.Rectangle(
-      rect.x + rect.width - CONFIG.width - CONFIG.right_margin,
+      rect.x + rect.width - CONFIG.width - battery_panel_margin,
       rect.y + rect.height - CONFIG.height - CONFIG.bottom_gap_to_battery
-      - int(BATTERY_CONFIG.line_height * BATTERY_CONFIG.scale_factor) * 4 - BATTERY_CONFIG.panel_margin,
+      - battery_panel_height - battery_panel_margin,
       CONFIG.width,
       CONFIG.height,
     )
