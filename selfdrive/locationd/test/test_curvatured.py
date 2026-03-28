@@ -99,6 +99,13 @@ class TestCurvatureEstimator:
     assert low == len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS)
     assert low >= mid >= high >= CurvatureDLookup.FIT_MIN_VALID_BUCKETS
 
+  def test_global_confidence_starts_after_fit_min_total_samples(self):
+    assert CurvatureDLookup.confidence(0.0) == 0.0
+    assert CurvatureDLookup.confidence(CurvatureDLookup.FIT_MIN_TOTAL_SAMPLES) == 0.0
+    assert CurvatureDLookup.confidence(CurvatureDLookup.FULL_CONFIDENCE_TOTAL_SAMPLES) == 1.0
+    midpoint = 0.5 * (CurvatureDLookup.FIT_MIN_TOTAL_SAMPLES + CurvatureDLookup.FULL_CONFIDENCE_TOTAL_SAMPLES)
+    assert np.isclose(CurvatureDLookup.confidence(midpoint), 0.5)
+
   def test_message_contains_symmetric_fit_curve(self):
     estimator = get_estimator()
     desired_curvature = 32e-6

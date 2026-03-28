@@ -152,7 +152,11 @@ class CurvatureDLookup:
 
   @classmethod
   def confidence(cls, total_points: float) -> float:
-    return float(np.clip(total_points / cls.FULL_CONFIDENCE_TOTAL_SAMPLES, 0.0, 1.0))
+    return float(np.clip(
+      (total_points - cls.FIT_MIN_TOTAL_SAMPLES) /
+      max(cls.FULL_CONFIDENCE_TOTAL_SAMPLES - cls.FIT_MIN_TOTAL_SAMPLES, 1.0),
+      0.0, 1.0
+    ))
 
   @classmethod
   def bucket_points_for_index(cls, counts: np.ndarray, idx: tuple[int, int] | None) -> int:
