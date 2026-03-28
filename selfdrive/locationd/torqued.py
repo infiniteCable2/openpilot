@@ -289,7 +289,10 @@ def main(demo=False):
       pm.send('liveTorqueParameters', estimator.get_msg(valid=torque_valid, with_points=DEBUG))
       t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
       curvature_estimator.maybe_log_status(t, sm, curvature_services, curvature_valid)
-      pm.send('liveCurvatureParameters', curvature_estimator.get_msg(valid=curvature_valid, live_valid=curvature_valid))
+      curvature_transport_valid = curvature_valid or not curvature_estimator.use_params
+      curvature_live_valid = curvature_valid and curvature_estimator.use_params
+      pm.send('liveCurvatureParameters',
+              curvature_estimator.get_msg(valid=curvature_transport_valid, live_valid=curvature_live_valid))
 
     # Cache points every 60 seconds while onroad
     if sm.frame % 240 == 0:
@@ -297,7 +300,7 @@ def main(demo=False):
 
     if sm.frame % 1200 == 0:
       params.put_nonblocking("LiveCurvatureParameters",
-                             curvature_estimator.get_msg(valid=curvature_valid, live_valid=curvature_valid).to_bytes())
+                             curvature_estimator.get_msg(valid=curvature_transport_valid, live_valid=curvature_live_valid).to_bytes())
 
 
 if __name__ == "__main__":

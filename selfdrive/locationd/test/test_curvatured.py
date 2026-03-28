@@ -106,6 +106,11 @@ class TestCurvatureEstimator:
     midpoint = 0.5 * (CurvatureDLookup.FIT_MIN_TOTAL_SAMPLES + CurvatureDLookup.FULL_CONFIDENCE_TOTAL_SAMPLES)
     assert np.isclose(CurvatureDLookup.confidence(midpoint), 0.5)
 
+  def test_preview_confidence_builds_from_first_samples(self):
+    assert CurvatureDLookup.preview_confidence(0.0) == 0.0
+    assert 0.0 < CurvatureDLookup.preview_confidence(1.0) < 1.0
+    assert CurvatureDLookup.preview_confidence(CurvatureDLookup.FIT_MIN_TOTAL_SAMPLES) == 1.0
+
   def test_message_contains_symmetric_fit_curve(self):
     estimator = get_estimator()
     desired_curvature = 32e-6

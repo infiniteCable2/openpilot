@@ -159,6 +159,10 @@ class CurvatureDLookup:
     ))
 
   @classmethod
+  def preview_confidence(cls, total_points: float) -> float:
+    return float(np.clip(total_points / max(cls.FIT_MIN_TOTAL_SAMPLES, 1.0), 0.0, 1.0))
+
+  @classmethod
   def bucket_points_for_index(cls, counts: np.ndarray, idx: tuple[int, int] | None) -> int:
     if idx is None:
       return 0
@@ -259,7 +263,7 @@ class CurvatureDLookup:
         0.0, 1.0
       ).astype(np.float64)
       interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
-      confidence = cls.confidence(total_points)
+      confidence = cls.preview_confidence(total_points)
       smoothed *= confidence * interpolated_strength
       for curvature_idx, curvature in enumerate(cls.CURVATURE_BUCKET_CENTERS):
         smoothed[curvature_idx] *= cls.curvature_window(float(curvature))
