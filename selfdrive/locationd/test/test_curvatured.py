@@ -125,7 +125,9 @@ class TestCurvatureEstimator:
     required = CurvatureDLookup.required_valid_bucket_count(speed_idx)
 
     for desired_curvature in CurvatureDLookup.CURVATURE_BUCKET_CENTERS[:required - 1]:
-      for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[CurvatureDLookup.curvature_index(float(desired_curvature))]) + 2):
+      bucket_idx = CurvatureDLookup.curvature_index(float(desired_curvature))
+      assert bucket_idx is not None
+      for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[bucket_idx]) + 40):
         estimator.add_measurement(float(desired_curvature), float(desired_curvature) * 0.6, v_ego)
 
     msg = estimator.get_msg().liveCurvatureParameters
@@ -134,7 +136,7 @@ class TestCurvatureEstimator:
     assert not fit_valid[speed_idx].any()
 
     next_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[required - 1])
-    for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[required - 1]) + 2):
+    for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[required - 1]) + 40):
       estimator.add_measurement(next_curvature, next_curvature * 0.6, v_ego)
 
     msg = estimator.get_msg().liveCurvatureParameters

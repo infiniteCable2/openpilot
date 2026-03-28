@@ -76,8 +76,9 @@ class CurvatureDLookup:
 
   MAX_SAMPLES = 600
   MEAN_WINDOW = 180.0
-  FULL_CONFIDENCE_SAMPLES = 180.0
-  FIT_MIN_TOTAL_SAMPLES = 240.0
+  FIT_MIN_TOTAL_SAMPLES = 480.0
+  FULL_CONFIDENCE_TOTAL_SAMPLES = 960.0
+  FULL_CONFIDENCE_BUCKET_SAMPLES = 180.0
   FIT_MIN_VALID_BUCKETS = 4
   INITIAL_VALID_LATERAL_ACCEL = 0.05
   MIN_BUCKET_POINTS = np.array([20, 20, 18, 16, 14, 12, 10, 8, 6, 6, 4, 4], dtype=np.float32)
@@ -151,7 +152,7 @@ class CurvatureDLookup:
 
   @classmethod
   def confidence(cls, total_points: float) -> float:
-    return float(np.clip(total_points / cls.FULL_CONFIDENCE_SAMPLES, 0.0, 1.0))
+    return float(np.clip(total_points / cls.FULL_CONFIDENCE_TOTAL_SAMPLES, 0.0, 1.0))
 
   @classmethod
   def bucket_points_for_index(cls, counts: np.ndarray, idx: tuple[int, int] | None) -> int:
@@ -260,7 +261,7 @@ class CurvatureDLookup:
 
       local_strength = np.clip(
         (counts[speed_idx, valid_idx] - cls.MIN_BUCKET_POINTS[valid_idx]) /
-        np.maximum(cls.FULL_CONFIDENCE_SAMPLES - cls.MIN_BUCKET_POINTS[valid_idx], 1.0),
+        np.maximum(cls.FULL_CONFIDENCE_BUCKET_SAMPLES - cls.MIN_BUCKET_POINTS[valid_idx], 1.0),
         0.0, 1.0
       ).astype(np.float64)
       interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
