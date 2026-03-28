@@ -167,14 +167,23 @@ class DynamicSteeringLearnerGraph(Widget):
     marker_y = graph_rect.y + CONFIG.plot_padding_top + plot_height * (0.5 - 0.5 * float(current_correction) / max_y)
     rl.draw_circle(int(marker_x), int(marker_y), 6, self._marker_color)
 
+    title_size = min(36, max(30, int(graph_rect.height * 0.085)))
+    status_size = min(26, max(22, int(graph_rect.height * 0.06)))
+    footer_size = min(24, max(20, int(graph_rect.height * 0.052)))
+    text_x = float(graph_rect.x + CONFIG.padding)
+    title_y = float(graph_rect.y + 12)
+    status_y = title_y + title_size + 8
+    footer_y2 = float(graph_rect.y + graph_rect.height - footer_size - 10)
+    footer_y1 = float(footer_y2 - footer_size - 8)
+
     title = "Dynamic Steering Learner"
-    rl.draw_text_ex(self._font_bold, title, rl.Vector2(float(graph_rect.x + 18), float(graph_rect.y + 10)), 28, 0, self._text_color)
+    rl.draw_text_ex(self._font_bold, title, rl.Vector2(text_x, title_y), title_size, 0, self._text_color)
 
     status_text = (
       f"live={payload_valid} transport={transport_valid} cal={int(getattr(lcp, 'calPerc', 0))}% "
       f"points={int(getattr(lcp, 'totalBucketPoints', 0))}"
     )
-    rl.draw_text_ex(self._font_medium, status_text, rl.Vector2(float(graph_rect.x + 18), float(graph_rect.y + 46)), 20, 0, self._muted_text_color)
+    rl.draw_text_ex(self._font_medium, status_text, rl.Vector2(text_x, status_y), status_size, 0, self._muted_text_color)
 
     speed_mix = (
       f"v={v_ego * 3.6:.0f} km/h  mix={CurvatureDLookup.SPEED_ANCHORS[low_idx] * 3.6:.0f}/"
@@ -184,5 +193,5 @@ class DynamicSteeringLearnerGraph(Widget):
       f"k={desired_curvature:.2e}  corr={current_correction:.2e}  "
       f"bucket=({int(getattr(lcp, 'bucketSpeed', -1))}, {int(getattr(lcp, 'bucketCurvature', -1))})"
     )
-    rl.draw_text_ex(self._font_medium, speed_mix, rl.Vector2(float(graph_rect.x + 18), float(graph_rect.y + graph_rect.height - 52)), 18, 0, self._muted_text_color)
-    rl.draw_text_ex(self._font_medium, marker_info, rl.Vector2(float(graph_rect.x + 18), float(graph_rect.y + graph_rect.height - 28)), 18, 0, self._muted_text_color)
+    rl.draw_text_ex(self._font_medium, speed_mix, rl.Vector2(text_x, footer_y1), footer_size, 0, self._muted_text_color)
+    rl.draw_text_ex(self._font_medium, marker_info, rl.Vector2(text_x, footer_y2), footer_size, 0, self._muted_text_color)
