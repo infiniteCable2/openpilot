@@ -78,13 +78,11 @@ def message_summary(msg) -> dict:
   }
 
 
-def print_bucket_window(counts: np.ndarray, biases: np.ndarray, corrections: np.ndarray,
-                        fit_valid: np.ndarray, speed_idx: int, focus_idx: int, window: int) -> None:
-  start = max(0, focus_idx - window)
-  end = min(len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS) - 1, focus_idx + window)
-  print(f"    bucket window around {focus_idx}:")
-  for curvature_idx in range(start, end + 1):
-    marker = "*" if curvature_idx == focus_idx else " "
+def print_bucket_details(counts: np.ndarray, biases: np.ndarray, corrections: np.ndarray,
+                         fit_valid: np.ndarray, speed_idx: int, focus_idx: int | None = None) -> None:
+  print("    buckets:")
+  for curvature_idx in range(len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS)):
+    marker = "*" if focus_idx is not None and curvature_idx == focus_idx else " "
     bucket_range = curvature_bucket_label(curvature_idx)
     bucket_points = int(round(float(counts[speed_idx, curvature_idx])))
     bucket_bias = float(biases[speed_idx, curvature_idx])
@@ -97,7 +95,7 @@ def print_bucket_window(counts: np.ndarray, biases: np.ndarray, corrections: np.
     )
 
 
-def print_message_summary(title: str, payload, bucket_window: int) -> None:
+def print_message_summary(title: str, payload) -> None:
   counts = CurvatureDLookup.unflatten_bucket(list(payload.counts))
   biases = CurvatureDLookup.unflatten_bucket(list(payload.biases))
   corrections = CurvatureDLookup.unflatten_bucket(list(payload.corrections))
@@ -142,7 +140,7 @@ def print_message_summary(title: str, payload, bucket_window: int) -> None:
     print("  speed anchors:")
     for speed_idx, focus_idx, line in speed_entries:
       print(line)
-      print_bucket_window(counts, biases, corrections, fit_valid, speed_idx, focus_idx, bucket_window)
+      print_bucket_details(counts, biases, corrections, fit_valid, speed_idx, focus_idx)
 
 
 def main() -> None:
@@ -164,7 +162,6 @@ def main() -> None:
     help="LogReader mode: r=rlog, q=qlog, a=auto, i=auto interactive",
   )
   parser.add_argument("--limit", type=int, default=5, help="How many liveCurvatureParameters events to sample")
-  parser.add_argument("--bucket-window", type=int, default=2, help="How many neighboring buckets around the focus bucket to print")
   args = parser.parse_args()
 
   target = args.route_or_segment_name.strip()
@@ -211,7 +208,7 @@ def main() -> None:
       if idx in printed:
         continue
       printed.add(idx)
-      print_message_summary(f"sample event #{idx}", curvature_msgs[idx].liveCurvatureParameters, args.bucket_window)
+      print_message_summary(f"sample event #{idx}", curvature_msgs[idx].liveCurvatureParameters)
   else:
     print("No liveCurvatureParameters events found.")
 
@@ -228,7 +225,7 @@ def main() -> None:
   if cached["redacted"]:
     print("initData cache: redacted (DONT_LOG)")
   elif cached["decoded"] is not None:
-    print_message_summary("decoded initData cache", cached["decoded"], args.bucket_window)
+    print_message_summary("decoded initData cache", cached["decoded"])
   else:
     print(f"initData cache decode error: {cached['error']}")
 
