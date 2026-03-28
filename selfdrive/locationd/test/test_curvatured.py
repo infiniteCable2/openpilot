@@ -76,8 +76,8 @@ class TestCurvatureEstimator:
     assert estimator.bias[idx] <= CurvatureDLookup.correction_cap(desired_curvature)
 
   def test_relative_correction_cap_envelope(self):
-    assert np.isclose(CurvatureDLookup.correction_cap(1.0e-5), 1.0e-5)
-    assert np.isclose(CurvatureDLookup.correction_cap(1.0e-4), 1.0e-4)
+    assert np.isclose(CurvatureDLookup.correction_cap(1.0e-5), 0.5e-5)
+    assert np.isclose(CurvatureDLookup.correction_cap(1.0e-4), 0.5e-4)
     assert np.isclose(CurvatureDLookup.correction_cap(1.024e-3), 0.25 * 1.024e-3)
     assert CurvatureDLookup.correction_cap(3.0e-3) < CurvatureDLookup.correction_cap(1.024e-3)
     assert CurvatureDLookup.correction_cap(CurvatureDLookup.CURVATURE_MAX) == 0.0
@@ -90,6 +90,14 @@ class TestCurvatureEstimator:
       self._train_speed_curve(estimator, float(v_ego))
 
     assert estimator.get_msg().liveCurvatureParameters.calPerc == 100
+
+  def test_required_valid_bucket_count_decreases_with_speed(self):
+    low = CurvatureDLookup.required_valid_bucket_count(0)
+    mid = CurvatureDLookup.required_valid_bucket_count(3)
+    high = CurvatureDLookup.required_valid_bucket_count(6)
+
+    assert low == len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS)
+    assert low >= mid >= high >= CurvatureDLookup.FIT_MIN_VALID_BUCKETS
 
   def test_message_contains_symmetric_fit_curve(self):
     estimator = get_estimator()
@@ -110,27 +118,29 @@ class TestCurvatureEstimator:
     assert len(msg.liveCurvatureParameters.biases) == CurvatureDLookup.total_size()
     assert len(msg.liveCurvatureParameters.fitValid) == CurvatureDLookup.total_size()
 
-  def test_fit_valid_requires_full_bucket_coverage(self):
+  def test_fit_valid_grows_contiguously_from_center(self):
     estimator = get_estimator()
-    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[3])
+    speed_idx = len(CurvatureDLookup.SPEED_ANCHORS) - 1
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[speed_idx])
+    required = CurvatureDLookup.required_valid_bucket_count(speed_idx)
 
-    for desired_curvature in CurvatureDLookup.CURVATURE_BUCKET_CENTERS[:-1]:
+    for desired_curvature in CurvatureDLookup.CURVATURE_BUCKET_CENTERS[:required - 1]:
       for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[CurvatureDLookup.curvature_index(float(desired_curvature))]) + 2):
         estimator.add_measurement(float(desired_curvature), float(desired_curvature) * 0.6, v_ego)
 
     msg = estimator.get_msg().liveCurvatureParameters
     fit_valid = CurvatureDLookup.unflatten_bucket(list(msg.fitValid), dtype=bool)
-    speed_idx = 3
 
     assert not fit_valid[speed_idx].any()
 
-    last_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[-1])
-    for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[-1]) + 2):
-      estimator.add_measurement(last_curvature, last_curvature * 0.6, v_ego)
+    next_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[required - 1])
+    for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[required - 1]) + 2):
+      estimator.add_measurement(next_curvature, next_curvature * 0.6, v_ego)
 
     msg = estimator.get_msg().liveCurvatureParameters
     fit_valid = CurvatureDLookup.unflatten_bucket(list(msg.fitValid), dtype=bool)
-    assert fit_valid[speed_idx].all()
+    assert fit_valid[speed_idx, :required].all()
+    assert not fit_valid[speed_idx, required:].any()
 
   def test_learning_is_blocked_for_larger_roll(self):
     estimator = get_estimator()

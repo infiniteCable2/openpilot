@@ -38,7 +38,7 @@ MAX_LEARN_ROLL_LATERAL_ACCEL = 0.10
 # - Learning is gated by valid upstream pose/calibration, low roll, low yaw uncertainty, no steering override,
 #   and bounded lateral acceleration.
 # - Corrections are bounded by a relative cap envelope on log-curvature:
-#   - up to 100% of local curvature in the center-focused range
+#   - up to 50% of local curvature in the center-focused range
 #   - smoothly reduced through medium curvature
 #   - tapering toward 0 near the outer learning limit
 # - A separate hard absolute cap remains only as a safety backstop.
@@ -58,7 +58,6 @@ class CurvatureDLookup:
     2.56e-4,
     5.12e-4,
     1.024e-3,
-    2.048e-3,
   ], dtype=np.float32)
   CURVATURE_BUCKET_CENTERS = np.sqrt(CURVATURE_BUCKET_EDGES[:-1] * CURVATURE_BUCKET_EDGES[1:]).astype(np.float32)
   CURVATURE_MIN_STEP = float(CURVATURE_BUCKET_EDGES[0])
@@ -68,6 +67,7 @@ class CurvatureDLookup:
   MIN_SPEED = float(SPEED_ANCHORS[0] * 0.5)
   MAX_LAT_ACCEL = 2.5
   HARD_MAX_CORRECTION = 3.0e-4
+  RELATIVE_CAP_FULL_RATIO = 0.50
   RELATIVE_CAP_FULL_CURVATURE = 1.0e-4
   RELATIVE_CAP_MID_CURVATURE = 1.024e-3
   RELATIVE_CAP_MID_RATIO = 0.25
@@ -76,7 +76,9 @@ class CurvatureDLookup:
   MEAN_WINDOW = 180.0
   FULL_CONFIDENCE_SAMPLES = 180.0
   FIT_MIN_TOTAL_SAMPLES = 240.0
-  MIN_BUCKET_POINTS = np.array([20, 20, 18, 16, 14, 12, 10, 8, 6, 6, 4], dtype=np.float32)
+  FIT_MIN_VALID_BUCKETS = 4
+  INITIAL_VALID_LATERAL_ACCEL = 0.10
+  MIN_BUCKET_POINTS = np.array([20, 20, 18, 16, 14, 12, 10, 8, 6, 6], dtype=np.float32)
 
   @classmethod
   def bucket_shape(cls) -> tuple[int, int]:
@@ -157,10 +159,28 @@ class CurvatureDLookup:
 
   @classmethod
   def speed_curve_valid(cls, counts: np.ndarray, speed_idx: int) -> bool:
-    bucket_counts = counts[speed_idx]
-    valid_bucket_count = int(np.count_nonzero(bucket_counts >= cls.MIN_BUCKET_POINTS))
-    total_points = float(bucket_counts.sum())
-    return valid_bucket_count == len(cls.CURVATURE_BUCKET_CENTERS) and total_points >= cls.FIT_MIN_TOTAL_SAMPLES
+    contiguous_valid = cls.contiguous_valid_mask(counts[speed_idx])
+    valid_bucket_count = int(np.count_nonzero(contiguous_valid))
+    total_points = float(counts[speed_idx].sum())
+    required_bucket_count = cls.required_valid_bucket_count(speed_idx)
+    return valid_bucket_count >= required_bucket_count and total_points >= cls.FIT_MIN_TOTAL_SAMPLES
+
+  @classmethod
+  def contiguous_valid_mask(cls, bucket_counts: np.ndarray) -> np.ndarray:
+    valid_mask = np.asarray(bucket_counts >= cls.MIN_BUCKET_POINTS, dtype=bool)
+    contiguous = np.zeros_like(valid_mask, dtype=bool)
+    for idx, is_valid in enumerate(valid_mask):
+      if not is_valid:
+        break
+      contiguous[idx] = True
+    return contiguous
+
+  @classmethod
+  def required_valid_bucket_count(cls, speed_idx: int) -> int:
+    v_ego = float(cls.SPEED_ANCHORS[speed_idx])
+    typical_curvature = cls.INITIAL_VALID_LATERAL_ACCEL / max(v_ego ** 2, 1e-6)
+    bucket_count = int(np.searchsorted(cls.CURVATURE_BUCKET_CENTERS, typical_curvature, side='right'))
+    return int(np.clip(bucket_count, cls.FIT_MIN_VALID_BUCKETS, len(cls.CURVATURE_BUCKET_CENTERS)))
 
   @classmethod
   def calibration_percent(cls, counts: np.ndarray) -> int:
@@ -191,12 +211,12 @@ class CurvatureDLookup:
       return 0.0
 
     if abs_curvature <= cls.RELATIVE_CAP_FULL_CURVATURE:
-      relative_cap = 1.0
+      relative_cap = cls.RELATIVE_CAP_FULL_RATIO
     elif abs_curvature <= cls.RELATIVE_CAP_MID_CURVATURE:
       log_low = math.log(cls.RELATIVE_CAP_FULL_CURVATURE)
       log_high = math.log(cls.RELATIVE_CAP_MID_CURVATURE)
       alpha = cls.smoothstep((math.log(abs_curvature) - log_low) / max(log_high - log_low, 1e-9))
-      relative_cap = (1.0 - alpha) + alpha * cls.RELATIVE_CAP_MID_RATIO
+      relative_cap = (1.0 - alpha) * cls.RELATIVE_CAP_FULL_RATIO + alpha * cls.RELATIVE_CAP_MID_RATIO
     elif abs_curvature < cls.CURVATURE_MAX:
       log_low = math.log(cls.RELATIVE_CAP_MID_CURVATURE)
       log_high = math.log(cls.CURVATURE_MAX)
@@ -220,8 +240,8 @@ class CurvatureDLookup:
     bucket_caps = np.asarray([cls.correction_cap(float(curvature)) for curvature in cls.CURVATURE_BUCKET_CENTERS], dtype=np.float64)
 
     for speed_idx in range(len(cls.SPEED_ANCHORS)):
-      curve_valid = counts[speed_idx] >= cls.MIN_BUCKET_POINTS
-      if not bool(np.all(curve_valid)):
+      curve_valid = cls.contiguous_valid_mask(counts[speed_idx])
+      if int(np.count_nonzero(curve_valid)) < cls.required_valid_bucket_count(speed_idx):
         continue
       total_points = float(counts[speed_idx].sum())
       if total_points < cls.FIT_MIN_TOTAL_SAMPLES:
@@ -236,7 +256,7 @@ class CurvatureDLookup:
       if len(smoothed) >= 3:
         smoothed[1:-1] = 0.25 * interp[:-2] + 0.5 * interp[1:-1] + 0.25 * interp[2:]
 
-      local_strength = 0.5 + 0.5 * np.clip(
+      local_strength = np.clip(
         (counts[speed_idx, valid_idx] - cls.MIN_BUCKET_POINTS[valid_idx]) /
         np.maximum(cls.FULL_CONFIDENCE_SAMPLES - cls.MIN_BUCKET_POINTS[valid_idx], 1.0),
         0.0, 1.0
