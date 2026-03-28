@@ -44,7 +44,7 @@ class DynamicSteeringLearnerGraph(Widget):
     self._panel_bg = rl.Color(0, 0, 0, 128)
     self._axis_color = rl.Color(255, 255, 255, 90)
     self._grid_color = rl.Color(255, 255, 255, 45)
-    self._preview_curve_color = rl.Color(210, 210, 210, 210)
+    self._preview_curve_color = rl.Color(210, 210, 210, 120)
     self._curve_color = rl.Color(120, 220, 170, 255)
     self._curve_invalid_color = rl.Color(220, 180, 90, 220)
     self._marker_color = rl.Color(255, 80, 80, 255)
@@ -164,10 +164,10 @@ class DynamicSteeringLearnerGraph(Widget):
       actual_points.append(rl.Vector2(float(x), float(actual_y)))
 
     for p0, p1 in zip(preview_points[:-1], preview_points[1:], strict=True):
-      rl.draw_line_ex(p0, p1, 2.0, self._preview_curve_color)
+      rl.draw_line_ex(p0, p1, 1.5, self._preview_curve_color)
     curve_color = self._curve_color if curve_valid else self._curve_invalid_color
     for p0, p1 in zip(actual_points[:-1], actual_points[1:], strict=True):
-      rl.draw_line_ex(p0, p1, 3.0, curve_color)
+      rl.draw_line_ex(p0, p1, 4.0, curve_color)
     return preview_curve, corrections, max_y
 
   def _draw_overlay_info(self, graph_rect: rl.Rectangle, lcp, v_ego: float, desired_curvature: float,
