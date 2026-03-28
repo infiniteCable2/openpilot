@@ -58,14 +58,16 @@ class CurvatureDLookup:
     2.56e-4,
     5.12e-4,
     1.024e-3,
+    2.048e-3,
+    4.096e-3,
   ], dtype=np.float32)
   CURVATURE_BUCKET_CENTERS = np.sqrt(CURVATURE_BUCKET_EDGES[:-1] * CURVATURE_BUCKET_EDGES[1:]).astype(np.float32)
   CURVATURE_MIN_STEP = float(CURVATURE_BUCKET_EDGES[0])
-  IMPORTANT_CURVATURE_MAX = float(CURVATURE_BUCKET_EDGES[9])
+  IMPORTANT_CURVATURE_MAX = float(CURVATURE_BUCKET_EDGES[10])
   CURVATURE_MAX = float(CURVATURE_BUCKET_EDGES[-1])
 
   MIN_SPEED = float(SPEED_ANCHORS[0] * 0.5)
-  MAX_LAT_ACCEL = 2.5
+  MAX_LAT_ACCEL = 1.0
   HARD_MAX_CORRECTION = 3.0e-4
   RELATIVE_CAP_FULL_RATIO = 0.50
   RELATIVE_CAP_FULL_CURVATURE = 1.0e-4
@@ -78,7 +80,7 @@ class CurvatureDLookup:
   FIT_MIN_TOTAL_SAMPLES = 240.0
   FIT_MIN_VALID_BUCKETS = 4
   INITIAL_VALID_LATERAL_ACCEL = 0.10
-  MIN_BUCKET_POINTS = np.array([20, 20, 18, 16, 14, 12, 10, 8, 6, 6], dtype=np.float32)
+  MIN_BUCKET_POINTS = np.array([20, 20, 18, 16, 14, 12, 10, 8, 6, 6, 4, 4], dtype=np.float32)
 
   @classmethod
   def bucket_shape(cls) -> tuple[int, int]:
