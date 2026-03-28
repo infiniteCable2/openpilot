@@ -59,6 +59,7 @@ class UIState(UIStateSP):
         "carOutput",
         "carControl",
         "liveParameters",
+        "liveCurvatureParameters",
         "rawAudioData",
       ] + self.sm_services_ext
     )
