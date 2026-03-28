@@ -136,6 +136,23 @@ class TestCurvatureEstimator:
     assert fit_valid[speed_idx, selected_indices].all()
     assert not fit_valid[speed_idx, required - 1]
 
+  def test_interp_curve_value_does_not_bridge_invalid_gap(self):
+    speed_idx = 3
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[speed_idx])
+    fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    fit_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
+
+    fit_valid[speed_idx, 3] = True
+    fit_valid[speed_idx, 6] = True
+    fit_corrections[speed_idx, 3] = 1.0e-6
+    fit_corrections[speed_idx, 6] = 8.0e-6
+
+    gap_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[4])
+    valid_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[3])
+
+    assert CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, gap_curvature) == 0.0
+    assert CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, valid_curvature) > 0.0
+
   def test_learning_is_blocked_for_larger_roll(self):
     estimator = get_estimator()
 

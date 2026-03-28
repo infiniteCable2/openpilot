@@ -306,6 +306,25 @@ class CurvatureDLookup:
     return preview_corrections, preview_valid
 
   @classmethod
+  def valid_runs(cls, valid_mask: np.ndarray) -> list[tuple[int, int]]:
+    idx = np.flatnonzero(valid_mask)
+    if len(idx) == 0:
+      return []
+
+    runs: list[tuple[int, int]] = []
+    start = int(idx[0])
+    end = start
+    for current in idx[1:]:
+      current = int(current)
+      if current == end + 1:
+        end = current
+      else:
+        runs.append((start, end))
+        start = end = current
+    runs.append((start, end))
+    return runs
+
+  @classmethod
   def interp_curve_value(cls, fit_corrections: np.ndarray, fit_valid: np.ndarray,
                          v_ego: float, abs_curvature: float) -> float:
     if abs_curvature < cls.CURVATURE_MIN_STEP or abs_curvature > cls.CURVATURE_MAX:
@@ -324,27 +343,35 @@ class CurvatureDLookup:
     log_curvature = math.log(max(abs_curvature, cls.CURVATURE_MIN_STEP))
 
     def curve_value(curve: np.ndarray, valid_mask: np.ndarray) -> float:
-      idx = np.flatnonzero(valid_mask)
-      if len(idx) == 0:
+      runs = cls.valid_runs(valid_mask)
+      if len(runs) == 0:
         return 0.0
 
-      base_value = float(np.interp(log_curvature, log_centers[idx], curve[idx]))
-      first_valid = int(idx[0])
-      last_valid = int(idx[-1])
+      for start, end in runs:
+        run_idx = np.arange(start, end + 1)
+        run_log_x = log_centers[run_idx]
+        run_curve = curve[run_idx]
+        first_edge = cls.CURVATURE_BUCKET_EDGES[start]
+        last_edge = cls.CURVATURE_BUCKET_EDGES[end + 1]
 
-      fade = 1.0
-      if abs_curvature < cls.CURVATURE_BUCKET_EDGES[first_valid]:
-        if first_valid == 0:
-          return 0.0
-        fade_span = cls.CURVATURE_BUCKET_EDGES[first_valid] - cls.CURVATURE_BUCKET_EDGES[first_valid - 1]
-        fade = cls.smoothstep((abs_curvature - cls.CURVATURE_BUCKET_EDGES[first_valid - 1]) / max(fade_span, 1e-9))
-      elif abs_curvature > cls.CURVATURE_BUCKET_EDGES[last_valid + 1]:
-        if last_valid >= len(cls.CURVATURE_BUCKET_CENTERS) - 1:
-          return 0.0
-        fade_span = cls.CURVATURE_BUCKET_EDGES[last_valid + 2] - cls.CURVATURE_BUCKET_EDGES[last_valid + 1]
-        fade = 1.0 - cls.smoothstep((abs_curvature - cls.CURVATURE_BUCKET_EDGES[last_valid + 1]) / max(fade_span, 1e-9))
+        if first_edge <= abs_curvature <= last_edge:
+          return float(np.interp(log_curvature, run_log_x, run_curve))
 
-      return float(base_value * np.clip(fade, 0.0, 1.0))
+        if start > 0:
+          fade_in_start = cls.CURVATURE_BUCKET_EDGES[start - 1]
+          if fade_in_start <= abs_curvature < first_edge:
+            fade_span = first_edge - fade_in_start
+            fade = cls.smoothstep((abs_curvature - fade_in_start) / max(fade_span, 1e-9))
+            return float(run_curve[0] * np.clip(fade, 0.0, 1.0))
+
+        if end < len(cls.CURVATURE_BUCKET_CENTERS) - 1:
+          fade_out_end = cls.CURVATURE_BUCKET_EDGES[end + 2]
+          if last_edge < abs_curvature <= fade_out_end:
+            fade_span = fade_out_end - last_edge
+            fade = 1.0 - cls.smoothstep((abs_curvature - last_edge) / max(fade_span, 1e-9))
+            return float(run_curve[-1] * np.clip(fade, 0.0, 1.0))
+
+      return 0.0
 
     low_val = curve_value(low_curve, low_valid)
     high_val = curve_value(high_curve, high_valid)
