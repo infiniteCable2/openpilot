@@ -6,22 +6,20 @@ import pyray as rl
 
 from openpilot.common.params import Params
 from openpilot.selfdrive.locationd.curvatured import CurvatureDLookup
-from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.system.ui.widgets import Widget
 
 
 @dataclass(frozen=True)
 class DynamicSteeringLearnerGraphMiciConfig:
   width: int = 210
-  height: int = 112
-  right_gap_to_accel_bar: int = 34
-  accel_bar_width: int = 19
-  accel_bar_right_margin: int = 24
-  bottom_gap_to_torque_bar: int = 88
-  plot_padding_left: int = 12
-  plot_padding_right: int = 12
-  plot_padding_top: int = 10
-  plot_padding_bottom: int = 10
+  height: int = 96
+  right_margin: int = 77
+  zero_line_screen_y_frac: float = 0.75
+  plot_padding_left: int = 0
+  plot_padding_right: int = 0
+  plot_padding_top: int = 0
+  plot_padding_bottom: int = 0
   sample_points: int = 81
 
 
@@ -35,12 +33,9 @@ class DynamicSteeringLearnerGraphMici(Widget):
     self._display_enabled = False
     self._param_update_time = 0.0
 
-    self._panel_bg = rl.Color(0, 0, 0, 92)
-    self._axis_color = rl.Color(255, 255, 255, 75)
-    self._grid_color = rl.Color(255, 255, 255, 35)
-    self._preview_curve_color = rl.Color(245, 245, 245, 175)
-    self._curve_color = rl.Color(120, 220, 170, 255)
-    self._curve_invalid_color = rl.Color(220, 180, 90, 220)
+    self._preview_curve_color = rl.Color(245, 245, 245, 170)
+    self._curve_color = rl.Color(120, 220, 170, 204)
+    self._curve_invalid_color = rl.Color(220, 180, 90, 180)
 
     self._plot_x = np.linspace(-CurvatureDLookup.CURVATURE_MAX, CurvatureDLookup.CURVATURE_MAX, CONFIG.sample_points)
     self._update_params()
@@ -56,19 +51,20 @@ class DynamicSteeringLearnerGraphMici(Widget):
   def _render(self, rect: rl.Rectangle) -> None:
     if not self._display_enabled:
       return
+    if ui_state.status in (UIStatus.DISENGAGED, UIStatus.LONG_ONLY):
+      return
 
     sm = ui_state.sm
     if sm.recv_frame["carState"] < ui_state.started_frame or sm.recv_frame["controlsState"] < ui_state.started_frame:
       return
 
+    zero_line_y = rect.y + rect.height * CONFIG.zero_line_screen_y_frac
     graph_rect = rl.Rectangle(
-      rect.x + rect.width - CONFIG.accel_bar_right_margin - CONFIG.accel_bar_width - CONFIG.right_gap_to_accel_bar - CONFIG.width,
-      rect.y + rect.height - CONFIG.bottom_gap_to_torque_bar - CONFIG.height,
+      rect.x + rect.width - CONFIG.right_margin - CONFIG.width,
+      zero_line_y - CONFIG.height * 0.5,
       CONFIG.width,
       CONFIG.height,
     )
-
-    rl.draw_rectangle_rounded(graph_rect, 0.14, 8, self._panel_bg)
 
     lcp = sm["liveCurvatureParameters"]
     car_state = sm["carState"]
@@ -112,15 +108,6 @@ class DynamicSteeringLearnerGraphMici(Widget):
                  preview_corrections: np.ndarray, preview_valid: np.ndarray,
                  fit_corrections: np.ndarray, fit_valid: np.ndarray,
                  v_ego: float, curve_valid: bool) -> None:
-    rl.draw_rectangle_lines_ex(plot_rect, 1.0, self._grid_color)
-
-    zero_x = plot_rect.x + plot_rect.width / 2
-    zero_y = plot_rect.y + plot_rect.height / 2
-    rl.draw_line_ex(rl.Vector2(float(plot_rect.x), float(zero_y)),
-                    rl.Vector2(float(plot_rect.x + plot_rect.width), float(zero_y)), 1.5, self._axis_color)
-    rl.draw_line_ex(rl.Vector2(float(zero_x), float(plot_rect.y)),
-                    rl.Vector2(float(zero_x), float(plot_rect.y + plot_rect.height)), 1.5, self._axis_color)
-
     preview_curve = np.array([
       CurvatureDLookup.interp_curve_value(preview_corrections, preview_valid, v_ego, abs(float(k))) * (1.0 if k >= 0.0 else -1.0)
       for k in self._plot_x
@@ -141,7 +128,7 @@ class DynamicSteeringLearnerGraphMici(Widget):
       actual_points.append(rl.Vector2(float(x), float(actual_y)))
 
     for p0, p1 in zip(preview_points[:-1], preview_points[1:], strict=True):
-      rl.draw_line_ex(p0, p1, 1.4, self._preview_curve_color)
+      rl.draw_line_ex(p0, p1, 1.9, self._preview_curve_color)
     curve_color = self._curve_color if curve_valid else self._curve_invalid_color
     for p0, p1 in zip(actual_points[:-1], actual_points[1:], strict=True):
-      rl.draw_line_ex(p0, p1, 2.4, curve_color)
+      rl.draw_line_ex(p0, p1, 3.4, curve_color)
