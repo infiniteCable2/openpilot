@@ -14,9 +14,9 @@ from openpilot.sunnypilot import PARAMS_UPDATE_PERIOD
 from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 
 VERSION = 1
-HISTORY = 1.5
+HISTORY = 5.0
 MAX_YAW_RATE_STD = 1.0
-MIN_ENGAGE_BUFFER = 1.5
+MIN_ENGAGE_BUFFER = 2.0
 ALLOWED_CARS = ['volkswagen']
 STATUS_LOG_INTERVAL = 10.0
 MAX_LEARN_ROLL_LATERAL_ACCEL = 0.10
@@ -77,11 +77,11 @@ class CurvatureDLookup:
   MAX_SAMPLES = 600
   MEAN_WINDOW = 180.0
   FIT_MIN_TOTAL_SAMPLES = 480.0
-  FULL_CONFIDENCE_TOTAL_SAMPLES = 960.0
-  FULL_CONFIDENCE_BUCKET_SAMPLES = 180.0
   FIT_MIN_VALID_BUCKETS = 4
   INITIAL_VALID_LATERAL_ACCEL = 0.05
   MIN_BUCKET_POINTS = np.array([20, 20, 18, 16, 14, 12, 10, 8, 6, 6, 4, 4], dtype=np.float32)
+  FULL_CONFIDENCE_TOTAL_SAMPLES = FIT_MIN_TOTAL_SAMPLES + FIT_MIN_TOTAL_SAMPLES
+  FULL_CONFIDENCE_BUCKET_SAMPLES = MIN_BUCKET_POINTS + MIN_BUCKET_POINTS
 
   @classmethod
   def bucket_shape(cls) -> tuple[int, int]:
@@ -257,9 +257,11 @@ class CurvatureDLookup:
       if len(smoothed) >= 3:
         smoothed[1:-1] = 0.25 * interp[:-2] + 0.5 * interp[1:-1] + 0.25 * interp[2:]
 
+      bucket_conf_start = cls.MIN_BUCKET_POINTS[valid_idx]
+      bucket_conf_full = np.asarray(cls.FULL_CONFIDENCE_BUCKET_SAMPLES[valid_idx], dtype=np.float64)
+      bucket_conf_span = bucket_conf_full - bucket_conf_start
       local_strength = np.clip(
-        (counts[speed_idx, valid_idx] - cls.MIN_BUCKET_POINTS[valid_idx]) /
-        np.maximum(cls.FULL_CONFIDENCE_BUCKET_SAMPLES - cls.MIN_BUCKET_POINTS[valid_idx], 1.0),
+        (counts[speed_idx, valid_idx] - bucket_conf_start) / np.maximum(bucket_conf_span, 1.0),
         0.0, 1.0
       ).astype(np.float64)
       interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
