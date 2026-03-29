@@ -44,7 +44,7 @@ class DynamicSteeringLearnerGraph(Widget):
     self._panel_bg = rl.Color(0, 0, 0, 128)
     self._axis_color = rl.Color(255, 255, 255, 90)
     self._grid_color = rl.Color(255, 255, 255, 45)
-    self._preview_curve_color = rl.Color(210, 210, 210, 120)
+    self._preview_curve_color = rl.Color(240, 240, 240, 185)
     self._curve_color = rl.Color(120, 220, 170, 255)
     self._curve_invalid_color = rl.Color(220, 180, 90, 220)
     self._marker_color = rl.Color(255, 80, 80, 255)
