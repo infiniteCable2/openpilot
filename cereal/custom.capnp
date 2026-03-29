@@ -498,4 +498,6 @@ struct LiveCurvatureParameters @0xa4f1eb3323f5f582 {
   biases @12 :List(Float32);
   bucketCurvature @13 :Int8;
   fitValid @14 :List(Bool);
+  previewCorrections @15 :List(Float32);
+  previewValid @16 :List(Bool);
 }

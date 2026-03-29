@@ -153,6 +153,8 @@ class TestCurvatureEstimator:
     assert len(msg.liveCurvatureParameters.counts) == CurvatureDLookup.total_size()
     assert len(msg.liveCurvatureParameters.biases) == CurvatureDLookup.total_size()
     assert len(msg.liveCurvatureParameters.fitValid) == CurvatureDLookup.total_size()
+    assert len(msg.liveCurvatureParameters.previewCorrections) == CurvatureDLookup.total_size()
+    assert len(msg.liveCurvatureParameters.previewValid) == CurvatureDLookup.total_size()
 
   def test_fit_valid_allows_noncontiguous_supported_buckets(self):
     estimator = get_estimator()

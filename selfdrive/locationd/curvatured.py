@@ -165,6 +165,64 @@ class CurvatureDLookup:
     return float(np.clip(total_points / max(cls.FIT_MIN_TOTAL_SAMPLES, 1.0), 0.0, 1.0))
 
   @classmethod
+  def fit_local_strength(cls, bucket_counts: np.ndarray, valid_idx: np.ndarray) -> np.ndarray:
+    bucket_conf_start = cls.MIN_BUCKET_POINTS[valid_idx]
+    bucket_conf_full = np.asarray(cls.FULL_CONFIDENCE_BUCKET_SAMPLES[valid_idx], dtype=np.float64)
+    bucket_conf_span = bucket_conf_full - bucket_conf_start
+    return np.clip(
+      (bucket_counts[valid_idx] - bucket_conf_start) / np.maximum(bucket_conf_span, 1.0),
+      0.0, 1.0
+    ).astype(np.float64)
+
+  @classmethod
+  def preview_local_strength(cls, bucket_counts: np.ndarray, valid_idx: np.ndarray) -> np.ndarray:
+    return np.clip(
+      bucket_counts[valid_idx] / np.maximum(cls.MIN_BUCKET_POINTS[valid_idx], 1.0),
+      0.0, 1.0
+    ).astype(np.float64)
+
+  @classmethod
+  def _build_curve_corrections(cls, bias: np.ndarray, counts: np.ndarray,
+                               valid_mask_fn,
+                               min_valid_buckets_fn,
+                               total_points_min: float,
+                               global_confidence_fn,
+                               local_strength_fn) -> tuple[np.ndarray, np.ndarray]:
+    corrections = np.zeros(cls.bucket_shape(), dtype=np.float32)
+    valid = np.zeros(cls.bucket_shape(), dtype=bool)
+    log_centers = np.log(cls.CURVATURE_BUCKET_CENTERS.astype(np.float64))
+    bucket_caps = np.asarray([cls.correction_cap(float(curvature)) for curvature in cls.CURVATURE_BUCKET_CENTERS], dtype=np.float64)
+
+    for speed_idx in range(len(cls.SPEED_ANCHORS)):
+      curve_valid = np.asarray(valid_mask_fn(counts[speed_idx]), dtype=bool)
+      if int(np.count_nonzero(curve_valid)) < int(min_valid_buckets_fn(speed_idx)):
+        continue
+
+      total_points = float(counts[speed_idx].sum())
+      if total_points < total_points_min:
+        continue
+
+      valid_idx = np.flatnonzero(curve_valid)
+      valid_log_x = log_centers[valid_idx]
+      valid_y = np.clip(bias[speed_idx, valid_idx], -bucket_caps[valid_idx], bucket_caps[valid_idx]).astype(np.float64)
+
+      interp = np.interp(log_centers, valid_log_x, valid_y).astype(np.float32)
+      smoothed = interp.copy()
+      if len(smoothed) >= 3:
+        smoothed[1:-1] = 0.25 * interp[:-2] + 0.5 * interp[1:-1] + 0.25 * interp[2:]
+
+      local_strength = local_strength_fn(counts[speed_idx], valid_idx)
+      interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
+      smoothed *= global_confidence_fn(total_points) * interpolated_strength
+      for curvature_idx, curvature in enumerate(cls.CURVATURE_BUCKET_CENTERS):
+        smoothed[curvature_idx] *= cls.curvature_window(float(curvature))
+
+      corrections[speed_idx] = np.clip(smoothed, -bucket_caps, bucket_caps)
+      valid[speed_idx] = curve_valid
+
+    return corrections, valid
+
+  @classmethod
   def bucket_points_for_index(cls, counts: np.ndarray, idx: tuple[int, int] | None) -> int:
     if idx is None:
       return 0
@@ -237,85 +295,27 @@ class CurvatureDLookup:
 
   @classmethod
   def build_fit_corrections(cls, bias: np.ndarray, counts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    fit_corrections = np.zeros(cls.bucket_shape(), dtype=np.float32)
-    fit_valid = np.zeros(cls.bucket_shape(), dtype=bool)
-    log_centers = np.log(cls.CURVATURE_BUCKET_CENTERS.astype(np.float64))
-    bucket_caps = np.asarray([cls.correction_cap(float(curvature)) for curvature in cls.CURVATURE_BUCKET_CENTERS], dtype=np.float64)
-
-    for speed_idx in range(len(cls.SPEED_ANCHORS)):
-      curve_valid = np.asarray(counts[speed_idx] >= cls.MIN_BUCKET_POINTS, dtype=bool)
-      if int(np.count_nonzero(curve_valid)) < cls.required_valid_bucket_count(speed_idx):
-        continue
-      total_points = float(counts[speed_idx].sum())
-      if total_points < cls.FIT_MIN_TOTAL_SAMPLES:
-        continue
-
-      valid_idx = np.flatnonzero(curve_valid)
-      valid_log_x = log_centers[valid_idx]
-      valid_y = np.clip(bias[speed_idx, valid_idx], -bucket_caps[valid_idx], bucket_caps[valid_idx]).astype(np.float64)
-
-      interp = np.interp(log_centers, valid_log_x, valid_y).astype(np.float32)
-      smoothed = interp.copy()
-      if len(smoothed) >= 3:
-        smoothed[1:-1] = 0.25 * interp[:-2] + 0.5 * interp[1:-1] + 0.25 * interp[2:]
-
-      bucket_conf_start = cls.MIN_BUCKET_POINTS[valid_idx]
-      bucket_conf_full = np.asarray(cls.FULL_CONFIDENCE_BUCKET_SAMPLES[valid_idx], dtype=np.float64)
-      bucket_conf_span = bucket_conf_full - bucket_conf_start
-      local_strength = np.clip(
-        (counts[speed_idx, valid_idx] - bucket_conf_start) / np.maximum(bucket_conf_span, 1.0),
-        0.0, 1.0
-      ).astype(np.float64)
-      interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
-      confidence = cls.confidence(total_points)
-      smoothed *= confidence * interpolated_strength
-      for curvature_idx, curvature in enumerate(cls.CURVATURE_BUCKET_CENTERS):
-        smoothed[curvature_idx] *= cls.curvature_window(float(curvature))
-
-      fit_corrections[speed_idx] = np.clip(smoothed, -bucket_caps, bucket_caps)
-      fit_valid[speed_idx] = curve_valid
-
-    return fit_corrections, fit_valid
+    return cls._build_curve_corrections(
+      bias,
+      counts,
+      lambda speed_counts: speed_counts >= cls.MIN_BUCKET_POINTS,
+      cls.required_valid_bucket_count,
+      cls.FIT_MIN_TOTAL_SAMPLES,
+      cls.confidence,
+      cls.fit_local_strength,
+    )
 
   @classmethod
   def build_preview_corrections(cls, bias: np.ndarray, counts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    preview_corrections = np.zeros(cls.bucket_shape(), dtype=np.float32)
-    preview_valid = np.zeros(cls.bucket_shape(), dtype=bool)
-    log_centers = np.log(cls.CURVATURE_BUCKET_CENTERS.astype(np.float64))
-    bucket_caps = np.asarray([cls.correction_cap(float(curvature)) for curvature in cls.CURVATURE_BUCKET_CENTERS], dtype=np.float64)
-
-    for speed_idx in range(len(cls.SPEED_ANCHORS)):
-      curve_valid = np.asarray(counts[speed_idx] > 0.0, dtype=bool)
-      if not curve_valid.any():
-        continue
-
-      total_points = float(counts[speed_idx].sum())
-      if total_points <= 0.0:
-        continue
-
-      valid_idx = np.flatnonzero(curve_valid)
-      valid_log_x = log_centers[valid_idx]
-      valid_y = np.clip(bias[speed_idx, valid_idx], -bucket_caps[valid_idx], bucket_caps[valid_idx]).astype(np.float64)
-
-      interp = np.interp(log_centers, valid_log_x, valid_y).astype(np.float32)
-      smoothed = interp.copy()
-      if len(smoothed) >= 3:
-        smoothed[1:-1] = 0.25 * interp[:-2] + 0.5 * interp[1:-1] + 0.25 * interp[2:]
-
-      local_strength = np.clip(
-        counts[speed_idx, valid_idx] / np.maximum(cls.MIN_BUCKET_POINTS[valid_idx], 1.0),
-        0.0, 1.0
-      ).astype(np.float64)
-      interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
-      confidence = cls.preview_confidence(total_points)
-      smoothed *= confidence * interpolated_strength
-      for curvature_idx, curvature in enumerate(cls.CURVATURE_BUCKET_CENTERS):
-        smoothed[curvature_idx] *= cls.curvature_window(float(curvature))
-
-      preview_corrections[speed_idx] = np.clip(smoothed, -bucket_caps, bucket_caps)
-      preview_valid[speed_idx] = curve_valid
-
-    return preview_corrections, preview_valid
+    return cls._build_curve_corrections(
+      bias,
+      counts,
+      lambda speed_counts: speed_counts > 0.0,
+      lambda _speed_idx: 1,
+      1.0,
+      cls.preview_confidence,
+      cls.preview_local_strength,
+    )
 
   @classmethod
   def valid_runs(cls, valid_mask: np.ndarray) -> list[tuple[int, int]]:
@@ -409,6 +409,8 @@ class CurvatureEstimator(CurvatureDLookup):
     self.counts = np.zeros(self.bucket_shape(), dtype=np.float32)
     self.fit_corrections = np.zeros(self.bucket_shape(), dtype=np.float32)
     self.fit_valid = np.zeros(self.bucket_shape(), dtype=bool)
+    self.preview_corrections = np.zeros(self.bucket_shape(), dtype=np.float32)
+    self.preview_valid = np.zeros(self.bucket_shape(), dtype=bool)
 
     self.car_control_t = deque(maxlen=self.hist_len)
     self.lat_active = deque(maxlen=self.hist_len)
@@ -464,6 +466,7 @@ class CurvatureEstimator(CurvatureDLookup):
       self.bias = self.unflatten_bucket(biases).astype(np.float32)
       self.counts = self.unflatten_bucket(counts).astype(np.float32)
       self.fit_corrections, self.fit_valid = self.build_fit_corrections(self.bias, self.counts)
+      self.preview_corrections, self.preview_valid = self.build_preview_corrections(self.bias, self.counts)
       cloudlog.info("restored curvature params from cache")
     except Exception:
       cloudlog.exception("failed to restore cached curvature params")
@@ -526,6 +529,7 @@ class CurvatureEstimator(CurvatureDLookup):
       self.bias[speed_idx, curvature_idx] = prev_bias + alpha * (error - prev_bias)
 
     self.fit_corrections, self.fit_valid = self.build_fit_corrections(self.bias, self.counts)
+    self.preview_corrections, self.preview_valid = self.build_preview_corrections(self.bias, self.counts)
 
   def _update_current_lookup(self, desired_curvature: float, v_ego: float) -> None:
     idx = self.indices(desired_curvature, v_ego)
@@ -634,6 +638,8 @@ class CurvatureEstimator(CurvatureDLookup):
     curvature_params.counts = self.flatten(np.rint(self.counts).astype(np.int32))
     curvature_params.biases = self.flatten(self.bias)
     curvature_params.fitValid = self.flatten(self.fit_valid)
+    curvature_params.previewCorrections = self.flatten(self.preview_corrections)
+    curvature_params.previewValid = self.flatten(self.preview_valid)
     return msg
 
   @staticmethod

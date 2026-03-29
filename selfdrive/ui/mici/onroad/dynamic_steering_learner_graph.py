@@ -71,8 +71,8 @@ class DynamicSteeringLearnerGraphMici(Widget):
 
     fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
     fit_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
-    counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
-    biases = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    preview_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    preview_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
     payload_valid = bool(getattr(lcp, "liveValid", False))
 
     expected_size = CurvatureDLookup.total_size()
@@ -80,12 +80,10 @@ class DynamicSteeringLearnerGraphMici(Widget):
       fit_corrections = CurvatureDLookup.unflatten_bucket(lcp.corrections, dtype=np.float32)
     if len(getattr(lcp, "fitValid", [])) == expected_size:
       fit_valid = CurvatureDLookup.unflatten_bucket(lcp.fitValid, dtype=bool)
-    if len(getattr(lcp, "counts", [])) == expected_size:
-      counts = CurvatureDLookup.unflatten_bucket(lcp.counts, dtype=np.float32)
-    if len(getattr(lcp, "biases", [])) == expected_size:
-      biases = CurvatureDLookup.unflatten_bucket(lcp.biases, dtype=np.float32)
-
-    preview_corrections, preview_valid = CurvatureDLookup.build_preview_corrections(biases, counts)
+    if len(getattr(lcp, "previewCorrections", [])) == expected_size:
+      preview_corrections = CurvatureDLookup.unflatten_bucket(lcp.previewCorrections, dtype=np.float32)
+    if len(getattr(lcp, "previewValid", [])) == expected_size:
+      preview_valid = CurvatureDLookup.unflatten_bucket(lcp.previewValid, dtype=bool)
 
     plot_rect = rl.Rectangle(
       graph_rect.x + CONFIG.plot_padding_left,
