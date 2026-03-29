@@ -130,3 +130,28 @@ class TestCurvatureDController:
     outer = controller.get_correction(1.5e-3, v_ego)
 
     assert outer > 0.0
+
+  def test_outer_range_fades_to_zero_past_last_bucket_edge(self):
+    controller = CurvatureDController()
+    msg = messaging.new_message('liveCurvatureParameters')
+    msg.liveCurvatureParameters.liveValid = True
+    msg.liveCurvatureParameters.version = VERSION
+    msg.liveCurvatureParameters.useParams = True
+    msg.liveCurvatureParameters.counts = [0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.biases = [0.0] * CurvatureDLookup.total_size()
+
+    outer_idx = len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS) - 1
+    self._set_curve(msg, 3, {outer_idx: 8.0e-5})
+    controller.update_live_params(msg.liveCurvatureParameters)
+
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[3])
+    last_edge = float(CurvatureDLookup.CURVATURE_BUCKET_MAX)
+    fade_mid = 0.5 * (last_edge + float(CurvatureDLookup.CURVATURE_MAX))
+
+    at_last_edge = controller.get_correction(last_edge, v_ego)
+    in_fade = controller.get_correction(fade_mid, v_ego)
+    at_max = controller.get_correction(float(CurvatureDLookup.CURVATURE_MAX), v_ego)
+
+    assert at_last_edge > 0.0
+    assert 0.0 < in_fade < at_last_edge
+    assert at_max == 0.0
