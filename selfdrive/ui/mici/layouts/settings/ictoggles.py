@@ -23,8 +23,9 @@ class ICTogglesLayoutMici(NavScroller):
     enable_dark_mode            = BigParamControl("Dark Mode", "DarkMode")
     enable_onroad_screen_timer  = BigParamControl("Onroad Screen Timeout", "DisableScreenTimer")
     enable_accel_bar            = BigParamControl("Enable Accel Bar", "ShowAccelBar")
-    show_curvatured_graph       = BigParamControl("Show Dynamic Steering Learner Graph", "ShowDynamicSteeringLearnerGraph")
     enable_curvatured           = BigParamControl("Enable Dynamic Steering Learner", "EnableCurvatureD")
+    apply_curvatured            = BigParamControl("Apply Dynamic Steering Learner", "ApplyCurvatureD")
+    show_curvatured_graph       = BigParamControl("Show Dynamic Steering Learner Graph", "ShowDynamicSteeringLearnerGraph")
     
     self._scroller.add_widgets([
       enable_curvature_correction,
@@ -39,8 +40,9 @@ class ICTogglesLayoutMici(NavScroller):
       enable_dark_mode,
       enable_onroad_screen_timer,
       enable_accel_bar,
-      show_curvatured_graph,
       enable_curvatured,
+      apply_curvatured,
+      show_curvatured_graph,
     ])
 
     # Toggle lists
@@ -57,11 +59,13 @@ class ICTogglesLayoutMici(NavScroller):
       ("DarkMode", enable_dark_mode),
       ("DisableScreenTimer", enable_onroad_screen_timer),
       ("ShowAccelBar", enable_accel_bar),
-      ("ShowDynamicSteeringLearnerGraph", show_curvatured_graph),
       ("EnableCurvatureD", enable_curvatured),
+      ("ApplyCurvatureD", apply_curvatured),
+      ("ShowDynamicSteeringLearnerGraph", show_curvatured_graph),
     )
 
     enable_curvatured.set_enabled(lambda: ui_state.is_offroad())
+    apply_curvatured.set_enabled(lambda: ui_state.params.get_bool("EnableCurvatureD"))
 
     if ui_state.params.get_bool("ShowDebugInfo"):
       gui_app.set_show_touches(True)

@@ -18,6 +18,9 @@ DESCRIPTIONS = {
   "EnableCurvatureD": tr_noop(
     "Learns speed- and curvature-dependent steering corrections around center for dynamic steering behavior. Experimental and only used on curvature-based steering paths."
   ),
+  "ApplyCurvatureD": tr_noop(
+    "Applies the learned dynamic steering correction in controlsd. Disable this to keep learning and graphing without changing curvature commands."
+  ),
   "EnableLongComfortMode": tr_noop(
     "Enables longitudinal jerk and accel deviation limit control for safe and comfortable driving"
   ),
@@ -100,18 +103,6 @@ class ICTogglesLayout(Widget):
         "speed_limit.png",
         False,
       ),
-      "BatteryDetails": (
-        lambda: tr("VW MEB: Display Battery Details"),
-        DESCRIPTIONS["BatteryDetails"],
-        "capslock-fill.png",
-        False,
-      ),
-      "ShowDynamicSteeringLearnerGraph": (
-        lambda: tr("Show Dynamic Steering Learner Graph"),
-        DESCRIPTIONS["ShowDynamicSteeringLearnerGraph"],
-        "chffr_wheel.png",
-        False,
-      ),
       "ForceRHDForBSM": (
         lambda: tr("VW: Force RHD for BSM"),
         DESCRIPTIONS["ForceRHDForBSM"],
@@ -142,9 +133,27 @@ class ICTogglesLayout(Widget):
         "eye_closed.png",
         False,
       ),
+      "BatteryDetails": (
+        lambda: tr("VW MEB: Display Battery Details"),
+        DESCRIPTIONS["BatteryDetails"],
+        "capslock-fill.png",
+        False,
+      ),
       "EnableCurvatureD": (
         lambda: tr("Enable Dynamic Steering Learner"),
         DESCRIPTIONS["EnableCurvatureD"],
+        "chffr_wheel.png",
+        False,
+      ),
+      "ApplyCurvatureD": (
+        lambda: tr("Apply Dynamic Steering Learner"),
+        DESCRIPTIONS["ApplyCurvatureD"],
+        "chffr_wheel.png",
+        False,
+      ),
+      "ShowDynamicSteeringLearnerGraph": (
+        lambda: tr("Show Dynamic Steering Learner Graph"),
+        DESCRIPTIONS["ShowDynamicSteeringLearnerGraph"],
         "chffr_wheel.png",
         False,
       ),
@@ -209,6 +218,9 @@ class ICTogglesLayout(Widget):
     for toggle_def in self._offroad_only_toggles:
       if toggle_def not in self._locked_toggles:
         self._toggles[toggle_def].action_item.set_enabled(ui_state.is_offroad())
+
+    if "ApplyCurvatureD" not in self._locked_toggles:
+      self._toggles["ApplyCurvatureD"].action_item.set_enabled(self._params.get_bool("EnableCurvatureD"))
 
   def _render(self, rect):
     self._scroller.render(rect)
