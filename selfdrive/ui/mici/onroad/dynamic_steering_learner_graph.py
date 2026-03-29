@@ -12,10 +12,10 @@ from openpilot.system.ui.widgets import Widget
 
 @dataclass(frozen=True)
 class DynamicSteeringLearnerGraphMiciConfig:
-  width: int = 210
-  height: int = 96
+  width: int = 120
+  height: int = 60
   right_margin: int = 77
-  zero_line_screen_y_frac: float = 0.75
+  zero_line_screen_y_frac: float = 0.60
   plot_padding_left: int = 0
   plot_padding_right: int = 0
   plot_padding_top: int = 0
