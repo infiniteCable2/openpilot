@@ -267,7 +267,7 @@ class CurvatureDLookup:
         0.0, 1.0
       ).astype(np.float64)
       interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
-      confidence = cls.preview_confidence(total_points)
+      confidence = cls.confidence(total_points)
       smoothed *= confidence * interpolated_strength
       for curvature_idx, curvature in enumerate(cls.CURVATURE_BUCKET_CENTERS):
         smoothed[curvature_idx] *= cls.curvature_window(float(curvature))
@@ -307,7 +307,7 @@ class CurvatureDLookup:
         0.0, 1.0
       ).astype(np.float64)
       interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
-      confidence = cls.confidence(total_points)
+      confidence = cls.preview_confidence(total_points)
       smoothed *= confidence * interpolated_strength
       for curvature_idx, curvature in enumerate(cls.CURVATURE_BUCKET_CENTERS):
         smoothed[curvature_idx] *= cls.curvature_window(float(curvature))

@@ -141,6 +141,8 @@ class Controls(ControlsExt):
       curvature_params = self.sm['liveCurvatureParameters']
       if self.sm.all_checks(['liveCurvatureParameters']) and curvature_params.useParams:
         self.curvatured.update_live_params(curvature_params)
+      else:
+        self.curvatured.reset()
 
     long_plan = self.sm['longitudinalPlan']
     model_v2 = self.sm['modelV2']
