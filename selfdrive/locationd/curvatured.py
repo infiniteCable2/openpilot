@@ -644,7 +644,6 @@ class CurvatureEstimator(CurvatureDLookup):
     curvature_params.currentBucketPoints = self.current_bucket_points if self.use_params else 0
     curvature_params.totalBucketPoints = int(round(float(self.counts.sum())))
     curvature_params.calPerc = self.calibration_percent(self.counts)
-    curvature_params.bucketSign = 0
     curvature_params.bucketSpeed = int(self.current_bucket[0]) if self.use_params else -1
     curvature_params.bucketCurvature = int(self.current_bucket[1]) if self.use_params else -1
     curvature_params.corrections = self.flatten(self.fit_corrections)
