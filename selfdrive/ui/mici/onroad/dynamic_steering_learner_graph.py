@@ -12,8 +12,8 @@ from openpilot.system.ui.widgets import Widget
 
 @dataclass(frozen=True)
 class DynamicSteeringLearnerGraphMiciConfig:
-  width: int = 120
-  height: int = 60
+  width: int = 144
+  height: int = 72
   right_margin: int = 77
   zero_line_screen_y_frac: float = 0.70
   plot_padding_left: int = 0
@@ -33,9 +33,9 @@ class DynamicSteeringLearnerGraphMici(Widget):
     self._display_enabled = False
     self._param_update_time = 0.0
 
-    self._preview_curve_color = rl.Color(245, 245, 245, 136)
-    self._curve_color = rl.Color(120, 220, 170, 163)
-    self._curve_invalid_color = rl.Color(220, 180, 90, 144)
+    self._preview_curve_color = rl.Color(250, 250, 250, 150)
+    self._curve_color = rl.Color(120, 220, 170, 179)
+    self._curve_invalid_color = rl.Color(220, 180, 90, 158)
 
     self._plot_x = np.linspace(-CurvatureDLookup.CURVATURE_MAX, CurvatureDLookup.CURVATURE_MAX, CONFIG.sample_points)
     self._update_params()
