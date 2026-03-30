@@ -284,9 +284,10 @@ def main(demo=False):
     TorqueEstimatorExt.update_use_params(estimator)
     curvature_estimator.update_use_params()
 
-    # 4Hz driven by livePose
+    # liveTorqueParameters stays at 4Hz; liveCurvatureParameters runs at 2Hz
     if sm.frame % 5 == 0:
       pm.send('liveTorqueParameters', estimator.get_msg(valid=torque_valid, with_points=DEBUG))
+    if sm.frame % 10 == 0:
       t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
       curvature_estimator.maybe_log_status(t, sm, curvature_services, curvature_valid)
       curvature_transport_valid = curvature_valid or not curvature_estimator.use_params
