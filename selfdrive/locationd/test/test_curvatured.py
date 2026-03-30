@@ -142,7 +142,7 @@ class TestCurvatureEstimator:
 
     self._train_speed_curve(estimator, v_ego)
     estimator._update_current_lookup(desired_curvature, v_ego)
-    msg = estimator.get_msg()
+    msg = estimator.get_msg(include_debug=True, include_preview=True)
     idx = CurvatureDLookup.indices(desired_curvature, v_ego)
 
     assert idx is not None

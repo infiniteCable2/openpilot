@@ -96,8 +96,9 @@ def print_bucket_details(counts: np.ndarray, biases: np.ndarray, corrections: np
 
 
 def print_message_summary(title: str, payload) -> None:
-  counts = CurvatureDLookup.unflatten_bucket(list(payload.counts))
-  biases = CurvatureDLookup.unflatten_bucket(list(payload.biases))
+  has_debug_arrays = len(list(payload.counts)) == CurvatureDLookup.total_size() and len(list(payload.biases)) == CurvatureDLookup.total_size()
+  counts = CurvatureDLookup.unflatten_bucket(list(payload.counts)) if has_debug_arrays else np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+  biases = CurvatureDLookup.unflatten_bucket(list(payload.biases)) if has_debug_arrays else np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
   corrections = CurvatureDLookup.unflatten_bucket(list(payload.corrections))
   fit_valid = CurvatureDLookup.unflatten_bucket(list(payload.fitValid), dtype=bool)
 
@@ -110,13 +111,15 @@ def print_message_summary(title: str, payload) -> None:
   print(f"  currentCorrection: {float(payload.currentCorrection):.8f}")
   print(f"  currentBias: {float(payload.currentBias):.8f}")
   print(f"  currentBucket: ({int(payload.bucketSpeed)}, {int(payload.bucketCurvature)})")
+  if not has_debug_arrays:
+    print("  debugArrays: omitted")
 
   speed_entries = []
   for speed_idx in range(len(CurvatureDLookup.SPEED_ANCHORS)):
     speed_counts = counts[speed_idx]
-    speed_valid = CurvatureDLookup.speed_curve_valid(counts, speed_idx)
-    valid_bucket_count = int(np.count_nonzero(speed_counts >= CurvatureDLookup.MIN_BUCKET_POINTS))
-    total_points = int(round(float(speed_counts.sum())))
+    speed_valid = CurvatureDLookup.speed_curve_valid(counts, speed_idx) if has_debug_arrays else bool(np.any(fit_valid[speed_idx]))
+    valid_bucket_count = int(np.count_nonzero(speed_counts >= CurvatureDLookup.MIN_BUCKET_POINTS)) if has_debug_arrays else int(np.count_nonzero(fit_valid[speed_idx]))
+    total_points = int(round(float(speed_counts.sum()))) if has_debug_arrays else int(np.count_nonzero(fit_valid[speed_idx]))
     if total_points == 0 and not speed_valid:
       continue
 
@@ -140,7 +143,8 @@ def print_message_summary(title: str, payload) -> None:
     print("  speed anchors:")
     for speed_idx, focus_idx, line in speed_entries:
       print(line)
-      print_bucket_details(counts, biases, corrections, fit_valid, speed_idx, focus_idx)
+      if has_debug_arrays:
+        print_bucket_details(counts, biases, corrections, fit_valid, speed_idx, focus_idx)
 
 
 def main() -> None:

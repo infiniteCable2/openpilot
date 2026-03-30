@@ -488,13 +488,13 @@ struct LiveCurvatureParameters @0xa4f1eb3323f5f582 {
   useParams @2 :Bool;
   currentCorrection @3 :Float32;
   currentBias @4 :Float32;
-  currentBucketPoints @5 :Int32;
-  totalBucketPoints @6 :Int32;
+  currentBucketPoints @5 :UInt16;
+  totalBucketPoints @6 :UInt16;
   calPerc @7 :Int8;
   bucketSign @8 :Int8;
   bucketSpeed @9 :Int8;
   corrections @10 :List(Float32);
-  counts @11 :List(Int32);
+  counts @11 :List(UInt16);
   biases @12 :List(Float32);
   bucketCurvature @13 :Int8;
   fitValid @14 :List(Bool);

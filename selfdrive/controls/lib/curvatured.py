@@ -15,10 +15,7 @@ class CurvatureDController(CurvatureDLookup):
 
   def update_live_params(self, msg) -> None:
     expected_size = self.total_size()
-    if (msg.version != VERSION or
-        len(msg.corrections) != expected_size or
-        len(msg.counts) != expected_size or
-        len(msg.biases) != expected_size):
+    if msg.version != VERSION or len(msg.corrections) != expected_size:
       self.reset()
       return
 

@@ -293,7 +293,10 @@ def main(demo=False):
       curvature_transport_valid = curvature_valid or not curvature_estimator.use_params
       curvature_live_valid = curvature_valid and curvature_estimator.use_params
       pm.send('liveCurvatureParameters',
-              curvature_estimator.get_msg(valid=curvature_transport_valid, live_valid=curvature_live_valid))
+              curvature_estimator.get_msg(valid=curvature_transport_valid,
+                                          live_valid=curvature_live_valid,
+                                          include_debug=curvature_estimator.publish_debug_data,
+                                          include_preview=curvature_estimator.publish_preview_data))
 
     # Cache points every 60 seconds while onroad
     if sm.frame % 240 == 0:
@@ -301,7 +304,10 @@ def main(demo=False):
 
     if sm.frame % 1200 == 0:
       params.put_nonblocking("LiveCurvatureParameters",
-                             curvature_estimator.get_msg(valid=curvature_transport_valid, live_valid=curvature_live_valid).to_bytes())
+                             curvature_estimator.get_msg(valid=curvature_transport_valid,
+                                                         live_valid=curvature_live_valid,
+                                                         include_debug=True,
+                                                         include_preview=False).to_bytes())
 
 
 if __name__ == "__main__":

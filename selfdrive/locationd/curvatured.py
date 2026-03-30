@@ -435,6 +435,8 @@ class CurvatureEstimator(CurvatureDLookup):
 
     self.use_params = False
     self.enable_curvatured = False
+    self.publish_debug_data = False
+    self.publish_preview_data = False
     self.prev_use_params = None
     self.last_status_log_t = 0.0
 
@@ -480,6 +482,8 @@ class CurvatureEstimator(CurvatureDLookup):
   def update_use_params(self, force: bool = False):
     if force or self.frame % int(PARAMS_UPDATE_PERIOD / DT_MDL) == 0:
       self.enable_curvatured = self.params.get_bool("EnableCurvatureD")
+      self.publish_debug_data = self.params.get_bool("CurvatureDDebugData")
+      self.publish_preview_data = self.publish_debug_data or self.params.get_bool("ShowDynamicSteeringLearnerGraph")
       self.use_params = self.enable_curvatured and self.CP.brand in ALLOWED_CARS and \
                         self.CP.steerControlType == car.CarParams.SteerControlType.curvatureDEPRECATED
       if self.prev_use_params != self.use_params:
@@ -626,7 +630,8 @@ class CurvatureEstimator(CurvatureDLookup):
 
       self.add_measurement(desired_curvature, actual_curvature, v_ego)
 
-  def get_msg(self, valid: bool = True, live_valid: bool = True):
+  def get_msg(self, valid: bool = True, live_valid: bool = True,
+              include_debug: bool = False, include_preview: bool = False):
     msg = messaging.new_message('liveCurvatureParameters')
     msg.valid = valid
 
@@ -643,11 +648,33 @@ class CurvatureEstimator(CurvatureDLookup):
     curvature_params.bucketSpeed = int(self.current_bucket[0]) if self.use_params else -1
     curvature_params.bucketCurvature = int(self.current_bucket[1]) if self.use_params else -1
     curvature_params.corrections = self.flatten(self.fit_corrections)
-    curvature_params.counts = self.flatten(np.rint(self.counts).astype(np.int32))
-    curvature_params.biases = self.flatten(self.bias)
     curvature_params.fitValid = self.flatten(self.fit_valid)
-    curvature_params.previewCorrections = self.flatten(self.preview_corrections)
-    curvature_params.previewValid = self.flatten(self.preview_valid)
+    if include_debug:
+      curvature_params.counts = self.flatten(np.rint(self.counts).astype(np.uint16))
+      curvature_params.biases = self.flatten(self.bias)
+    if include_preview:
+      curvature_params.previewCorrections = self.flatten(self.preview_corrections)
+      curvature_params.previewValid = self.flatten(self.preview_valid)
+    return msg
+
+  def get_cache_msg(self):
+    msg = messaging.new_message('liveCurvatureParameters')
+    msg.valid = True
+
+    curvature_params = msg.liveCurvatureParameters
+    curvature_params.liveValid = bool(np.isfinite(self.bias).all())
+    curvature_params.version = VERSION
+    curvature_params.useParams = self.use_params
+    curvature_params.currentCorrection = 0.0
+    curvature_params.currentBias = 0.0
+    curvature_params.currentBucketPoints = 0
+    curvature_params.totalBucketPoints = int(round(float(self.counts.sum())))
+    curvature_params.calPerc = self.calibration_percent(self.counts)
+    curvature_params.bucketSign = 0
+    curvature_params.bucketSpeed = -1
+    curvature_params.bucketCurvature = -1
+    curvature_params.counts = self.flatten(np.rint(self.counts).astype(np.uint16))
+    curvature_params.biases = self.flatten(self.bias)
     return msg
 
   @staticmethod
