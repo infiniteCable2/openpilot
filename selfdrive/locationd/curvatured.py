@@ -657,26 +657,6 @@ class CurvatureEstimator(CurvatureDLookup):
       curvature_params.previewValid = self.flatten(self.preview_valid)
     return msg
 
-  def get_cache_msg(self):
-    msg = messaging.new_message('liveCurvatureParameters')
-    msg.valid = True
-
-    curvature_params = msg.liveCurvatureParameters
-    curvature_params.liveValid = bool(np.isfinite(self.bias).all())
-    curvature_params.version = VERSION
-    curvature_params.useParams = self.use_params
-    curvature_params.currentCorrection = 0.0
-    curvature_params.currentBias = 0.0
-    curvature_params.currentBucketPoints = 0
-    curvature_params.totalBucketPoints = int(round(float(self.counts.sum())))
-    curvature_params.calPerc = self.calibration_percent(self.counts)
-    curvature_params.bucketSign = 0
-    curvature_params.bucketSpeed = -1
-    curvature_params.bucketCurvature = -1
-    curvature_params.counts = self.flatten(np.rint(self.counts).astype(np.uint16))
-    curvature_params.biases = self.flatten(self.bias)
-    return msg
-
   @staticmethod
   def roll_learning_allowed(roll: float) -> bool:
     return abs(np.sin(float(roll)) * ACCELERATION_DUE_TO_GRAVITY) <= MAX_LEARN_ROLL_LATERAL_ACCEL
