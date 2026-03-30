@@ -229,6 +229,10 @@ class CurvatureDLookup:
     return int(round(float(counts[idx])))
 
   @classmethod
+  def actual_curvature_from_yaw_rate(cls, yaw_rate: float, v_ego: float, roll_compensation: float = 0.0) -> float:
+    return float(yaw_rate / max(float(v_ego), 0.1) - float(roll_compensation))
+
+  @classmethod
   def speed_curve_valid(cls, counts: np.ndarray, speed_idx: int) -> bool:
     valid_mask = np.asarray(counts[speed_idx] >= cls.MIN_BUCKET_POINTS, dtype=bool)
     valid_bucket_count = int(np.count_nonzero(valid_mask))
@@ -414,6 +418,7 @@ class CurvatureEstimator(CurvatureDLookup):
 
     self.car_control_t = deque(maxlen=self.hist_len)
     self.lat_active = deque(maxlen=self.hist_len)
+    self.roll_compensation = deque(maxlen=self.hist_len)
     self.car_state_t = deque(maxlen=self.hist_len)
     self.vego = deque(maxlen=self.hist_len)
     self.steering_pressed = deque(maxlen=self.hist_len)
@@ -564,6 +569,7 @@ class CurvatureEstimator(CurvatureDLookup):
     if which == "carControl":
       self.car_control_t.append(t)
       self.lat_active.append(msg.latActive)
+      self.roll_compensation.append(msg.rollCompensation)
       if not msg.latActive:
         self.last_lat_inactive_t = t
     elif which == "carState":
@@ -591,11 +597,12 @@ class CurvatureEstimator(CurvatureDLookup):
 
       target_t = t - self.lag
       lat_active = self._sample_at_or_before(target_t, self.car_control_t, self.lat_active)
+      roll_comp = self._sample_at_or_before(target_t, self.car_control_t, self.roll_compensation)
       steering_pressed = self._sample_at_or_before(target_t, self.car_state_t, self.steering_pressed)
       v_ego = self._sample_at_or_before(target_t, self.car_state_t, self.vego)
       desired_curvature = self._sample_at_or_before(target_t, self.controls_state_t, self.model_desired_curvature)
 
-      if any(x is None for x in (lat_active, steering_pressed, v_ego, desired_curvature)):
+      if any(x is None for x in (lat_active, roll_comp, steering_pressed, v_ego, desired_curvature)):
         return
 
       if not bool(lat_active) or bool(steering_pressed) or float(v_ego) < self.MIN_SPEED:
@@ -612,9 +619,10 @@ class CurvatureEstimator(CurvatureDLookup):
 
       v_ego = float(v_ego)
       desired_curvature = float(desired_curvature)
-      actual_curvature = yaw_rate / max(v_ego, 0.1)
-      if max(abs(desired_curvature), abs(actual_curvature)) * (v_ego ** 2) > self.MAX_LAT_ACCEL:
+      actual_curvature_raw = yaw_rate / max(v_ego, 0.1)
+      if max(abs(desired_curvature), abs(actual_curvature_raw)) * (v_ego ** 2) > self.MAX_LAT_ACCEL:
         return
+      actual_curvature = self.actual_curvature_from_yaw_rate(yaw_rate, v_ego, roll_compensation=float(roll_comp))
 
       self.add_measurement(desired_curvature, actual_curvature, v_ego)
 

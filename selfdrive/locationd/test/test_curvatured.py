@@ -199,3 +199,13 @@ class TestCurvatureEstimator:
 
     assert estimator.roll_learning_allowed(float(small_roll))
     assert not estimator.roll_learning_allowed(float(large_roll))
+
+  def test_actual_curvature_subtracts_roll_compensation(self):
+    yaw_rate = 0.03
+    v_ego = 20.0
+    roll_comp = 4.0e-4
+
+    raw_curvature = yaw_rate / v_ego
+    corrected_curvature = CurvatureDLookup.actual_curvature_from_yaw_rate(yaw_rate, v_ego, roll_comp)
+
+    assert np.isclose(corrected_curvature, raw_curvature - roll_comp)
