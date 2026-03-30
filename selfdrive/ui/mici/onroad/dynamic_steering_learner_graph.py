@@ -33,9 +33,12 @@ class DynamicSteeringLearnerGraphMici(Widget):
     self._display_enabled = False
     self._param_update_time = 0.0
 
-    self._preview_curve_color = rl.Color(250, 250, 250, 150)
-    self._curve_color = rl.Color(120, 220, 170, 179)
-    self._curve_invalid_color = rl.Color(220, 180, 90, 158)
+    self._preview_glow_color = rl.Color(255, 255, 255, 42)
+    self._preview_curve_color = rl.Color(250, 250, 250, 168)
+    self._curve_glow_color = rl.Color(0, 255, 64, 56)
+    self._curve_color = rl.Color(0, 255, 64, 188)
+    self._curve_invalid_glow_color = rl.Color(255, 170, 70, 44)
+    self._curve_invalid_color = rl.Color(235, 185, 95, 166)
 
     self._plot_x = np.linspace(-CurvatureDLookup.CURVATURE_MAX, CurvatureDLookup.CURVATURE_MAX, CONFIG.sample_points)
     self._update_params()
@@ -126,7 +129,13 @@ class DynamicSteeringLearnerGraphMici(Widget):
       actual_points.append(rl.Vector2(float(x), float(actual_y)))
 
     for p0, p1 in zip(preview_points[:-1], preview_points[1:], strict=True):
-      rl.draw_line_ex(p0, p1, 1.9, self._preview_curve_color)
+      rl.draw_line_ex(p0, p1, 4.2, self._preview_glow_color)
+    for p0, p1 in zip(preview_points[:-1], preview_points[1:], strict=True):
+      rl.draw_line_ex(p0, p1, 2.0, self._preview_curve_color)
+
+    curve_glow_color = self._curve_glow_color if curve_valid else self._curve_invalid_glow_color
     curve_color = self._curve_color if curve_valid else self._curve_invalid_color
+    for p0, p1 in zip(actual_points[:-1], actual_points[1:], strict=True):
+      rl.draw_line_ex(p0, p1, 6.4, curve_glow_color)
     for p0, p1 in zip(actual_points[:-1], actual_points[1:], strict=True):
       rl.draw_line_ex(p0, p1, 3.4, curve_color)
