@@ -15,7 +15,7 @@ class DynamicSteeringLearnerGraphMiciConfig:
   width: int = 144
   height: int = 72
   right_margin: int = 77
-  zero_line_screen_y_frac: float = 0.70
+  zero_line_screen_y_frac: float = 0.68
   plot_padding_left: int = 0
   plot_padding_right: int = 0
   plot_padding_top: int = 0
