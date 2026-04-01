@@ -136,13 +136,28 @@ class TestCurvatureEstimator:
     selected = np.arange(required, dtype=int)
 
     counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected]
-    assert CurvatureDLookup.speed_curve_valid(counts, speed_idx)
+    assert np.all(counts[speed_idx, selected] >= CurvatureDLookup.MIN_BUCKET_POINTS[selected])
+    assert not CurvatureDLookup.speed_curve_valid(counts, speed_idx)
     assert not CurvatureDLookup.speed_curve_fully_calibrated(counts, speed_idx)
     assert CurvatureDLookup.calibration_percent(counts) == 0
 
     counts[speed_idx, selected] = CurvatureDLookup.FULL_CONFIDENCE_BUCKET_SAMPLES[selected]
     assert CurvatureDLookup.speed_curve_fully_calibrated(counts, speed_idx)
     assert CurvatureDLookup.calibration_percent(counts) > 0
+
+  def test_speed_curve_strength_grows_smoothly_from_bucket_strengths(self):
+    speed_idx = 4
+    counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    required = CurvatureDLookup.required_valid_bucket_count(speed_idx)
+    selected = np.arange(required, dtype=int)
+
+    counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected]
+    assert np.isclose(CurvatureDLookup.speed_curve_strength(counts[speed_idx], speed_idx), 0.0)
+
+    counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected] + 0.5 * (
+      CurvatureDLookup.FULL_CONFIDENCE_BUCKET_SAMPLES[selected] - CurvatureDLookup.MIN_BUCKET_POINTS[selected]
+    )
+    assert np.isclose(CurvatureDLookup.speed_curve_strength(counts[speed_idx], speed_idx), 0.5)
 
   def test_message_contains_symmetric_fit_curve(self):
     estimator = get_estimator()

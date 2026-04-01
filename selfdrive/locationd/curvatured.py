@@ -169,6 +169,7 @@ class CurvatureDLookup:
                                valid_mask_fn,
                                min_valid_buckets_fn,
                                local_strength_fn,
+                               speed_strength_fn,
                                zero_invalid_buckets: bool = False) -> tuple[np.ndarray, np.ndarray]:
     corrections = np.zeros(cls.bucket_shape(), dtype=np.float32)
     valid = np.zeros(cls.bucket_shape(), dtype=bool)
@@ -191,7 +192,7 @@ class CurvatureDLookup:
 
       local_strength = local_strength_fn(counts[speed_idx], valid_idx)
       interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
-      smoothed *= interpolated_strength
+      smoothed *= float(speed_strength_fn(counts[speed_idx], speed_idx, valid_idx, local_strength)) * interpolated_strength
       for curvature_idx, curvature in enumerate(cls.CURVATURE_BUCKET_CENTERS):
         smoothed[curvature_idx] *= cls.curvature_window(float(curvature))
 
@@ -216,10 +217,19 @@ class CurvatureDLookup:
 
   @classmethod
   def speed_curve_valid(cls, counts: np.ndarray, speed_idx: int) -> bool:
-    valid_mask = np.asarray(counts[speed_idx] >= cls.MIN_BUCKET_POINTS, dtype=bool)
-    valid_bucket_count = int(np.count_nonzero(valid_mask))
+    return cls.speed_curve_strength(counts[speed_idx], speed_idx) > 0.0
+
+  @classmethod
+  def speed_curve_strength(cls, speed_counts: np.ndarray, speed_idx: int) -> float:
+    valid_mask = np.asarray(speed_counts >= cls.MIN_BUCKET_POINTS, dtype=bool)
+    valid_idx = np.flatnonzero(valid_mask)
+    if len(valid_idx) == 0:
+      return 0.0
+
+    local_strength = cls.fit_local_strength(speed_counts, valid_idx)
     required_bucket_count = cls.required_valid_bucket_count(speed_idx)
-    return valid_bucket_count >= required_bucket_count
+    top_strengths = np.sort(local_strength)[-required_bucket_count:]
+    return float(np.sum(top_strengths) / float(required_bucket_count))
 
   @classmethod
   def speed_curve_fully_calibrated(cls, counts: np.ndarray, speed_idx: int) -> bool:
@@ -290,8 +300,9 @@ class CurvatureDLookup:
       bias,
       counts,
       lambda speed_counts: speed_counts >= cls.MIN_BUCKET_POINTS,
-      cls.required_valid_bucket_count,
+      lambda _speed_idx: 1,
       cls.fit_local_strength,
+      lambda speed_counts, speed_idx, _valid_idx, _local_strength: cls.speed_curve_strength(speed_counts, speed_idx),
       zero_invalid_buckets=True,
     )
 
@@ -303,6 +314,7 @@ class CurvatureDLookup:
       lambda speed_counts: speed_counts > 0.0,
       lambda _speed_idx: 1,
       cls.preview_local_strength,
+      lambda _all_counts, _speed_idx, _valid_idx, _local_strength: 1.0,
     )
 
   @classmethod
