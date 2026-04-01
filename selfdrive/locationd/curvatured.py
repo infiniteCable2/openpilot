@@ -78,11 +78,9 @@ class CurvatureDLookup:
 
   MAX_SAMPLES = 600
   MEAN_WINDOW = 180.0
-  FIT_MIN_TOTAL_SAMPLES = 480.0
   FIT_MIN_VALID_BUCKETS = 4
   INITIAL_VALID_LATERAL_ACCEL = 0.05
   MIN_BUCKET_POINTS = np.array([20, 20, 18, 16, 14, 12, 10, 8, 6, 6, 4, 4], dtype=np.float32)
-  FULL_CONFIDENCE_TOTAL_SAMPLES = FIT_MIN_TOTAL_SAMPLES + FIT_MIN_TOTAL_SAMPLES
   FULL_CONFIDENCE_BUCKET_SAMPLES = MIN_BUCKET_POINTS + MIN_BUCKET_POINTS
 
   @classmethod
@@ -153,18 +151,6 @@ class CurvatureDLookup:
     return low, high, float(np.clip(alpha, 0.0, 1.0))
 
   @classmethod
-  def confidence(cls, total_points: float) -> float:
-    return float(np.clip(
-      (total_points - cls.FIT_MIN_TOTAL_SAMPLES) /
-      max(cls.FULL_CONFIDENCE_TOTAL_SAMPLES - cls.FIT_MIN_TOTAL_SAMPLES, 1.0),
-      0.0, 1.0
-    ))
-
-  @classmethod
-  def preview_confidence(cls, total_points: float) -> float:
-    return 1.0
-
-  @classmethod
   def fit_local_strength(cls, bucket_counts: np.ndarray, valid_idx: np.ndarray) -> np.ndarray:
     bucket_conf_start = cls.MIN_BUCKET_POINTS[valid_idx]
     bucket_conf_full = np.asarray(cls.FULL_CONFIDENCE_BUCKET_SAMPLES[valid_idx], dtype=np.float64)
@@ -182,8 +168,6 @@ class CurvatureDLookup:
   def _build_curve_corrections(cls, bias: np.ndarray, counts: np.ndarray,
                                valid_mask_fn,
                                min_valid_buckets_fn,
-                               total_points_min: float,
-                               global_confidence_fn,
                                local_strength_fn) -> tuple[np.ndarray, np.ndarray]:
     corrections = np.zeros(cls.bucket_shape(), dtype=np.float32)
     valid = np.zeros(cls.bucket_shape(), dtype=bool)
@@ -193,10 +177,6 @@ class CurvatureDLookup:
     for speed_idx in range(len(cls.SPEED_ANCHORS)):
       curve_valid = np.asarray(valid_mask_fn(counts[speed_idx]), dtype=bool)
       if int(np.count_nonzero(curve_valid)) < int(min_valid_buckets_fn(speed_idx)):
-        continue
-
-      total_points = float(counts[speed_idx].sum())
-      if total_points < total_points_min:
         continue
 
       valid_idx = np.flatnonzero(curve_valid)
@@ -210,7 +190,7 @@ class CurvatureDLookup:
 
       local_strength = local_strength_fn(counts[speed_idx], valid_idx)
       interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
-      smoothed *= float(global_confidence_fn(total_points)) * interpolated_strength
+      smoothed *= interpolated_strength
       for curvature_idx, curvature in enumerate(cls.CURVATURE_BUCKET_CENTERS):
         smoothed[curvature_idx] *= cls.curvature_window(float(curvature))
 
@@ -233,9 +213,14 @@ class CurvatureDLookup:
   def speed_curve_valid(cls, counts: np.ndarray, speed_idx: int) -> bool:
     valid_mask = np.asarray(counts[speed_idx] >= cls.MIN_BUCKET_POINTS, dtype=bool)
     valid_bucket_count = int(np.count_nonzero(valid_mask))
-    total_points = float(counts[speed_idx].sum())
     required_bucket_count = cls.required_valid_bucket_count(speed_idx)
-    return valid_bucket_count >= required_bucket_count and total_points >= cls.FIT_MIN_TOTAL_SAMPLES
+    return valid_bucket_count >= required_bucket_count
+
+  @classmethod
+  def speed_curve_fully_calibrated(cls, counts: np.ndarray, speed_idx: int) -> bool:
+    fully_calibrated_mask = np.asarray(counts[speed_idx] >= cls.FULL_CONFIDENCE_BUCKET_SAMPLES, dtype=bool)
+    required_bucket_count = cls.required_valid_bucket_count(speed_idx)
+    return int(np.count_nonzero(fully_calibrated_mask)) >= required_bucket_count
 
   @classmethod
   def required_valid_bucket_count(cls, speed_idx: int) -> int:
@@ -246,8 +231,8 @@ class CurvatureDLookup:
 
   @classmethod
   def calibration_percent(cls, counts: np.ndarray) -> int:
-    valid_speeds = sum(cls.speed_curve_valid(counts, speed_idx) for speed_idx in range(len(cls.SPEED_ANCHORS)))
-    return int(round(100.0 * valid_speeds / float(len(cls.SPEED_ANCHORS))))
+    fully_calibrated_speeds = sum(cls.speed_curve_fully_calibrated(counts, speed_idx) for speed_idx in range(len(cls.SPEED_ANCHORS)))
+    return int(round(100.0 * fully_calibrated_speeds / float(len(cls.SPEED_ANCHORS))))
 
   @classmethod
   def smoothstep(cls, x: float) -> float:
@@ -301,8 +286,6 @@ class CurvatureDLookup:
       counts,
       lambda speed_counts: speed_counts >= cls.MIN_BUCKET_POINTS,
       cls.required_valid_bucket_count,
-      cls.FIT_MIN_TOTAL_SAMPLES,
-      cls.confidence,
       cls.fit_local_strength,
     )
 
@@ -313,8 +296,6 @@ class CurvatureDLookup:
       counts,
       lambda speed_counts: speed_counts > 0.0,
       lambda _speed_idx: 1,
-      1.0,
-      cls.preview_confidence,
       cls.preview_local_strength,
     )
 

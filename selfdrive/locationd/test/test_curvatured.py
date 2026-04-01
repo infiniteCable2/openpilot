@@ -24,6 +24,16 @@ class TestCurvatureEstimator:
           desired = sign * float(desired_curvature)
           estimator.add_measurement(desired, desired * 0.6, v_ego)
 
+  @staticmethod
+  def _train_speed_curve_full(estimator, v_ego: float):
+    for desired_curvature in CurvatureDLookup.CURVATURE_BUCKET_CENTERS:
+      for sign in (-1.0, 1.0):
+        curvature_idx = CurvatureDLookup.curvature_index(float(desired_curvature))
+        assert curvature_idx is not None
+        for _ in range(int(CurvatureDLookup.FULL_CONFIDENCE_BUCKET_SAMPLES[curvature_idx]) + 2):
+          desired = sign * float(desired_curvature)
+          estimator.add_measurement(desired, desired * 0.6, v_ego)
+
   def test_left_and_right_feed_the_same_bucket_curve(self):
     estimator = get_estimator()
     desired_curvature = 32e-6
@@ -87,7 +97,7 @@ class TestCurvatureEstimator:
     assert estimator.get_msg().liveCurvatureParameters.calPerc == 0
 
     for v_ego in CurvatureDLookup.SPEED_ANCHORS:
-      self._train_speed_curve(estimator, float(v_ego))
+      self._train_speed_curve_full(estimator, float(v_ego))
 
     assert estimator.get_msg().liveCurvatureParameters.calPerc == 100
 
@@ -99,41 +109,40 @@ class TestCurvatureEstimator:
     assert low == len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS)
     assert low >= mid >= high >= CurvatureDLookup.FIT_MIN_VALID_BUCKETS
 
-  def test_global_confidence_starts_after_fit_min_total_samples(self):
-    assert CurvatureDLookup.confidence(0.0) == 0.0
-    assert CurvatureDLookup.confidence(CurvatureDLookup.FIT_MIN_TOTAL_SAMPLES) == 0.0
-    assert CurvatureDLookup.confidence(CurvatureDLookup.FULL_CONFIDENCE_TOTAL_SAMPLES) == 1.0
-    midpoint = 0.5 * (CurvatureDLookup.FIT_MIN_TOTAL_SAMPLES + CurvatureDLookup.FULL_CONFIDENCE_TOTAL_SAMPLES)
-    assert np.isclose(CurvatureDLookup.confidence(midpoint), 0.5)
-
-  def test_preview_confidence_builds_from_first_samples(self):
-    assert CurvatureDLookup.preview_confidence(0.0) == 0.0
-    assert 0.0 < CurvatureDLookup.preview_confidence(1.0) < 1.0
-    assert CurvatureDLookup.preview_confidence(CurvatureDLookup.FIT_MIN_TOTAL_SAMPLES) == 1.0
-
-  def test_fit_and_preview_use_different_confidence_ramps(self):
+  def test_fit_valid_no_longer_requires_global_total_samples(self):
     speed_idx = 3
     bucket_idx = 5
     counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
     bias = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
 
-    counts[speed_idx, bucket_idx] = float(CurvatureDLookup.MIN_BUCKET_POINTS[bucket_idx] * 2.0)
+    counts[speed_idx, bucket_idx] = float(CurvatureDLookup.MIN_BUCKET_POINTS[bucket_idx] + 1.0)
     bias[speed_idx, bucket_idx] = float(0.5 * CurvatureDLookup.correction_cap(
       float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[bucket_idx])
     ))
 
-    remaining_points = CurvatureDLookup.FIT_MIN_TOTAL_SAMPLES - float(counts[speed_idx, bucket_idx])
     filler_idx = np.arange(CurvatureDLookup.required_valid_bucket_count(speed_idx), dtype=int)
     filler_idx = filler_idx[filler_idx != bucket_idx]
-    counts[speed_idx, filler_idx] = remaining_points / max(len(filler_idx), 1)
+    counts[speed_idx, filler_idx] = CurvatureDLookup.MIN_BUCKET_POINTS[filler_idx] + 1.0
 
     fit_corrections, fit_valid = CurvatureDLookup.build_fit_corrections(bias, counts)
-    preview_corrections, preview_valid = CurvatureDLookup.build_preview_corrections(bias, counts)
 
     assert fit_valid[speed_idx, bucket_idx]
-    assert preview_valid[speed_idx, bucket_idx]
-    assert np.isclose(float(fit_corrections[speed_idx, bucket_idx]), 0.0)
-    assert float(preview_corrections[speed_idx, bucket_idx]) > 0.0
+    assert float(fit_corrections[speed_idx, bucket_idx]) > 0.0
+
+  def test_calibration_percent_requires_full_local_strength(self):
+    speed_idx = 3
+    counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    required = CurvatureDLookup.required_valid_bucket_count(speed_idx)
+    selected = np.arange(required, dtype=int)
+
+    counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected]
+    assert CurvatureDLookup.speed_curve_valid(counts, speed_idx)
+    assert not CurvatureDLookup.speed_curve_fully_calibrated(counts, speed_idx)
+    assert CurvatureDLookup.calibration_percent(counts) == 0
+
+    counts[speed_idx, selected] = CurvatureDLookup.FULL_CONFIDENCE_BUCKET_SAMPLES[selected]
+    assert CurvatureDLookup.speed_curve_fully_calibrated(counts, speed_idx)
+    assert CurvatureDLookup.calibration_percent(counts) > 0
 
   def test_message_contains_symmetric_fit_curve(self):
     estimator = get_estimator()
