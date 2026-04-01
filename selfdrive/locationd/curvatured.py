@@ -68,20 +68,20 @@ class CurvatureDLookup:
   LAST_BUCKET_WIDTH = float(CURVATURE_BUCKET_EDGES[-1] - CURVATURE_BUCKET_EDGES[-2])
   CURVATURE_MAX = CURVATURE_BUCKET_MAX + 0.5 * LAST_BUCKET_WIDTH
 
-  MIN_SPEED = float(SPEED_ANCHORS[0] * 0.5)
-  MAX_LAT_ACCEL = 1.0
-  HARD_MAX_CORRECTION = 3.0e-4
-  RELATIVE_CAP_FULL_RATIO = 0.50
-  RELATIVE_CAP_FULL_CURVATURE = 1.0e-4
-  RELATIVE_CAP_MID_CURVATURE = 1.024e-3
-  RELATIVE_CAP_MID_RATIO = 0.25
+  MIN_SPEED = float(SPEED_ANCHORS[0] * 0.5)  # learning/apply speed floor
+  MAX_LAT_ACCEL = 1.0  # learn/apply accel gate
+  HARD_MAX_CORRECTION = 3.0e-4  # absolute correction cap
+  RELATIVE_CAP_FULL_RATIO = 0.50  # center relative cap
+  RELATIVE_CAP_FULL_CURVATURE = 1.0e-4  # center-cap limit
+  RELATIVE_CAP_MID_CURVATURE = 1.024e-3  # mid-cap transition
+  RELATIVE_CAP_MID_RATIO = 0.25  # mid relative cap
 
-  MAX_SAMPLES = 600
-  MEAN_WINDOW = 180.0
-  FIT_MIN_VALID_BUCKETS = 4
-  INITIAL_VALID_LATERAL_ACCEL = 0.05
-  MIN_BUCKET_POINTS = np.array([20, 20, 18, 16, 14, 12, 10, 8, 6, 6, 4, 4], dtype=np.float32)
-  FULL_CONFIDENCE_BUCKET_SAMPLES = MIN_BUCKET_POINTS + MIN_BUCKET_POINTS
+  MAX_SAMPLES = 600  # per-bucket saturation
+  MEAN_WINDOW = 180.0  # bias EMA horizon
+  MIN_REQUIRED_SUPPORT_BUCKETS = 4  # support floor per speed
+  SUPPORT_REFERENCE_LAT_ACCEL = 0.05  # maps speed to support width
+  MIN_BUCKET_POINTS = np.array([20, 20, 18, 16, 14, 12, 10, 8, 6, 6, 4, 4], dtype=np.float32)  # bucket fit-valid threshold
+  FULL_BUCKET_STRENGTH_SAMPLES = MIN_BUCKET_POINTS + MIN_BUCKET_POINTS  # local_strength == 1
 
   @classmethod
   def bucket_shape(cls) -> tuple[int, int]:
@@ -153,7 +153,7 @@ class CurvatureDLookup:
   @classmethod
   def fit_local_strength(cls, bucket_counts: np.ndarray, valid_idx: np.ndarray) -> np.ndarray:
     bucket_conf_start = cls.MIN_BUCKET_POINTS[valid_idx]
-    bucket_conf_full = np.asarray(cls.FULL_CONFIDENCE_BUCKET_SAMPLES[valid_idx], dtype=np.float64)
+    bucket_conf_full = np.asarray(cls.FULL_BUCKET_STRENGTH_SAMPLES[valid_idx], dtype=np.float64)
     bucket_conf_span = bucket_conf_full - bucket_conf_start
     return np.clip(
       (bucket_counts[valid_idx] - bucket_conf_start) / np.maximum(bucket_conf_span, 1.0),
@@ -227,22 +227,22 @@ class CurvatureDLookup:
       return 0.0
 
     local_strength = cls.fit_local_strength(speed_counts, valid_idx)
-    required_bucket_count = cls.required_valid_bucket_count(speed_idx)
+    required_bucket_count = cls.required_support_bucket_count(speed_idx)
     top_strengths = np.sort(local_strength)[-required_bucket_count:]
     return float(np.sum(top_strengths) / float(required_bucket_count))
 
   @classmethod
   def speed_curve_fully_calibrated(cls, counts: np.ndarray, speed_idx: int) -> bool:
-    fully_calibrated_mask = np.asarray(counts[speed_idx] >= cls.FULL_CONFIDENCE_BUCKET_SAMPLES, dtype=bool)
-    required_bucket_count = cls.required_valid_bucket_count(speed_idx)
+    fully_calibrated_mask = np.asarray(counts[speed_idx] >= cls.FULL_BUCKET_STRENGTH_SAMPLES, dtype=bool)
+    required_bucket_count = cls.required_support_bucket_count(speed_idx)
     return int(np.count_nonzero(fully_calibrated_mask)) >= required_bucket_count
 
   @classmethod
-  def required_valid_bucket_count(cls, speed_idx: int) -> int:
+  def required_support_bucket_count(cls, speed_idx: int) -> int:
     v_ego = float(cls.SPEED_ANCHORS[speed_idx])
-    typical_curvature = cls.INITIAL_VALID_LATERAL_ACCEL / max(v_ego ** 2, 1e-6)
+    typical_curvature = cls.SUPPORT_REFERENCE_LAT_ACCEL / max(v_ego ** 2, 1e-6)
     bucket_count = int(np.searchsorted(cls.CURVATURE_BUCKET_CENTERS, typical_curvature, side='right'))
-    return int(np.clip(bucket_count, cls.FIT_MIN_VALID_BUCKETS, len(cls.CURVATURE_BUCKET_CENTERS)))
+    return int(np.clip(bucket_count, cls.MIN_REQUIRED_SUPPORT_BUCKETS, len(cls.CURVATURE_BUCKET_CENTERS)))
 
   @classmethod
   def calibration_percent(cls, counts: np.ndarray) -> int:

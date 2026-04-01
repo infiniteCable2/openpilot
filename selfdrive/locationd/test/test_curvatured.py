@@ -30,7 +30,7 @@ class TestCurvatureEstimator:
       for sign in (-1.0, 1.0):
         curvature_idx = CurvatureDLookup.curvature_index(float(desired_curvature))
         assert curvature_idx is not None
-        for _ in range(int(CurvatureDLookup.FULL_CONFIDENCE_BUCKET_SAMPLES[curvature_idx]) + 2):
+        for _ in range(int(CurvatureDLookup.FULL_BUCKET_STRENGTH_SAMPLES[curvature_idx]) + 2):
           desired = sign * float(desired_curvature)
           estimator.add_measurement(desired, desired * 0.6, v_ego)
 
@@ -101,13 +101,13 @@ class TestCurvatureEstimator:
 
     assert estimator.get_msg().liveCurvatureParameters.calPerc == 100
 
-  def test_required_valid_bucket_count_decreases_with_speed(self):
-    low = CurvatureDLookup.required_valid_bucket_count(0)
-    mid = CurvatureDLookup.required_valid_bucket_count(3)
-    high = CurvatureDLookup.required_valid_bucket_count(6)
+  def test_required_support_bucket_count_decreases_with_speed(self):
+    low = CurvatureDLookup.required_support_bucket_count(0)
+    mid = CurvatureDLookup.required_support_bucket_count(3)
+    high = CurvatureDLookup.required_support_bucket_count(6)
 
     assert low == len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS)
-    assert low >= mid >= high >= CurvatureDLookup.FIT_MIN_VALID_BUCKETS
+    assert low >= mid >= high >= CurvatureDLookup.MIN_REQUIRED_SUPPORT_BUCKETS
 
   def test_fit_valid_no_longer_requires_global_total_samples(self):
     speed_idx = 3
@@ -120,7 +120,7 @@ class TestCurvatureEstimator:
       float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[bucket_idx])
     ))
 
-    filler_idx = np.arange(CurvatureDLookup.required_valid_bucket_count(speed_idx), dtype=int)
+    filler_idx = np.arange(CurvatureDLookup.required_support_bucket_count(speed_idx), dtype=int)
     filler_idx = filler_idx[filler_idx != bucket_idx]
     counts[speed_idx, filler_idx] = CurvatureDLookup.MIN_BUCKET_POINTS[filler_idx] + 1.0
 
@@ -132,7 +132,7 @@ class TestCurvatureEstimator:
   def test_calibration_percent_requires_full_local_strength(self):
     speed_idx = 3
     counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
-    required = CurvatureDLookup.required_valid_bucket_count(speed_idx)
+    required = CurvatureDLookup.required_support_bucket_count(speed_idx)
     selected = np.arange(required, dtype=int)
 
     counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected]
@@ -141,21 +141,21 @@ class TestCurvatureEstimator:
     assert not CurvatureDLookup.speed_curve_fully_calibrated(counts, speed_idx)
     assert CurvatureDLookup.calibration_percent(counts) == 0
 
-    counts[speed_idx, selected] = CurvatureDLookup.FULL_CONFIDENCE_BUCKET_SAMPLES[selected]
+    counts[speed_idx, selected] = CurvatureDLookup.FULL_BUCKET_STRENGTH_SAMPLES[selected]
     assert CurvatureDLookup.speed_curve_fully_calibrated(counts, speed_idx)
     assert CurvatureDLookup.calibration_percent(counts) > 0
 
   def test_speed_curve_strength_grows_smoothly_from_bucket_strengths(self):
     speed_idx = 4
     counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
-    required = CurvatureDLookup.required_valid_bucket_count(speed_idx)
+    required = CurvatureDLookup.required_support_bucket_count(speed_idx)
     selected = np.arange(required, dtype=int)
 
     counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected]
     assert np.isclose(CurvatureDLookup.speed_curve_strength(counts[speed_idx], speed_idx), 0.0)
 
     counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected] + 0.5 * (
-      CurvatureDLookup.FULL_CONFIDENCE_BUCKET_SAMPLES[selected] - CurvatureDLookup.MIN_BUCKET_POINTS[selected]
+      CurvatureDLookup.FULL_BUCKET_STRENGTH_SAMPLES[selected] - CurvatureDLookup.MIN_BUCKET_POINTS[selected]
     )
     assert np.isclose(CurvatureDLookup.speed_curve_strength(counts[speed_idx], speed_idx), 0.5)
 
@@ -184,7 +184,7 @@ class TestCurvatureEstimator:
     estimator = get_estimator()
     speed_idx = len(CurvatureDLookup.SPEED_ANCHORS) - 1
     v_ego = float(CurvatureDLookup.SPEED_ANCHORS[speed_idx])
-    required = CurvatureDLookup.required_valid_bucket_count(speed_idx)
+    required = CurvatureDLookup.required_support_bucket_count(speed_idx)
     selected_indices = list(range(0, required - 1)) + [required]
 
     for bucket_idx in selected_indices:
