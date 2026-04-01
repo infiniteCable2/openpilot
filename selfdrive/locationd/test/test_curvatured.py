@@ -183,6 +183,20 @@ class TestCurvatureEstimator:
     assert fit_valid[speed_idx, selected_indices].all()
     assert not fit_valid[speed_idx, required - 1]
 
+  def test_fit_corrections_are_zero_outside_fit_valid(self):
+    speed_idx = 3
+    counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    bias = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    selected = np.array([5, 6, 7, 8], dtype=int)
+
+    counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected] + 40.0
+    bias[speed_idx, selected] = np.array([2.0e-6, 6.0e-6, 1.2e-5, 2.0e-5], dtype=np.float32)
+
+    fit_corrections, fit_valid = CurvatureDLookup.build_fit_corrections(bias, counts)
+
+    assert fit_valid[speed_idx, selected].all()
+    assert np.allclose(fit_corrections[speed_idx, ~fit_valid[speed_idx]], 0.0)
+
   def test_interp_curve_value_does_not_bridge_invalid_gap(self):
     speed_idx = 3
     v_ego = float(CurvatureDLookup.SPEED_ANCHORS[speed_idx])

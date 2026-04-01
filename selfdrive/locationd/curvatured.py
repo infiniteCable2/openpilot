@@ -168,7 +168,8 @@ class CurvatureDLookup:
   def _build_curve_corrections(cls, bias: np.ndarray, counts: np.ndarray,
                                valid_mask_fn,
                                min_valid_buckets_fn,
-                               local_strength_fn) -> tuple[np.ndarray, np.ndarray]:
+                               local_strength_fn,
+                               zero_invalid_buckets: bool = False) -> tuple[np.ndarray, np.ndarray]:
     corrections = np.zeros(cls.bucket_shape(), dtype=np.float32)
     valid = np.zeros(cls.bucket_shape(), dtype=bool)
     log_centers = np.log(cls.CURVATURE_BUCKET_CENTERS.astype(np.float64))
@@ -194,7 +195,11 @@ class CurvatureDLookup:
       for curvature_idx, curvature in enumerate(cls.CURVATURE_BUCKET_CENTERS):
         smoothed[curvature_idx] *= cls.curvature_window(float(curvature))
 
-      corrections[speed_idx] = np.clip(smoothed, -bucket_caps, bucket_caps)
+      clipped = np.clip(smoothed, -bucket_caps, bucket_caps)
+      if zero_invalid_buckets:
+        clipped = np.where(curve_valid, clipped, 0.0)
+
+      corrections[speed_idx] = clipped.astype(np.float32)
       valid[speed_idx] = curve_valid
 
     return corrections, valid
@@ -287,6 +292,7 @@ class CurvatureDLookup:
       lambda speed_counts: speed_counts >= cls.MIN_BUCKET_POINTS,
       cls.required_valid_bucket_count,
       cls.fit_local_strength,
+      zero_invalid_buckets=True,
     )
 
   @classmethod
