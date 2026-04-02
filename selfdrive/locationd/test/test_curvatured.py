@@ -83,14 +83,24 @@ class TestCurvatureEstimator:
 
     idx = CurvatureDLookup.indices(desired_curvature, 16.0)
     assert idx is not None
-    assert estimator.bias[idx] <= CurvatureDLookup.correction_cap(desired_curvature)
+    assert estimator.bias[idx] <= CurvatureDLookup.correction_cap(desired_curvature, 16.0)
 
-  def test_relative_correction_cap_envelope(self):
-    assert np.isclose(CurvatureDLookup.correction_cap(1.0e-5), 0.5e-5)
-    assert np.isclose(CurvatureDLookup.correction_cap(1.0e-4), 0.5e-4)
-    assert np.isclose(CurvatureDLookup.correction_cap(1.024e-3), 0.25 * 1.024e-3)
-    assert CurvatureDLookup.correction_cap(3.0e-3) < CurvatureDLookup.correction_cap(1.024e-3)
-    assert CurvatureDLookup.correction_cap(CurvatureDLookup.CURVATURE_MAX) == 0.0
+  def test_relative_correction_cap_envelope_uses_available_buckets(self):
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[5])
+    available = CurvatureDLookup.available_bucket_count(v_ego)
+    assert available > 1
+
+    inner_idx = 0
+    outer_idx = max(int(np.ceil(CurvatureDLookup.RELATIVE_CAP_REDUCE_THRESHOLD * (available - 1))), 1)
+    beyond_idx = min(available, len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS) - 1)
+
+    inner_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[inner_idx])
+    outer_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[outer_idx])
+    beyond_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[beyond_idx])
+
+    assert np.isclose(CurvatureDLookup.correction_cap_ratio(inner_curvature, v_ego), CurvatureDLookup.RELATIVE_CAP_FULL_RATIO)
+    assert CurvatureDLookup.correction_cap_ratio(outer_curvature, v_ego) <= CurvatureDLookup.RELATIVE_CAP_FULL_RATIO
+    assert CurvatureDLookup.correction_cap_ratio(beyond_curvature, v_ego) == 0.0
 
   def test_calibration_percent_tracks_valid_speed_curves(self):
     estimator = get_estimator()
@@ -117,7 +127,8 @@ class TestCurvatureEstimator:
 
     counts[speed_idx, bucket_idx] = float(CurvatureDLookup.MIN_BUCKET_POINTS[bucket_idx] + 1.0)
     bias[speed_idx, bucket_idx] = float(0.5 * CurvatureDLookup.correction_cap(
-      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[bucket_idx])
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[bucket_idx]),
+      float(CurvatureDLookup.SPEED_ANCHORS[speed_idx]),
     ))
 
     filler_idx = np.arange(CurvatureDLookup.required_support_bucket_count(speed_idx), dtype=int)

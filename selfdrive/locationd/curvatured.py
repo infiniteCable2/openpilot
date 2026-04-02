@@ -37,11 +37,10 @@ MAX_LEARN_ROLL_LATERAL_ACCEL = 0.10
 # Safety / scope:
 # - Learning is gated by valid upstream pose/calibration, low roll, low yaw uncertainty, no steering override,
 #   and bounded lateral acceleration.
-# - Corrections are bounded by a relative cap envelope on log-curvature:
-#   - up to 50% of local curvature in the center-focused range
-#   - smoothly reduced through medium curvature
-#   - tapering toward 0 near the outer learning limit
-# - A separate hard absolute cap remains only as a safety backstop.
+# - Corrections are bounded by a relative cap envelope over the speed-available buckets:
+#   - up to 50% of local curvature through the inner supported range
+#   - starting at 70% of the available buckets, the cap fades toward 0
+# - Correction magnitude is limited only by the relative cap envelope.
 
 
 class CurvatureDLookup:
@@ -66,15 +65,12 @@ class CurvatureDLookup:
   IMPORTANT_CURVATURE_MAX = float(CURVATURE_BUCKET_EDGES[10])
   CURVATURE_BUCKET_MAX = float(CURVATURE_BUCKET_EDGES[-1])
   LAST_BUCKET_WIDTH = float(CURVATURE_BUCKET_EDGES[-1] - CURVATURE_BUCKET_EDGES[-2])
-  CURVATURE_MAX = CURVATURE_BUCKET_MAX + 0.5 * LAST_BUCKET_WIDTH
+  CURVATURE_MAX = CURVATURE_BUCKET_MAX + LAST_BUCKET_WIDTH
 
   MIN_SPEED = float(SPEED_ANCHORS[0] * 0.5)  # learning/apply speed floor
   MAX_LAT_ACCEL = 1.0  # learn/apply accel gate
-  HARD_MAX_CORRECTION = 3.0e-4  # absolute correction cap
-  RELATIVE_CAP_FULL_RATIO = 0.50  # center relative cap
-  RELATIVE_CAP_FULL_CURVATURE = 1.0e-4  # center-cap limit
-  RELATIVE_CAP_MID_CURVATURE = 1.024e-3  # mid-cap transition
-  RELATIVE_CAP_MID_RATIO = 0.25  # mid relative cap
+  RELATIVE_CAP_FULL_RATIO = 0.50  # inner relative cap
+  RELATIVE_CAP_REDUCE_THRESHOLD = 0.70  # outer-fade start in available buckets
 
   MAX_SAMPLES = 600  # per-bucket saturation
   MEAN_WINDOW = 180.0  # bias EMA horizon
@@ -174,7 +170,6 @@ class CurvatureDLookup:
     corrections = np.zeros(cls.bucket_shape(), dtype=np.float32)
     valid = np.zeros(cls.bucket_shape(), dtype=bool)
     log_centers = np.log(cls.CURVATURE_BUCKET_CENTERS.astype(np.float64))
-    bucket_caps = np.asarray([cls.correction_cap(float(curvature)) for curvature in cls.CURVATURE_BUCKET_CENTERS], dtype=np.float64)
 
     for speed_idx in range(len(cls.SPEED_ANCHORS)):
       curve_valid = np.asarray(valid_mask_fn(counts[speed_idx]), dtype=bool)
@@ -182,6 +177,8 @@ class CurvatureDLookup:
         continue
 
       valid_idx = np.flatnonzero(curve_valid)
+      bucket_caps = np.asarray([cls.correction_cap(float(curvature), float(cls.SPEED_ANCHORS[speed_idx]))
+                                for curvature in cls.CURVATURE_BUCKET_CENTERS], dtype=np.float64)
       valid_log_x = log_centers[valid_idx]
       valid_y = np.clip(bias[speed_idx, valid_idx], -bucket_caps[valid_idx], bucket_caps[valid_idx]).astype(np.float64)
 
@@ -267,27 +264,37 @@ class CurvatureDLookup:
     return float(np.clip(fade_in * fade_out, 0.0, 1.0))
 
   @classmethod
-  def correction_cap(cls, curvature: float) -> float:
+  def available_bucket_count(cls, v_ego: float) -> int:
+    max_curvature = cls.MAX_LAT_ACCEL / max(float(v_ego) ** 2, 1e-6)
+    bucket_count = int(np.searchsorted(cls.CURVATURE_BUCKET_CENTERS, max_curvature, side='right'))
+    return int(np.clip(bucket_count, 1, len(cls.CURVATURE_BUCKET_CENTERS)))
+
+  @classmethod
+  def correction_cap_ratio(cls, curvature: float, v_ego: float) -> float:
     abs_curvature = abs(float(curvature))
     if abs_curvature <= cls.CURVATURE_MIN_STEP:
       return 0.0
 
-    if abs_curvature <= cls.RELATIVE_CAP_FULL_CURVATURE:
-      relative_cap = cls.RELATIVE_CAP_FULL_RATIO
-    elif abs_curvature <= cls.RELATIVE_CAP_MID_CURVATURE:
-      log_low = math.log(cls.RELATIVE_CAP_FULL_CURVATURE)
-      log_high = math.log(cls.RELATIVE_CAP_MID_CURVATURE)
-      alpha = cls.smoothstep((math.log(abs_curvature) - log_low) / max(log_high - log_low, 1e-9))
-      relative_cap = (1.0 - alpha) * cls.RELATIVE_CAP_FULL_RATIO + alpha * cls.RELATIVE_CAP_MID_RATIO
-    elif abs_curvature < cls.CURVATURE_MAX:
-      log_low = math.log(cls.RELATIVE_CAP_MID_CURVATURE)
-      log_high = math.log(cls.CURVATURE_MAX)
-      alpha = cls.smoothstep((math.log(abs_curvature) - log_low) / max(log_high - log_low, 1e-9))
-      relative_cap = (1.0 - alpha) * cls.RELATIVE_CAP_MID_RATIO
-    else:
-      relative_cap = 0.0
+    bucket_idx = cls.curvature_index(abs_curvature)
+    if bucket_idx is None:
+      return 0.0
 
-    return float(min(cls.HARD_MAX_CORRECTION, max(relative_cap, 0.0) * abs_curvature))
+    available_buckets = cls.available_bucket_count(v_ego)
+    if bucket_idx >= available_buckets:
+      return 0.0
+
+    bucket_progress = float(bucket_idx) / max(available_buckets - 1, 1)
+    if bucket_progress <= cls.RELATIVE_CAP_REDUCE_THRESHOLD:
+      return cls.RELATIVE_CAP_FULL_RATIO
+
+    alpha = cls.smoothstep((bucket_progress - cls.RELATIVE_CAP_REDUCE_THRESHOLD) /
+                           max(1.0 - cls.RELATIVE_CAP_REDUCE_THRESHOLD, 1e-9))
+    return float((1.0 - alpha) * cls.RELATIVE_CAP_FULL_RATIO)
+
+  @classmethod
+  def correction_cap(cls, curvature: float, v_ego: float) -> float:
+    abs_curvature = abs(float(curvature))
+    return float(cls.correction_cap_ratio(abs_curvature, v_ego) * abs_curvature)
 
   @classmethod
   def projected_error(cls, desired_curvature: float, actual_curvature: float) -> float:
@@ -515,7 +522,7 @@ class CurvatureEstimator(CurvatureDLookup):
     if curvature_idx is None or len(speed_weights) == 0:
       return
 
-    error_cap = self.correction_cap(desired_curvature)
+    error_cap = self.correction_cap(desired_curvature, v_ego)
     error = float(np.clip(self.projected_error(desired_curvature, actual_curvature), -error_cap, error_cap))
 
     for speed_idx, weight in speed_weights:
