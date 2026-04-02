@@ -85,21 +85,22 @@ class TestCurvatureEstimator:
     assert idx is not None
     assert estimator.bias[idx] <= CurvatureDLookup.correction_cap(desired_curvature, 16.0)
 
-  def test_relative_correction_cap_envelope_uses_available_buckets(self):
+  def test_relative_correction_cap_envelope_fades_after_last_supported_bucket(self):
     v_ego = float(CurvatureDLookup.SPEED_ANCHORS[5])
-    available = CurvatureDLookup.available_bucket_count(v_ego)
-    assert available > 1
+    max_bucket_idx = CurvatureDLookup.max_supported_bucket_index(v_ego)
+    assert max_bucket_idx is not None
+    assert max_bucket_idx < len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS)
 
     inner_idx = 0
-    outer_idx = max(int(np.ceil(CurvatureDLookup.RELATIVE_CAP_REDUCE_THRESHOLD * (available - 1))), 1)
-    beyond_idx = min(available, len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS) - 1)
+    supported_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[max_bucket_idx])
+    fade_end_curvature = float(CurvatureDLookup.cap_zero_curvature(v_ego))
+    beyond_curvature = min(fade_end_curvature * 1.05, CurvatureDLookup.CURVATURE_MAX)
 
     inner_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[inner_idx])
-    outer_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[outer_idx])
-    beyond_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[beyond_idx])
 
     assert np.isclose(CurvatureDLookup.correction_cap_ratio(inner_curvature, v_ego), CurvatureDLookup.RELATIVE_CAP_FULL_RATIO)
-    assert CurvatureDLookup.correction_cap_ratio(outer_curvature, v_ego) <= CurvatureDLookup.RELATIVE_CAP_FULL_RATIO
+    assert np.isclose(CurvatureDLookup.correction_cap_ratio(supported_curvature, v_ego), CurvatureDLookup.RELATIVE_CAP_FULL_RATIO)
+    assert CurvatureDLookup.correction_cap_ratio(0.5 * (supported_curvature + fade_end_curvature), v_ego) < CurvatureDLookup.RELATIVE_CAP_FULL_RATIO
     assert CurvatureDLookup.correction_cap_ratio(beyond_curvature, v_ego) == 0.0
 
   def test_calibration_percent_tracks_valid_speed_curves(self):

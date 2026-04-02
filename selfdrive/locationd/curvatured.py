@@ -38,8 +38,8 @@ MAX_LEARN_ROLL_LATERAL_ACCEL = 0.10
 # - Learning is gated by valid upstream pose/calibration, low roll, low yaw uncertainty, no steering override,
 #   and bounded lateral acceleration.
 # - Corrections are bounded by a relative cap envelope over the speed-available buckets:
-#   - up to 50% of local curvature through the inner supported range
-#   - starting at 70% of the available buckets, the cap fades toward 0
+#   - up to 50% of local curvature through the last still-supported bucket
+#   - from there, the cap fades toward 0 at the next outer bucket center
 # - Correction magnitude is limited only by the relative cap envelope.
 
 
@@ -70,7 +70,6 @@ class CurvatureDLookup:
   MIN_SPEED = float(SPEED_ANCHORS[0] * 0.5)  # learning/apply speed floor
   MAX_LAT_ACCEL = 1.0  # learn/apply accel gate
   RELATIVE_CAP_FULL_RATIO = 0.50  # inner relative cap
-  RELATIVE_CAP_REDUCE_THRESHOLD = 0.70  # outer-fade start in available buckets
 
   MAX_SAMPLES = 600  # per-bucket saturation
   MEAN_WINDOW = 180.0  # bias EMA horizon
@@ -250,10 +249,25 @@ class CurvatureDLookup:
     return y * y * (3.0 - 2.0 * y)
 
   @classmethod
-  def available_bucket_count(cls, v_ego: float) -> int:
-    max_curvature = cls.MAX_LAT_ACCEL / max(float(v_ego) ** 2, 1e-6)
-    bucket_count = int(np.searchsorted(cls.CURVATURE_BUCKET_CENTERS, max_curvature, side='right'))
-    return int(np.clip(bucket_count, 1, len(cls.CURVATURE_BUCKET_CENTERS)))
+  def max_supported_bucket_index(cls, v_ego: float) -> int | None:
+    max_curvature = min(cls.MAX_LAT_ACCEL / max(float(v_ego) ** 2, 1e-6), cls.CURVATURE_BUCKET_MAX)
+    return cls.curvature_index(max_curvature)
+
+  @classmethod
+  def cap_zero_curvature(cls, v_ego: float) -> float:
+    max_bucket_idx = cls.max_supported_bucket_index(v_ego)
+    if max_bucket_idx is None:
+      return cls.CURVATURE_BUCKET_MIN
+
+    next_idx = max_bucket_idx + 1
+    if next_idx < len(cls.CURVATURE_BUCKET_CENTERS):
+      return float(cls.CURVATURE_BUCKET_CENTERS[next_idx])
+    return cls.CURVATURE_MAX
+
+  @classmethod
+  def plot_curvature_max(cls, v_ego: float, room_ratio: float = 0.10) -> float:
+    plot_max = cls.cap_zero_curvature(v_ego) * (1.0 + room_ratio)
+    return float(np.clip(plot_max, cls.CURVATURE_BUCKET_MIN, cls.CURVATURE_MAX))
 
   @classmethod
   def correction_cap_ratio(cls, curvature: float, v_ego: float) -> float:
@@ -270,16 +284,19 @@ class CurvatureDLookup:
     if bucket_idx is None:
       return 0.0
 
-    available_buckets = cls.available_bucket_count(v_ego)
-    if bucket_idx >= available_buckets:
+    max_bucket_idx = cls.max_supported_bucket_index(v_ego)
+    if max_bucket_idx is None:
       return 0.0
 
-    bucket_progress = float(bucket_idx) / max(available_buckets - 1, 1)
-    if bucket_progress <= cls.RELATIVE_CAP_REDUCE_THRESHOLD:
+    if bucket_idx <= max_bucket_idx:
       return cls.RELATIVE_CAP_FULL_RATIO
 
-    alpha = cls.smoothstep((bucket_progress - cls.RELATIVE_CAP_REDUCE_THRESHOLD) /
-                           max(1.0 - cls.RELATIVE_CAP_REDUCE_THRESHOLD, 1e-9))
+    fade_start = float(cls.CURVATURE_BUCKET_CENTERS[max_bucket_idx])
+    fade_end = cls.cap_zero_curvature(v_ego)
+    if abs_curvature >= fade_end:
+      return 0.0
+
+    alpha = cls.smoothstep((abs_curvature - fade_start) / max(fade_end - fade_start, 1e-9))
     return float((1.0 - alpha) * cls.RELATIVE_CAP_FULL_RATIO)
 
   @classmethod
