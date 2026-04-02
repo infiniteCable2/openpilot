@@ -54,6 +54,30 @@ class DynamicSteeringLearnerGraph(Widget):
 
     self._update_params()
 
+  @staticmethod
+  def _compute_y_bounds(preview_curve: np.ndarray, corrections: np.ndarray) -> tuple[float, float]:
+    min_val = float(min(np.min(preview_curve), np.min(corrections)))
+    max_val = float(max(np.max(preview_curve), np.max(corrections)))
+    min_span = 2e-5
+
+    if min_val >= 0.0:
+      return 0.0, max(min_span, max_val * 1.2)
+    if max_val <= 0.0:
+      return min(-min_span, min_val * 1.2), 0.0
+
+    low = min_val * 1.2
+    high = max_val * 1.2
+    if (high - low) < min_span:
+      center = 0.5 * (high + low)
+      half = 0.5 * min_span
+      return center - half, center + half
+    return low, high
+
+  @staticmethod
+  def _map_y(plot_rect: rl.Rectangle, value: float, min_y: float, max_y: float) -> float:
+    frac = (value - min_y) / max(max_y - min_y, 1e-9)
+    return float(plot_rect.y + plot_rect.height * (1.0 - frac))
+
   def _update_params(self) -> None:
     self._param_update_time = time.monotonic()
     self._display_enabled = self._params.get_bool("ShowDynamicSteeringLearnerGraph")
@@ -113,50 +137,53 @@ class DynamicSteeringLearnerGraph(Widget):
       graph_rect.width - CONFIG.plot_padding_left - CONFIG.plot_padding_right,
       graph_rect.height - CONFIG.plot_padding_top - CONFIG.plot_padding_bottom,
     )
-    _, _, max_y = self._draw_plot(
+    _, _, min_y, max_y = self._draw_plot(
       plot_rect, preview_corrections, preview_valid, fit_corrections, fit_valid,
       float(car_state.vEgo), transport_valid and payload_valid
     )
     self._draw_overlay_info(graph_rect, lcp, float(car_state.vEgo), float(controls_state.modelDesiredCurvature),
-                            fit_corrections, fit_valid, max_y, transport_valid, payload_valid)
+                            fit_corrections, fit_valid, min_y, max_y, transport_valid, payload_valid)
 
   def _draw_plot(self, plot_rect: rl.Rectangle,
                  preview_corrections: np.ndarray, preview_valid: np.ndarray,
                  fit_corrections: np.ndarray, fit_valid: np.ndarray,
-                 v_ego: float, curve_valid: bool) -> tuple[np.ndarray, np.ndarray, float]:
+                 v_ego: float, curve_valid: bool) -> tuple[np.ndarray, np.ndarray, float, float]:
     rl.draw_rectangle_lines_ex(plot_rect, 1.0, self._grid_color)
 
     zero_x = plot_rect.x + plot_rect.width / 2
     zero_y = plot_rect.y + plot_rect.height / 2
+    for frac in (0.25, 0.5, 0.75):
+      x = plot_rect.x + plot_rect.width * frac
+      rl.draw_line_ex(rl.Vector2(float(x), float(plot_rect.y)),
+                      rl.Vector2(float(x), float(plot_rect.y + plot_rect.height)), 1.0, self._grid_color)
+
+    preview_curve = np.array([
+      CurvatureDLookup.interp_curve_value(preview_corrections, preview_valid, v_ego, abs(float(k)))
+      for k in self._plot_x
+    ], dtype=np.float32)
+    corrections = np.array([
+      CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, abs(float(k)))
+      for k in self._plot_x
+    ], dtype=np.float32)
+    min_y, max_y = self._compute_y_bounds(preview_curve, corrections)
+    zero_y = self._map_y(plot_rect, 0.0, min_y, max_y)
+
     rl.draw_line_ex(rl.Vector2(float(plot_rect.x), float(zero_y)),
                     rl.Vector2(float(plot_rect.x + plot_rect.width), float(zero_y)), 2.0, self._axis_color)
     rl.draw_line_ex(rl.Vector2(float(zero_x), float(plot_rect.y)),
                     rl.Vector2(float(zero_x), float(plot_rect.y + plot_rect.height)), 2.0, self._axis_color)
 
     for frac in (0.25, 0.75):
-      x = plot_rect.x + plot_rect.width * frac
       y = plot_rect.y + plot_rect.height * frac
-      rl.draw_line_ex(rl.Vector2(float(x), float(plot_rect.y)),
-                      rl.Vector2(float(x), float(plot_rect.y + plot_rect.height)), 1.0, self._grid_color)
       rl.draw_line_ex(rl.Vector2(float(plot_rect.x), float(y)),
                       rl.Vector2(float(plot_rect.x + plot_rect.width), float(y)), 1.0, self._grid_color)
-
-    preview_curve = np.array([
-      CurvatureDLookup.interp_curve_value(preview_corrections, preview_valid, v_ego, abs(float(k))) * (1.0 if k >= 0.0 else -1.0)
-      for k in self._plot_x
-    ], dtype=np.float32)
-    corrections = np.array([
-      CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, abs(float(k))) * (1.0 if k >= 0.0 else -1.0)
-      for k in self._plot_x
-    ], dtype=np.float32)
-    max_y = max(2e-5, float(max(np.max(np.abs(preview_curve)), np.max(np.abs(corrections)))) * 1.2)
 
     preview_points = []
     actual_points = []
     for curvature, preview_correction, correction in zip(self._plot_x, preview_curve, corrections, strict=True):
-      x = plot_rect.x + (float(curvature + CurvatureDLookup.CURVATURE_MAX) / (2.0 * CurvatureDLookup.CURVATURE_MAX)) * plot_rect.width
-      preview_y = plot_rect.y + plot_rect.height * (0.5 - 0.5 * float(preview_correction) / max_y)
-      actual_y = plot_rect.y + plot_rect.height * (0.5 - 0.5 * float(correction) / max_y)
+      x = plot_rect.x + ((float(curvature) + CurvatureDLookup.CURVATURE_MAX) / (2.0 * CurvatureDLookup.CURVATURE_MAX)) * plot_rect.width
+      preview_y = self._map_y(plot_rect, float(preview_correction), min_y, max_y)
+      actual_y = self._map_y(plot_rect, float(correction), min_y, max_y)
       preview_points.append(rl.Vector2(float(x), float(preview_y)))
       actual_points.append(rl.Vector2(float(x), float(actual_y)))
 
@@ -165,17 +192,19 @@ class DynamicSteeringLearnerGraph(Widget):
     curve_color = self._curve_color if curve_valid else self._curve_invalid_color
     for p0, p1 in zip(actual_points[:-1], actual_points[1:], strict=True):
       rl.draw_line_ex(p0, p1, 4.0, curve_color)
-    return preview_curve, corrections, max_y
+    return preview_curve, corrections, min_y, max_y
 
   def _draw_overlay_info(self, graph_rect: rl.Rectangle, lcp, v_ego: float, desired_curvature: float,
-                         fit_corrections: np.ndarray, fit_valid: np.ndarray, max_y: float,
+                         fit_corrections: np.ndarray, fit_valid: np.ndarray, min_y: float, max_y: float,
                          transport_valid: bool, payload_valid: bool) -> None:
     low_idx, high_idx, alpha = CurvatureDLookup.speed_interp(v_ego)
     current_correction = 0.0
+    display_correction = 0.0
     if transport_valid and payload_valid:
       current_correction = CurvatureDLookup.interp_curve_value(
         fit_corrections, fit_valid, v_ego, abs(desired_curvature)
-      ) * (1.0 if desired_curvature >= 0.0 else -1.0)
+      )
+      display_correction = current_correction * (1.0 if desired_curvature >= 0.0 else -1.0)
 
     marker_alpha = float(np.clip(
       (desired_curvature + CurvatureDLookup.CURVATURE_MAX) / (2.0 * CurvatureDLookup.CURVATURE_MAX),
@@ -185,7 +214,13 @@ class DynamicSteeringLearnerGraph(Widget):
       graph_rect.width - CONFIG.plot_padding_left - CONFIG.plot_padding_right
     )
     plot_height = graph_rect.height - CONFIG.plot_padding_top - CONFIG.plot_padding_bottom
-    marker_y = graph_rect.y + CONFIG.plot_padding_top + plot_height * (0.5 - 0.5 * float(current_correction) / max_y)
+    plot_rect = rl.Rectangle(
+      graph_rect.x + CONFIG.plot_padding_left,
+      graph_rect.y + CONFIG.plot_padding_top,
+      graph_rect.width - CONFIG.plot_padding_left - CONFIG.plot_padding_right,
+      plot_height,
+    )
+    marker_y = self._map_y(plot_rect, float(current_correction), min_y, max_y)
     rl.draw_circle(int(marker_x), int(marker_y), 6, self._marker_color)
 
     title_size = min(42, max(34, int(graph_rect.height * 0.095)))
@@ -211,7 +246,7 @@ class DynamicSteeringLearnerGraph(Widget):
       f"{CurvatureDLookup.SPEED_ANCHORS[high_idx] * 3.6:.0f} alpha={alpha:.2f}"
     )
     marker_info = (
-      f"k={desired_curvature:.2e}  corr={current_correction:.2e}  "
+      f"k={desired_curvature:.2e}  corr={display_correction:.2e}  "
       f"bucket=({int(getattr(lcp, 'bucketSpeed', -1))}, {int(getattr(lcp, 'bucketCurvature', -1))})"
     )
     rl.draw_text_ex(self._font_medium, speed_mix, rl.Vector2(text_x, footer_y1), footer_size, 0, self._muted_text_color)

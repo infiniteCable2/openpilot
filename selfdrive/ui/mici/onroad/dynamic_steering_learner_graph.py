@@ -43,6 +43,30 @@ class DynamicSteeringLearnerGraphMici(Widget):
 
     self._update_params()
 
+  @staticmethod
+  def _compute_y_bounds(preview_curve: np.ndarray, corrections: np.ndarray) -> tuple[float, float]:
+    min_val = float(min(np.min(preview_curve), np.min(corrections)))
+    max_val = float(max(np.max(preview_curve), np.max(corrections)))
+    min_span = 2e-5
+
+    if min_val >= 0.0:
+      return 0.0, max(min_span, max_val * 1.2)
+    if max_val <= 0.0:
+      return min(-min_span, min_val * 1.2), 0.0
+
+    low = min_val * 1.2
+    high = max_val * 1.2
+    if (high - low) < min_span:
+      center = 0.5 * (high + low)
+      half = 0.5 * min_span
+      return center - half, center + half
+    return low, high
+
+  @staticmethod
+  def _map_y(plot_rect: rl.Rectangle, value: float, min_y: float, max_y: float) -> float:
+    frac = (value - min_y) / max(max_y - min_y, 1e-9)
+    return float(plot_rect.y + plot_rect.height * (1.0 - frac))
+
   def _update_params(self) -> None:
     self._param_update_time = time.monotonic()
     self._display_enabled = self._params.get_bool("ShowDynamicSteeringLearnerGraph")
@@ -110,21 +134,21 @@ class DynamicSteeringLearnerGraphMici(Widget):
                  fit_corrections: np.ndarray, fit_valid: np.ndarray,
                  v_ego: float, curve_valid: bool) -> None:
     preview_curve = np.array([
-      CurvatureDLookup.interp_curve_value(preview_corrections, preview_valid, v_ego, abs(float(k))) * (1.0 if k >= 0.0 else -1.0)
+      CurvatureDLookup.interp_curve_value(preview_corrections, preview_valid, v_ego, abs(float(k)))
       for k in self._plot_x
     ], dtype=np.float32)
     corrections = np.array([
-      CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, abs(float(k))) * (1.0 if k >= 0.0 else -1.0)
+      CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, abs(float(k)))
       for k in self._plot_x
     ], dtype=np.float32)
-    max_y = max(2e-5, float(max(np.max(np.abs(preview_curve)), np.max(np.abs(corrections)))) * 1.2)
+    min_y, max_y = self._compute_y_bounds(preview_curve, corrections)
 
     preview_points = []
     actual_points = []
     for curvature, preview_correction, correction in zip(self._plot_x, preview_curve, corrections, strict=True):
-      x = plot_rect.x + (float(curvature + CurvatureDLookup.CURVATURE_MAX) / (2.0 * CurvatureDLookup.CURVATURE_MAX)) * plot_rect.width
-      preview_y = plot_rect.y + plot_rect.height * (0.5 - 0.5 * float(preview_correction) / max_y)
-      actual_y = plot_rect.y + plot_rect.height * (0.5 - 0.5 * float(correction) / max_y)
+      x = plot_rect.x + ((float(curvature) + CurvatureDLookup.CURVATURE_MAX) / (2.0 * CurvatureDLookup.CURVATURE_MAX)) * plot_rect.width
+      preview_y = self._map_y(plot_rect, float(preview_correction), min_y, max_y)
+      actual_y = self._map_y(plot_rect, float(correction), min_y, max_y)
       preview_points.append(rl.Vector2(float(x), float(preview_y)))
       actual_points.append(rl.Vector2(float(x), float(actual_y)))
 
