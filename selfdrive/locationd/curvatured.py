@@ -61,8 +61,8 @@ class CurvatureDLookup:
     4.096e-3,
   ], dtype=np.float32)
   CURVATURE_BUCKET_CENTERS = np.sqrt(CURVATURE_BUCKET_EDGES[:-1] * CURVATURE_BUCKET_EDGES[1:]).astype(np.float32)
-  CURVATURE_MIN_STEP = float(CURVATURE_BUCKET_EDGES[0])
-  IMPORTANT_CURVATURE_MAX = float(CURVATURE_BUCKET_EDGES[10])
+  CURVATURE_BUCKET_MIN = float(CURVATURE_BUCKET_EDGES[0])
+  CURVATURE_MIN = 0.5 * CURVATURE_BUCKET_MIN
   CURVATURE_BUCKET_MAX = float(CURVATURE_BUCKET_EDGES[-1])
   LAST_BUCKET_WIDTH = float(CURVATURE_BUCKET_EDGES[-1] - CURVATURE_BUCKET_EDGES[-2])
   CURVATURE_MAX = CURVATURE_BUCKET_MAX + LAST_BUCKET_WIDTH
@@ -99,7 +99,7 @@ class CurvatureDLookup:
   @classmethod
   def curvature_index(cls, curvature: float) -> int | None:
     abs_curvature = abs(float(curvature))
-    if abs_curvature < cls.CURVATURE_MIN_STEP or abs_curvature > cls.CURVATURE_BUCKET_MAX:
+    if abs_curvature < cls.CURVATURE_BUCKET_MIN or abs_curvature > cls.CURVATURE_BUCKET_MAX:
       return None
 
     idx = int(np.searchsorted(cls.CURVATURE_BUCKET_EDGES, abs_curvature, side='right') - 1)
@@ -190,8 +190,6 @@ class CurvatureDLookup:
       local_strength = local_strength_fn(counts[speed_idx], valid_idx)
       interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
       smoothed *= float(speed_strength_fn(counts[speed_idx], speed_idx, valid_idx, local_strength)) * interpolated_strength
-      for curvature_idx, curvature in enumerate(cls.CURVATURE_BUCKET_CENTERS):
-        smoothed[curvature_idx] *= cls.curvature_window(float(curvature))
 
       clipped = np.clip(smoothed, -bucket_caps, bucket_caps)
       if zero_invalid_buckets:
@@ -252,18 +250,6 @@ class CurvatureDLookup:
     return y * y * (3.0 - 2.0 * y)
 
   @classmethod
-  def curvature_window(cls, curvature: float) -> float:
-    abs_curvature = abs(float(curvature))
-    if abs_curvature <= cls.CURVATURE_MIN_STEP or abs_curvature >= cls.CURVATURE_MAX:
-      return 0.0
-
-    fade_in = cls.smoothstep((abs_curvature - cls.CURVATURE_MIN_STEP) /
-                             max(cls.CURVATURE_BUCKET_EDGES[2] - cls.CURVATURE_MIN_STEP, 1e-9))
-    fade_out = 1.0 - cls.smoothstep((abs_curvature - cls.IMPORTANT_CURVATURE_MAX) /
-                                    max(cls.CURVATURE_MAX - cls.IMPORTANT_CURVATURE_MAX, 1e-9))
-    return float(np.clip(fade_in * fade_out, 0.0, 1.0))
-
-  @classmethod
   def available_bucket_count(cls, v_ego: float) -> int:
     max_curvature = cls.MAX_LAT_ACCEL / max(float(v_ego) ** 2, 1e-6)
     bucket_count = int(np.searchsorted(cls.CURVATURE_BUCKET_CENTERS, max_curvature, side='right'))
@@ -272,8 +258,13 @@ class CurvatureDLookup:
   @classmethod
   def correction_cap_ratio(cls, curvature: float, v_ego: float) -> float:
     abs_curvature = abs(float(curvature))
-    if abs_curvature <= cls.CURVATURE_MIN_STEP:
+    if abs_curvature <= cls.CURVATURE_MIN:
       return 0.0
+
+    if abs_curvature < cls.CURVATURE_BUCKET_MIN:
+      inner_alpha = cls.smoothstep((abs_curvature - cls.CURVATURE_MIN) /
+                                   max(cls.CURVATURE_BUCKET_MIN - cls.CURVATURE_MIN, 1e-9))
+      return float(inner_alpha * cls.RELATIVE_CAP_FULL_RATIO)
 
     bucket_idx = cls.curvature_index(abs_curvature)
     if bucket_idx is None:
@@ -346,7 +337,7 @@ class CurvatureDLookup:
   @classmethod
   def interp_curve_value(cls, fit_corrections: np.ndarray, fit_valid: np.ndarray,
                          v_ego: float, abs_curvature: float) -> float:
-    if abs_curvature < cls.CURVATURE_MIN_STEP or abs_curvature > cls.CURVATURE_MAX:
+    if abs_curvature < cls.CURVATURE_MIN or abs_curvature > cls.CURVATURE_MAX:
       return 0.0
 
     low_speed, high_speed, speed_alpha = cls.speed_interp(v_ego)
@@ -359,7 +350,7 @@ class CurvatureDLookup:
       return 0.0
 
     log_centers = np.log(cls.CURVATURE_BUCKET_CENTERS.astype(np.float64))
-    log_curvature = math.log(max(abs_curvature, cls.CURVATURE_MIN_STEP))
+    log_curvature = math.log(max(abs_curvature, cls.CURVATURE_BUCKET_MIN))
 
     def curve_value(curve: np.ndarray, valid_mask: np.ndarray) -> float:
       runs = cls.valid_runs(valid_mask)
@@ -382,6 +373,10 @@ class CurvatureDLookup:
             fade_span = first_edge - fade_in_start
             fade = cls.smoothstep((abs_curvature - fade_in_start) / max(fade_span, 1e-9))
             return float(run_curve[0] * np.clip(fade, 0.0, 1.0))
+        elif cls.CURVATURE_MIN <= abs_curvature < first_edge:
+          fade_span = first_edge - cls.CURVATURE_MIN
+          fade = cls.smoothstep((abs_curvature - cls.CURVATURE_MIN) / max(fade_span, 1e-9))
+          return float(run_curve[0] * np.clip(fade, 0.0, 1.0))
 
         if end < len(cls.CURVATURE_BUCKET_CENTERS) - 1:
           fade_out_end = cls.CURVATURE_BUCKET_EDGES[end + 2]
