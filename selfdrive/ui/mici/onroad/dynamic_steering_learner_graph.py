@@ -39,6 +39,7 @@ class DynamicSteeringLearnerGraphMici(Widget):
     self._curve_color = rl.Color(0, 255, 64, 188)
     self._curve_invalid_glow_color = rl.Color(255, 170, 70, 44)
     self._curve_invalid_color = rl.Color(235, 185, 95, 166)
+    self._plot_x = np.linspace(-CurvatureDLookup.CURVATURE_MAX, CurvatureDLookup.CURVATURE_MAX, CONFIG.sample_points)
 
     self._update_params()
 
@@ -108,23 +109,20 @@ class DynamicSteeringLearnerGraphMici(Widget):
                  preview_corrections: np.ndarray, preview_valid: np.ndarray,
                  fit_corrections: np.ndarray, fit_valid: np.ndarray,
                  v_ego: float, curve_valid: bool) -> None:
-    plot_curvature_max = CurvatureDLookup.plot_curvature_max(v_ego)
-    plot_x = np.linspace(-plot_curvature_max, plot_curvature_max, CONFIG.sample_points)
-
     preview_curve = np.array([
       CurvatureDLookup.interp_curve_value(preview_corrections, preview_valid, v_ego, abs(float(k))) * (1.0 if k >= 0.0 else -1.0)
-      for k in plot_x
+      for k in self._plot_x
     ], dtype=np.float32)
     corrections = np.array([
       CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, abs(float(k))) * (1.0 if k >= 0.0 else -1.0)
-      for k in plot_x
+      for k in self._plot_x
     ], dtype=np.float32)
     max_y = max(2e-5, float(max(np.max(np.abs(preview_curve)), np.max(np.abs(corrections)))) * 1.2)
 
     preview_points = []
     actual_points = []
-    for curvature, preview_correction, correction in zip(plot_x, preview_curve, corrections, strict=True):
-      x = plot_rect.x + (float(curvature + plot_curvature_max) / (2.0 * plot_curvature_max)) * plot_rect.width
+    for curvature, preview_correction, correction in zip(self._plot_x, preview_curve, corrections, strict=True):
+      x = plot_rect.x + (float(curvature + CurvatureDLookup.CURVATURE_MAX) / (2.0 * CurvatureDLookup.CURVATURE_MAX)) * plot_rect.width
       preview_y = plot_rect.y + plot_rect.height * (0.5 - 0.5 * float(preview_correction) / max_y)
       actual_y = plot_rect.y + plot_rect.height * (0.5 - 0.5 * float(correction) / max_y)
       preview_points.append(rl.Vector2(float(x), float(preview_y)))
