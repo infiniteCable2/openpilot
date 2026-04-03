@@ -267,6 +267,7 @@ class CurvatureDLookup:
       return float(cls.CURVATURE_BUCKET_CENTERS[next_idx])
     return cls.CURVATURE_MAX
 
+  @classmethod
   def correction_cap_ratio(cls, curvature: float, v_ego: float) -> float:
     abs_curvature = abs(float(curvature))
     if abs_curvature <= cls.CURVATURE_MIN:
