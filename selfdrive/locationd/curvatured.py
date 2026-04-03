@@ -172,6 +172,8 @@ class CurvatureDLookup:
 
     for speed_idx in range(len(cls.SPEED_ANCHORS)):
       curve_valid = np.asarray(valid_mask_fn(counts[speed_idx]), dtype=bool)
+      if apply_cap:
+        curve_valid &= cls.apply_bucket_mask(speed_idx)
       if int(np.count_nonzero(curve_valid)) < int(min_valid_buckets_fn(speed_idx)):
         continue
 
@@ -213,12 +215,21 @@ class CurvatureDLookup:
     return float(yaw_rate / max(float(v_ego), 0.1) - float(roll_compensation))
 
   @classmethod
+  def apply_bucket_mask(cls, speed_idx: int) -> np.ndarray:
+    mask = np.zeros(len(cls.CURVATURE_BUCKET_CENTERS), dtype=bool)
+    max_bucket_idx = cls.max_supported_bucket_index(float(cls.SPEED_ANCHORS[speed_idx]))
+    if max_bucket_idx is None:
+      return mask
+    mask[:max_bucket_idx + 1] = True
+    return mask
+
+  @classmethod
   def speed_curve_valid(cls, counts: np.ndarray, speed_idx: int) -> bool:
     return cls.speed_curve_strength(counts[speed_idx], speed_idx) > 0.0
 
   @classmethod
   def speed_curve_strength(cls, speed_counts: np.ndarray, speed_idx: int) -> float:
-    valid_mask = np.asarray(speed_counts >= cls.MIN_BUCKET_POINTS, dtype=bool)
+    valid_mask = np.asarray(speed_counts >= cls.MIN_BUCKET_POINTS, dtype=bool) & cls.apply_bucket_mask(speed_idx)
     valid_idx = np.flatnonzero(valid_mask)
     if len(valid_idx) == 0:
       return 0.0
@@ -230,7 +241,7 @@ class CurvatureDLookup:
 
   @classmethod
   def speed_curve_fully_calibrated(cls, counts: np.ndarray, speed_idx: int) -> bool:
-    fully_calibrated_mask = np.asarray(counts[speed_idx] >= cls.FULL_BUCKET_STRENGTH_SAMPLES, dtype=bool)
+    fully_calibrated_mask = np.asarray(counts[speed_idx] >= cls.FULL_BUCKET_STRENGTH_SAMPLES, dtype=bool) & cls.apply_bucket_mask(speed_idx)
     required_bucket_count = cls.required_support_bucket_count(speed_idx)
     return int(np.count_nonzero(fully_calibrated_mask)) >= required_bucket_count
 
@@ -301,6 +312,10 @@ class CurvatureDLookup:
   def correction_cap(cls, curvature: float, v_ego: float) -> float:
     abs_curvature = abs(float(curvature))
     return float(cls.correction_cap_ratio(abs_curvature, v_ego) * abs_curvature)
+
+  @classmethod
+  def learning_error_cap(cls, curvature: float) -> float:
+    return float(cls.RELATIVE_CAP_FULL_RATIO * abs(float(curvature)))
 
   @classmethod
   def projected_error(cls, desired_curvature: float, actual_curvature: float) -> float:
@@ -534,7 +549,8 @@ class CurvatureEstimator(CurvatureDLookup):
     if curvature_idx is None or len(speed_weights) == 0:
       return
 
-    error = float(self.projected_error(desired_curvature, actual_curvature))
+    error_cap = self.learning_error_cap(desired_curvature)
+    error = float(np.clip(self.projected_error(desired_curvature, actual_curvature), -error_cap, error_cap))
 
     for speed_idx, weight in speed_weights:
       if weight <= 0.0:

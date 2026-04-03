@@ -90,6 +90,19 @@ class TestCurvatureEstimator:
     assert estimator.preview_valid[speed_idx, curvature_idx]
     assert estimator.preview_corrections[speed_idx, curvature_idx] > estimator.fit_corrections[speed_idx, curvature_idx]
 
+  def test_learning_error_is_capped_to_full_ratio(self):
+    estimator = get_estimator()
+    desired_curvature = 2.048e-3
+    actual_curvature = -5.0e-3
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[-1])
+
+    for _ in range(CurvatureDLookup.MAX_SAMPLES):
+      estimator.add_measurement(desired_curvature, actual_curvature, v_ego)
+
+    idx = CurvatureDLookup.indices(desired_curvature, v_ego)
+    assert idx is not None
+    assert estimator.bias[idx] <= CurvatureDLookup.learning_error_cap(desired_curvature) + 1e-9
+
   def test_relative_correction_cap_envelope_fades_after_last_supported_bucket(self):
     v_ego = float(CurvatureDLookup.SPEED_ANCHORS[5])
     max_bucket_idx = CurvatureDLookup.max_supported_bucket_index(v_ego)
@@ -228,6 +241,24 @@ class TestCurvatureEstimator:
 
     assert fit_valid[speed_idx, selected].all()
     assert np.allclose(fit_corrections[speed_idx, ~fit_valid[speed_idx]], 0.0)
+
+  def test_outer_learned_buckets_stay_invalid_for_apply(self):
+    speed_idx = len(CurvatureDLookup.SPEED_ANCHORS) - 1
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[speed_idx])
+    outer_idx = len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS) - 1
+    counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    bias = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+
+    counts[speed_idx, outer_idx] = CurvatureDLookup.MIN_BUCKET_POINTS[outer_idx] + 40.0
+    bias[speed_idx, outer_idx] = 8.0e-5
+
+    fit_corrections, fit_valid = CurvatureDLookup.build_fit_corrections(bias, counts)
+    preview_corrections, preview_valid = CurvatureDLookup.build_preview_corrections(bias, counts)
+
+    assert not fit_valid[speed_idx, outer_idx]
+    assert fit_corrections[speed_idx, outer_idx] == 0.0
+    assert preview_valid[speed_idx, outer_idx]
+    assert preview_corrections[speed_idx, outer_idx] > 0.0
 
   def test_interp_curve_value_does_not_bridge_invalid_gap(self):
     speed_idx = 3
