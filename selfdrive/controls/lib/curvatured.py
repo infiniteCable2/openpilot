@@ -38,7 +38,7 @@ class CurvatureDController(CurvatureDLookup):
     abs_curvature = abs(float(desired_curvature))
     if abs_curvature < self.CURVATURE_MIN or abs_curvature > self.CURVATURE_MAX:
       return 0.0
-    if abs_curvature * (float(v_ego) ** 2) > self.MAX_LAT_ACCEL:
+    if abs_curvature * (float(v_ego) ** 2) > self.MAX_LAT_ACCEL_APPLY:
       return 0.0
 
     projected = self.interp_curve_value(self.fit_corrections, self.fit_valid, v_ego, abs_curvature)

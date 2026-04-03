@@ -35,12 +35,11 @@ MAX_LEARN_ROLL_LATERAL_ACCEL = 0.10
 #   curvature is only part of the outer fade range and not the primary target.
 #
 # Safety / scope:
-# - Learning is gated by valid upstream pose/calibration, low roll, low yaw uncertainty, no steering override,
-#   and bounded lateral acceleration.
+# - Learning is gated by valid upstream pose/calibration, low roll, low yaw uncertainty, and no steering override.
 # - Corrections are bounded by a relative cap envelope over the speed-available buckets:
 #   - up to 50% of local curvature through the last still-supported bucket
 #   - from there, the cap fades toward 0 at the next outer bucket center
-# - Correction magnitude is limited only by the relative cap envelope.
+# - Apply magnitude is limited by the relative cap envelope and the lateral-accel apply gate.
 
 
 class CurvatureDLookup:
@@ -68,7 +67,7 @@ class CurvatureDLookup:
   CURVATURE_MAX = CURVATURE_BUCKET_MAX + LAST_BUCKET_WIDTH
 
   MIN_SPEED = float(SPEED_ANCHORS[0] * 0.5)  # learning/apply speed floor
-  MAX_LAT_ACCEL = 1.0  # learn/apply accel gate
+  MAX_LAT_ACCEL_APPLY = 1.0  # apply accel gate
   RELATIVE_CAP_FULL_RATIO = 0.50  # inner relative cap
 
   MAX_SAMPLES = 600  # per-bucket saturation
@@ -165,6 +164,7 @@ class CurvatureDLookup:
                                min_valid_buckets_fn,
                                local_strength_fn,
                                speed_strength_fn,
+                               apply_cap: bool = True,
                                zero_invalid_buckets: bool = False) -> tuple[np.ndarray, np.ndarray]:
     corrections = np.zeros(cls.bucket_shape(), dtype=np.float32)
     valid = np.zeros(cls.bucket_shape(), dtype=bool)
@@ -176,8 +176,11 @@ class CurvatureDLookup:
         continue
 
       valid_idx = np.flatnonzero(curve_valid)
-      bucket_caps = np.asarray([cls.correction_cap(float(curvature), float(cls.SPEED_ANCHORS[speed_idx]))
-                                for curvature in cls.CURVATURE_BUCKET_CENTERS], dtype=np.float64)
+      if apply_cap:
+        bucket_caps = np.asarray([cls.correction_cap(float(curvature), float(cls.SPEED_ANCHORS[speed_idx]))
+                                  for curvature in cls.CURVATURE_BUCKET_CENTERS], dtype=np.float64)
+      else:
+        bucket_caps = np.full(len(cls.CURVATURE_BUCKET_CENTERS), np.inf, dtype=np.float64)
       valid_log_x = log_centers[valid_idx]
       valid_y = np.clip(bias[speed_idx, valid_idx], -bucket_caps[valid_idx], bucket_caps[valid_idx]).astype(np.float64)
 
@@ -190,7 +193,7 @@ class CurvatureDLookup:
       interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
       smoothed *= float(speed_strength_fn(counts[speed_idx], speed_idx, valid_idx, local_strength)) * interpolated_strength
 
-      clipped = np.clip(smoothed, -bucket_caps, bucket_caps)
+      clipped = np.clip(smoothed, -bucket_caps, bucket_caps) if apply_cap else smoothed
       if zero_invalid_buckets:
         clipped = np.where(curve_valid, clipped, 0.0)
 
@@ -250,7 +253,7 @@ class CurvatureDLookup:
 
   @classmethod
   def max_supported_bucket_index(cls, v_ego: float) -> int | None:
-    max_curvature = min(cls.MAX_LAT_ACCEL / max(float(v_ego) ** 2, 1e-6), cls.CURVATURE_BUCKET_MAX)
+    max_curvature = min(cls.MAX_LAT_ACCEL_APPLY / max(float(v_ego) ** 2, 1e-6), cls.CURVATURE_BUCKET_MAX)
     return cls.curvature_index(max_curvature)
 
   @classmethod
@@ -264,12 +267,6 @@ class CurvatureDLookup:
       return float(cls.CURVATURE_BUCKET_CENTERS[next_idx])
     return cls.CURVATURE_MAX
 
-  @classmethod
-  def plot_curvature_max(cls, v_ego: float, room_ratio: float = 0.10) -> float:
-    plot_max = cls.cap_zero_curvature(v_ego) * (1.0 + room_ratio)
-    return float(np.clip(plot_max, cls.CURVATURE_BUCKET_MIN, cls.CURVATURE_MAX))
-
-  @classmethod
   def correction_cap_ratio(cls, curvature: float, v_ego: float) -> float:
     abs_curvature = abs(float(curvature))
     if abs_curvature <= cls.CURVATURE_MIN:
@@ -318,6 +315,7 @@ class CurvatureDLookup:
       lambda _speed_idx: 1,
       cls.fit_local_strength,
       lambda speed_counts, speed_idx, _valid_idx, _local_strength: cls.speed_curve_strength(speed_counts, speed_idx),
+      apply_cap=True,
       zero_invalid_buckets=True,
     )
 
@@ -330,6 +328,7 @@ class CurvatureDLookup:
       lambda _speed_idx: 1,
       cls.preview_local_strength,
       lambda _all_counts, _speed_idx, _valid_idx, _local_strength: 1.0,
+      apply_cap=False,
     )
 
   @classmethod
@@ -534,8 +533,7 @@ class CurvatureEstimator(CurvatureDLookup):
     if curvature_idx is None or len(speed_weights) == 0:
       return
 
-    error_cap = self.correction_cap(desired_curvature, v_ego)
-    error = float(np.clip(self.projected_error(desired_curvature, actual_curvature), -error_cap, error_cap))
+    error = float(self.projected_error(desired_curvature, actual_curvature))
 
     for speed_idx, weight in speed_weights:
       if weight <= 0.0:
@@ -638,9 +636,6 @@ class CurvatureEstimator(CurvatureDLookup):
 
       v_ego = float(v_ego)
       desired_curvature = float(desired_curvature)
-      actual_curvature_raw = yaw_rate / max(v_ego, 0.1)
-      if max(abs(desired_curvature), abs(actual_curvature_raw)) * (v_ego ** 2) > self.MAX_LAT_ACCEL:
-        return
       actual_curvature = self.actual_curvature_from_yaw_rate(yaw_rate, v_ego, roll_compensation=float(roll_comp))
 
       self.add_measurement(desired_curvature, actual_curvature, v_ego)

@@ -74,16 +74,21 @@ class TestCurvatureEstimator:
     for speed_idx, weight in speed_weights:
       assert np.isclose(float(estimator.counts[speed_idx, curvature_idx]), weight)
 
-  def test_bucket_bias_cap_remains_tiny(self):
+  def test_preview_is_not_apply_capped(self):
     estimator = get_estimator()
-    desired_curvature = 8e-6
+    desired_curvature = 2.048e-3
+    actual_curvature = 0.0
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[-1])
 
-    for _ in range(CurvatureDLookup.MAX_SAMPLES):
-      estimator.add_measurement(desired_curvature, -1e-3, 16.0)
+    for _ in range(80):
+      estimator.add_measurement(desired_curvature, actual_curvature, v_ego)
 
-    idx = CurvatureDLookup.indices(desired_curvature, 16.0)
+    idx = CurvatureDLookup.indices(desired_curvature, v_ego)
     assert idx is not None
-    assert estimator.bias[idx] <= CurvatureDLookup.correction_cap(desired_curvature, 16.0)
+    speed_idx, curvature_idx = idx
+    assert estimator.bias[idx] > CurvatureDLookup.correction_cap(desired_curvature, v_ego)
+    assert estimator.preview_valid[speed_idx, curvature_idx]
+    assert estimator.preview_corrections[speed_idx, curvature_idx] > estimator.fit_corrections[speed_idx, curvature_idx]
 
   def test_relative_correction_cap_envelope_fades_after_last_supported_bucket(self):
     v_ego = float(CurvatureDLookup.SPEED_ANCHORS[5])
