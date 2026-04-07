@@ -168,7 +168,6 @@ class CurvatureDLookup:
                                zero_invalid_buckets: bool = False) -> tuple[np.ndarray, np.ndarray]:
     corrections = np.zeros(cls.bucket_shape(), dtype=np.float32)
     valid = np.zeros(cls.bucket_shape(), dtype=bool)
-    log_centers = np.log(cls.CURVATURE_BUCKET_CENTERS.astype(np.float64))
 
     for speed_idx in range(len(cls.SPEED_ANCHORS)):
       curve_valid = np.asarray(valid_mask_fn(counts[speed_idx]), dtype=bool)
@@ -183,23 +182,28 @@ class CurvatureDLookup:
                                   for curvature in cls.CURVATURE_BUCKET_CENTERS], dtype=np.float64)
       else:
         bucket_caps = np.full(len(cls.CURVATURE_BUCKET_CENTERS), np.inf, dtype=np.float64)
-      valid_log_x = log_centers[valid_idx]
-      valid_y = np.clip(bias[speed_idx, valid_idx], -bucket_caps[valid_idx], bucket_caps[valid_idx]).astype(np.float64)
-
-      interp = np.interp(log_centers, valid_log_x, valid_y).astype(np.float32)
-      smoothed = interp.copy()
-      if len(smoothed) >= 3:
-        smoothed[1:-1] = 0.25 * interp[:-2] + 0.5 * interp[1:-1] + 0.25 * interp[2:]
-
       local_strength = local_strength_fn(counts[speed_idx], valid_idx)
-      interpolated_strength = np.interp(log_centers, valid_log_x, local_strength).astype(np.float32)
-      smoothed *= float(speed_strength_fn(counts[speed_idx], speed_idx, valid_idx, local_strength)) * interpolated_strength
+      speed_strength = float(speed_strength_fn(counts[speed_idx], speed_idx, valid_idx, local_strength))
+      row = np.zeros(len(cls.CURVATURE_BUCKET_CENTERS), dtype=np.float32)
 
-      clipped = np.clip(smoothed, -bucket_caps, bucket_caps) if apply_cap else smoothed
+      for start, end in cls.valid_runs(curve_valid):
+        run_idx = np.arange(start, end + 1)
+        run_curve = np.clip(bias[speed_idx, run_idx], -bucket_caps[run_idx], bucket_caps[run_idx]).astype(np.float32)
+        run_strength = local_strength_fn(counts[speed_idx], run_idx).astype(np.float32)
+
+        if len(run_curve) >= 3:
+          smoothed_run = run_curve.copy()
+          smoothed_run[1:-1] = 0.25 * run_curve[:-2] + 0.5 * run_curve[1:-1] + 0.25 * run_curve[2:]
+        else:
+          smoothed_run = run_curve
+
+        run_values = speed_strength * run_strength * smoothed_run
+        row[run_idx] = np.clip(run_values, -bucket_caps[run_idx], bucket_caps[run_idx]) if apply_cap else run_values
+
       if zero_invalid_buckets:
-        clipped = np.where(curve_valid, clipped, 0.0)
+        row = np.where(curve_valid, row, 0.0)
 
-      corrections[speed_idx] = clipped.astype(np.float32)
+      corrections[speed_idx] = row.astype(np.float32)
       valid[speed_idx] = curve_valid
 
     return corrections, valid

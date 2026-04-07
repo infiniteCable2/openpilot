@@ -277,6 +277,25 @@ class TestCurvatureEstimator:
     assert CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, gap_curvature) == 0.0
     assert CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, valid_curvature) > 0.0
 
+  def test_preview_build_keeps_separate_runs_independent(self):
+    speed_idx = 3
+    counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    bias = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    left_idx = 3
+    right_idx = 6
+
+    counts[speed_idx, left_idx] = 1.0
+    counts[speed_idx, right_idx] = 1.0
+    bias[speed_idx, left_idx] = 1.0e-6
+    bias[speed_idx, right_idx] = 8.0e-6
+
+    preview_corrections, preview_valid = CurvatureDLookup.build_preview_corrections(bias, counts)
+
+    assert preview_valid[speed_idx, left_idx]
+    assert preview_valid[speed_idx, right_idx]
+    assert np.isclose(preview_corrections[speed_idx, left_idx], bias[speed_idx, left_idx])
+    assert np.isclose(preview_corrections[speed_idx, right_idx], bias[speed_idx, right_idx])
+
   def test_learning_is_blocked_for_larger_roll(self):
     estimator = get_estimator()
 
