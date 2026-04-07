@@ -314,3 +314,12 @@ class TestCurvatureEstimator:
     corrected_curvature = CurvatureDLookup.actual_curvature_from_yaw_rate(yaw_rate, v_ego, roll_comp)
 
     assert np.isclose(corrected_curvature, raw_curvature - roll_comp)
+
+  def test_slight_steering_press_blocks_learning_like_override(self):
+    estimator = get_estimator()
+    estimator.use_params = True
+
+    estimator.handle_log(12.0, "carState", car.CarState(vEgo=20.0, steeringPressed=False, steeringSlightlyPressed=True))
+
+    assert estimator.steering_pressed[-1]
+    assert estimator.last_override_t == 12.0
