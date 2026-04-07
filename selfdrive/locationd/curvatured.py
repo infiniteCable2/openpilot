@@ -611,7 +611,7 @@ class CurvatureEstimator(CurvatureDLookup):
       if not msg.latActive:
         self.last_lat_inactive_t = t
     elif which == "carState":
-      steering_override = bool(msg.steeringPressed or getattr(msg, "steeringSlightlyPressed", False))
+      steering_override = bool(msg.steeringPressed or msg.steeringSlightlyPressed)
       self.car_state_t.append(t)
       self.vego.append(msg.vEgo)
       self.steering_pressed.append(steering_override)
