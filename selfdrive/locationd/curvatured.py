@@ -20,6 +20,8 @@ MIN_ENGAGE_BUFFER = 2.0
 ALLOWED_CARS = ['volkswagen']
 STATUS_LOG_INTERVAL = 10.0
 MAX_LEARN_ROLL_LATERAL_ACCEL = 0.10
+FIT_REFRESH_INTERVAL = 0.20
+PREVIEW_REFRESH_INTERVAL = 1.00
 
 # CurvatureD learns a small, center-focused curvature correction on top of the model/controller target.
 # The goal is not to replace the steering model, but to reduce subtle dynamic-steering mismatch that can
@@ -449,6 +451,7 @@ class CurvatureEstimator(CurvatureDLookup):
     self.fit_valid = np.zeros(self.bucket_shape(), dtype=bool)
     self.preview_corrections = np.zeros(self.bucket_shape(), dtype=np.float32)
     self.preview_valid = np.zeros(self.bucket_shape(), dtype=bool)
+    self.fit_speed_strength = np.zeros(len(self.SPEED_ANCHORS), dtype=np.float32)
 
     self.car_control_t = deque(maxlen=self.hist_len)
     self.lat_active = deque(maxlen=self.hist_len)
@@ -473,6 +476,10 @@ class CurvatureEstimator(CurvatureDLookup):
     self.publish_preview_data = False
     self.prev_use_params = None
     self.last_status_log_t = 0.0
+    self.fit_refresh_pending_rows: dict[int, set[int]] = {}
+    self.preview_refresh_pending_rows: dict[int, set[int]] = {}
+    self.last_fit_refresh_t = -FIT_REFRESH_INTERVAL
+    self.last_preview_refresh_t = -PREVIEW_REFRESH_INTERVAL
 
     self._restore_cached_params()
     self.update_use_params(force=True)
@@ -508,6 +515,8 @@ class CurvatureEstimator(CurvatureDLookup):
       self.counts = self.unflatten_bucket(counts).astype(np.float32)
       self.fit_corrections, self.fit_valid = self.build_fit_corrections(self.bias, self.counts)
       self.preview_corrections, self.preview_valid = self.build_preview_corrections(self.bias, self.counts)
+      self.fit_speed_strength = np.asarray([self.speed_curve_strength(self.counts[speed_idx], speed_idx)
+                                            for speed_idx in range(len(self.SPEED_ANCHORS))], dtype=np.float32)
       cloudlog.info("restored curvature params from cache")
     except Exception:
       cloudlog.exception("failed to restore cached curvature params")
@@ -547,7 +556,8 @@ class CurvatureEstimator(CurvatureDLookup):
         return values[i]
     return None
 
-  def add_measurement(self, desired_curvature: float, actual_curvature: float, v_ego: float) -> None:
+  def add_measurement(self, desired_curvature: float, actual_curvature: float, v_ego: float,
+                      schedule_only: bool = False) -> None:
     curvature_idx = self.curvature_index(desired_curvature)
     speed_weights = self.learning_speed_weights(v_ego)
     if curvature_idx is None or len(speed_weights) == 0:
@@ -570,9 +580,155 @@ class CurvatureEstimator(CurvatureDLookup):
       alpha = delta / min(sample_count, self.MEAN_WINDOW)
       prev_bias = float(self.bias[speed_idx, curvature_idx])
       self.bias[speed_idx, curvature_idx] = prev_bias + alpha * (error - prev_bias)
+      self._mark_curve_refresh_pending(speed_idx, curvature_idx)
 
-    self.fit_corrections, self.fit_valid = self.build_fit_corrections(self.bias, self.counts)
-    self.preview_corrections, self.preview_valid = self.build_preview_corrections(self.bias, self.counts)
+    if not schedule_only:
+      self.refresh_curve_lookups(0.0, force_fit=True, force_preview=True)
+
+  def _mark_curve_refresh_pending(self, speed_idx: int, curvature_idx: int) -> None:
+    self.fit_refresh_pending_rows.setdefault(speed_idx, set()).add(curvature_idx)
+    self.preview_refresh_pending_rows.setdefault(speed_idx, set()).add(curvature_idx)
+
+  def _row_bucket_caps(self, speed_idx: int, apply_cap: bool) -> np.ndarray:
+    if not apply_cap:
+      return np.full(len(self.CURVATURE_BUCKET_CENTERS), np.inf, dtype=np.float32)
+    return np.asarray([self.correction_cap(float(curvature), float(self.SPEED_ANCHORS[speed_idx]))
+                       for curvature in self.CURVATURE_BUCKET_CENTERS], dtype=np.float32)
+
+  def _row_curve_valid(self, speed_idx: int, valid_mask_fn, min_valid_buckets_fn, apply_cap: bool) -> np.ndarray:
+    curve_valid = np.asarray(valid_mask_fn(self.counts[speed_idx]), dtype=bool)
+    if apply_cap:
+      curve_valid &= self.apply_bucket_mask(speed_idx)
+    if int(np.count_nonzero(curve_valid)) < int(min_valid_buckets_fn(speed_idx)):
+      return np.zeros(len(self.CURVATURE_BUCKET_CENTERS), dtype=bool)
+    return curve_valid
+
+  @staticmethod
+  def _merge_bounds(bounds: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    if len(bounds) == 0:
+      return []
+    bounds = sorted(bounds)
+    merged = [bounds[0]]
+    for start, end in bounds[1:]:
+      prev_start, prev_end = merged[-1]
+      if start <= prev_end + 1:
+        merged[-1] = (prev_start, max(prev_end, end))
+      else:
+        merged.append((start, end))
+    return merged
+
+  def _affected_run_bounds(self, previous_valid: np.ndarray, curve_valid: np.ndarray,
+                           changed_indices: set[int]) -> list[tuple[int, int]]:
+    bounds: list[tuple[int, int]] = []
+    for idx in changed_indices:
+      bounds.append((max(0, idx - 1), min(len(self.CURVATURE_BUCKET_CENTERS) - 1, idx + 1)))
+    for mask in (previous_valid, curve_valid):
+      for start, end in self.valid_runs(mask):
+        if any(start <= idx <= end for idx in changed_indices):
+          bounds.append((start, end))
+    return self._merge_bounds(bounds)
+
+  def _run_values(self, speed_idx: int, run_idx: np.ndarray, speed_strength: float,
+                  local_strength_fn, bucket_caps: np.ndarray, apply_cap: bool) -> np.ndarray:
+    run_curve = np.clip(self.bias[speed_idx, run_idx], -bucket_caps[run_idx], bucket_caps[run_idx]).astype(np.float32)
+    run_strength = local_strength_fn(self.counts[speed_idx], run_idx).astype(np.float32)
+
+    if len(run_curve) >= 3:
+      smoothed_run = run_curve.copy()
+      smoothed_run[1:-1] = 0.25 * run_curve[:-2] + 0.5 * run_curve[1:-1] + 0.25 * run_curve[2:]
+    else:
+      smoothed_run = run_curve
+
+    run_values = speed_strength * run_strength * smoothed_run
+    return np.clip(run_values, -bucket_caps[run_idx], bucket_caps[run_idx]) if apply_cap else run_values
+
+  def _refresh_row(self, speed_idx: int, changed_indices: set[int],
+                   valid_mask_fn,
+                   min_valid_buckets_fn,
+                   local_strength_fn,
+                   speed_strength_fn,
+                   apply_cap: bool,
+                   zero_invalid_buckets: bool,
+                   previous_row: np.ndarray,
+                   previous_valid: np.ndarray,
+                   previous_speed_strength: float) -> tuple[np.ndarray, np.ndarray, float]:
+    curve_valid = self._row_curve_valid(speed_idx, valid_mask_fn, min_valid_buckets_fn, apply_cap)
+    bucket_caps = self._row_bucket_caps(speed_idx, apply_cap)
+
+    if not curve_valid.any():
+      return np.zeros(len(self.CURVATURE_BUCKET_CENTERS), dtype=np.float32), curve_valid, 0.0
+
+    valid_idx = np.flatnonzero(curve_valid)
+    local_strength = local_strength_fn(self.counts[speed_idx], valid_idx)
+    speed_strength = float(speed_strength_fn(self.counts[speed_idx], speed_idx, valid_idx, local_strength))
+    force_full = not np.isclose(speed_strength, previous_speed_strength)
+
+    if force_full:
+      row = np.zeros(len(self.CURVATURE_BUCKET_CENTERS), dtype=np.float32)
+      rebuild_bounds = self.valid_runs(curve_valid)
+    else:
+      row = previous_row.copy()
+      rebuild_bounds = self._affected_run_bounds(previous_valid, curve_valid, changed_indices)
+
+    for start, end in rebuild_bounds:
+      row[start:end + 1] = 0.0
+
+    current_runs = self.valid_runs(curve_valid)
+    for start, end in current_runs:
+      if not force_full and all(end < bound_start or start > bound_end for bound_start, bound_end in rebuild_bounds):
+        continue
+      run_idx = np.arange(start, end + 1)
+      row[run_idx] = self._run_values(speed_idx, run_idx, speed_strength, local_strength_fn, bucket_caps, apply_cap)
+
+    if zero_invalid_buckets:
+      row = np.where(curve_valid, row, 0.0)
+
+    return row.astype(np.float32), curve_valid, speed_strength
+
+  def refresh_curve_lookups(self, t: float, force_fit: bool = False, force_preview: bool = False) -> None:
+    fit_due = force_fit or (t >= self.last_fit_refresh_t + FIT_REFRESH_INTERVAL)
+    preview_due = force_preview or (t >= self.last_preview_refresh_t + PREVIEW_REFRESH_INTERVAL)
+
+    if fit_due and self.fit_refresh_pending_rows:
+      for speed_idx, changed_indices in list(self.fit_refresh_pending_rows.items()):
+        row, valid, speed_strength = self._refresh_row(
+          speed_idx,
+          changed_indices,
+          lambda speed_counts: speed_counts >= self.MIN_BUCKET_POINTS,
+          lambda _speed_idx: 1,
+          self.fit_local_strength,
+          lambda speed_counts, row_idx, _valid_idx, _local_strength: self.speed_curve_strength(speed_counts, row_idx),
+          True,
+          True,
+          self.fit_corrections[speed_idx],
+          self.fit_valid[speed_idx],
+          float(self.fit_speed_strength[speed_idx]),
+        )
+        self.fit_corrections[speed_idx] = row
+        self.fit_valid[speed_idx] = valid
+        self.fit_speed_strength[speed_idx] = speed_strength
+      self.fit_refresh_pending_rows.clear()
+      self.last_fit_refresh_t = t
+
+    if preview_due and (self.publish_preview_data or force_preview) and self.preview_refresh_pending_rows:
+      for speed_idx, changed_indices in list(self.preview_refresh_pending_rows.items()):
+        row, valid, _ = self._refresh_row(
+          speed_idx,
+          changed_indices,
+          lambda speed_counts: speed_counts > 0.0,
+          lambda _speed_idx: 1,
+          self.preview_local_strength,
+          lambda _all_counts, _row_idx, _valid_idx, _local_strength: 1.0,
+          False,
+          False,
+          self.preview_corrections[speed_idx],
+          self.preview_valid[speed_idx],
+          1.0,
+        )
+        self.preview_corrections[speed_idx] = row
+        self.preview_valid[speed_idx] = valid
+      self.preview_refresh_pending_rows.clear()
+      self.last_preview_refresh_t = t
 
   def _update_current_lookup(self, desired_curvature: float, v_ego: float) -> None:
     idx = self.indices(desired_curvature, v_ego)
@@ -660,7 +816,8 @@ class CurvatureEstimator(CurvatureDLookup):
       desired_curvature = float(desired_curvature)
       actual_curvature = self.actual_curvature_from_yaw_rate(yaw_rate, v_ego, roll_compensation=float(roll_comp))
 
-      self.add_measurement(desired_curvature, actual_curvature, v_ego)
+      self.add_measurement(desired_curvature, actual_curvature, v_ego, schedule_only=True)
+      self.refresh_curve_lookups(t)
 
   def get_msg(self, valid: bool = True, live_valid: bool = True,
               include_debug: bool = False, include_preview: bool = False):

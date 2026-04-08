@@ -103,6 +103,24 @@ class TestCurvatureEstimator:
     assert idx is not None
     assert estimator.bias[idx] <= CurvatureDLookup.learning_error_cap(desired_curvature) + 1e-9
 
+  def test_schedule_only_learning_refreshes_on_flush(self):
+    estimator = get_estimator()
+    desired_curvature = 32e-6
+    v_ego = 22.0
+
+    estimator.add_measurement(desired_curvature, desired_curvature * 0.6, v_ego, schedule_only=True)
+
+    idx = CurvatureDLookup.indices(desired_curvature, v_ego)
+    assert idx is not None
+    assert estimator.counts[idx] > 0.0
+    assert estimator.fit_corrections[idx] == 0.0
+    assert not estimator.preview_valid[idx]
+
+    estimator.refresh_curve_lookups(1.0, force_fit=True, force_preview=True)
+
+    assert estimator.preview_valid[idx]
+    assert estimator.preview_corrections[idx] > 0.0
+
   def test_relative_correction_cap_envelope_fades_after_last_supported_bucket(self):
     v_ego = float(CurvatureDLookup.SPEED_ANCHORS[5])
     max_bucket_idx = CurvatureDLookup.max_supported_bucket_index(v_ego)
