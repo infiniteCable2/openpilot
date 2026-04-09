@@ -39,6 +39,8 @@ class DynamicSteeringLearnerGraphMici(Widget):
     self._curve_color = rl.Color(0, 255, 64, 188)
     self._curve_invalid_glow_color = rl.Color(255, 170, 70, 44)
     self._curve_invalid_color = rl.Color(235, 185, 95, 166)
+    self._marker_glow_color = rl.Color(255, 80, 80, 72)
+    self._marker_color = rl.Color(255, 90, 90, 240)
     self._plot_x = np.linspace(-CurvatureDLookup.CURVATURE_MAX, CurvatureDLookup.CURVATURE_MAX, CONFIG.sample_points)
     self._cached_lcp_frame = -1
     self._cached_preview_curve = np.zeros(CONFIG.sample_points, dtype=np.float32)
@@ -119,6 +121,7 @@ class DynamicSteeringLearnerGraphMici(Widget):
     lcp = sm["liveCurvatureParameters"]
     lcp_frame = sm.recv_frame["liveCurvatureParameters"]
     car_state = sm["carState"]
+    controls_state = sm["controlsState"]
 
     fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
     fit_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
@@ -152,13 +155,14 @@ class DynamicSteeringLearnerGraphMici(Widget):
       corrections,
       min_y,
       max_y,
+      float(controls_state.modelDesiredCurvature),
       payload_valid,
     )
 
   def _draw_plot(self, plot_rect: rl.Rectangle,
                  preview_curve: np.ndarray, corrections: np.ndarray,
                  min_y: float, max_y: float,
-                 curve_valid: bool) -> None:
+                 desired_curvature: float, curve_valid: bool) -> None:
 
     preview_points = []
     actual_points = []
@@ -180,3 +184,13 @@ class DynamicSteeringLearnerGraphMici(Widget):
       rl.draw_line_ex(p0, p1, 6.4, curve_glow_color)
     for p0, p1 in zip(actual_points[:-1], actual_points[1:], strict=True):
       rl.draw_line_ex(p0, p1, 3.4, curve_color)
+
+    marker_alpha = float(np.clip(
+      (desired_curvature + CurvatureDLookup.CURVATURE_MAX) / (2.0 * CurvatureDLookup.CURVATURE_MAX),
+      0.0, 1.0,
+    ))
+    marker_x = plot_rect.x + marker_alpha * plot_rect.width
+    marker_correction = float(np.interp(abs(desired_curvature), np.abs(self._plot_x), self._cached_fit_curve))
+    marker_y = self._map_y(plot_rect, marker_correction, min_y, max_y)
+    rl.draw_circle(int(marker_x), int(marker_y), 5, self._marker_glow_color)
+    rl.draw_circle(int(marker_x), int(marker_y), 3, self._marker_color)
