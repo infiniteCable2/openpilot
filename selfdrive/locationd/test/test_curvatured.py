@@ -116,7 +116,7 @@ class TestCurvatureEstimator:
     assert estimator.fit_corrections[idx] == 0.0
     assert not estimator.preview_valid[idx]
 
-    estimator.refresh_curve_lookups(1.0, force_fit=True, force_preview=True)
+    estimator.refresh_curve_lookups(1, force_fit=True, force_preview=True)
 
     assert estimator.preview_valid[idx]
     assert estimator.preview_corrections[idx] > 0.0

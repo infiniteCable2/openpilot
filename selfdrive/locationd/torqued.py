@@ -293,7 +293,7 @@ def main(demo=False):
       pm.send('liveTorqueParameters', estimator.get_msg(valid=torque_valid, with_points=DEBUG))
     if sm.frame % 10 == 0:
       t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
-      curvature_estimator.refresh_curve_lookups(t, force_fit=True)
+      curvature_estimator.refresh_curve_lookups(curvature_estimator.live_pose_update_index, force_fit=True)
       curvature_estimator.maybe_log_status(t, sm, curvature_services, curvature_valid)
       pm.send('liveCurvatureParameters',
               curvature_estimator.get_msg(valid=curvature_transport_valid,

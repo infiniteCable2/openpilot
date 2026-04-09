@@ -20,8 +20,8 @@ MIN_ENGAGE_BUFFER = 2.0
 ALLOWED_CARS = ['volkswagen']
 STATUS_LOG_INTERVAL = 10.0
 MAX_LEARN_ROLL_LATERAL_ACCEL = 0.10
-FIT_REFRESH_INTERVAL = 0.20
-PREVIEW_REFRESH_INTERVAL = 1.00
+FIT_REFRESH_EVERY_N_UPDATES = 4
+PREVIEW_REFRESH_EVERY_N_UPDATES = 20
 
 # CurvatureD learns a small, center-focused curvature correction on top of the model/controller target.
 # The goal is not to replace the steering model, but to reduce subtle dynamic-steering mismatch that can
@@ -478,8 +478,9 @@ class CurvatureEstimator(CurvatureDLookup):
     self.last_status_log_t = 0.0
     self.fit_refresh_pending_rows: dict[int, set[int]] = {}
     self.preview_refresh_pending_rows: dict[int, set[int]] = {}
-    self.last_fit_refresh_t = -FIT_REFRESH_INTERVAL
-    self.last_preview_refresh_t = -PREVIEW_REFRESH_INTERVAL
+    self.live_pose_update_index = 0
+    self.last_fit_refresh_update = -FIT_REFRESH_EVERY_N_UPDATES
+    self.last_preview_refresh_update = -PREVIEW_REFRESH_EVERY_N_UPDATES
 
     self._restore_cached_params()
     self.update_use_params(force=True)
@@ -583,7 +584,7 @@ class CurvatureEstimator(CurvatureDLookup):
       self._mark_curve_refresh_pending(speed_idx, curvature_idx)
 
     if not schedule_only:
-      self.refresh_curve_lookups(0.0, force_fit=True, force_preview=True)
+      self.refresh_curve_lookups(self.live_pose_update_index, force_fit=True, force_preview=True)
 
   def _mark_curve_refresh_pending(self, speed_idx: int, curvature_idx: int) -> None:
     self.fit_refresh_pending_rows.setdefault(speed_idx, set()).add(curvature_idx)
@@ -685,9 +686,9 @@ class CurvatureEstimator(CurvatureDLookup):
 
     return row.astype(np.float32), curve_valid, speed_strength
 
-  def refresh_curve_lookups(self, t: float, force_fit: bool = False, force_preview: bool = False) -> None:
-    fit_due = force_fit or (t >= self.last_fit_refresh_t + FIT_REFRESH_INTERVAL)
-    preview_due = force_preview or (t >= self.last_preview_refresh_t + PREVIEW_REFRESH_INTERVAL)
+  def refresh_curve_lookups(self, update_index: int, force_fit: bool = False, force_preview: bool = False) -> None:
+    fit_due = force_fit or ((update_index - self.last_fit_refresh_update) >= FIT_REFRESH_EVERY_N_UPDATES)
+    preview_due = force_preview or ((update_index - self.last_preview_refresh_update) >= PREVIEW_REFRESH_EVERY_N_UPDATES)
 
     if fit_due and self.fit_refresh_pending_rows:
       for speed_idx, changed_indices in list(self.fit_refresh_pending_rows.items()):
@@ -708,7 +709,7 @@ class CurvatureEstimator(CurvatureDLookup):
         self.fit_valid[speed_idx] = valid
         self.fit_speed_strength[speed_idx] = speed_strength
       self.fit_refresh_pending_rows.clear()
-      self.last_fit_refresh_t = t
+      self.last_fit_refresh_update = update_index
 
     if preview_due and (self.publish_preview_data or force_preview) and self.preview_refresh_pending_rows:
       for speed_idx, changed_indices in list(self.preview_refresh_pending_rows.items()):
@@ -728,7 +729,7 @@ class CurvatureEstimator(CurvatureDLookup):
         self.preview_corrections[speed_idx] = row
         self.preview_valid[speed_idx] = valid
       self.preview_refresh_pending_rows.clear()
-      self.last_preview_refresh_t = t
+      self.last_preview_refresh_update = update_index
 
   def _update_current_lookup(self, desired_curvature: float, v_ego: float) -> None:
     idx = self.indices(desired_curvature, v_ego)
@@ -783,6 +784,7 @@ class CurvatureEstimator(CurvatureDLookup):
     elif which == "liveDelay":
       self.lag = get_lat_delay(self.params, msg.lateralDelay)
     elif which == "livePose" and self.use_params:
+      self.live_pose_update_index += 1
       if not self._history_ready():
         return
       if not (msg.angularVelocityDevice.valid and msg.posenetOK and msg.inputsOK and self.calibrator.calib_valid):
@@ -817,7 +819,7 @@ class CurvatureEstimator(CurvatureDLookup):
       actual_curvature = self.actual_curvature_from_yaw_rate(yaw_rate, v_ego, roll_compensation=float(roll_comp))
 
       self.add_measurement(desired_curvature, actual_curvature, v_ego, schedule_only=True)
-      self.refresh_curve_lookups(t)
+      self.refresh_curve_lookups(self.live_pose_update_index)
 
   def get_msg(self, valid: bool = True, live_valid: bool = True,
               include_debug: bool = False, include_preview: bool = False):
