@@ -51,6 +51,11 @@ class DynamicSteeringLearnerGraph(Widget):
     self._text_color = rl.Color(255, 255, 255, 245)
     self._muted_text_color = rl.Color(200, 200, 200, 220)
     self._plot_x = np.linspace(-CurvatureDLookup.CURVATURE_MAX, CurvatureDLookup.CURVATURE_MAX, CONFIG.sample_points)
+    self._cached_lcp_frame = -1
+    self._cached_preview_curve = np.zeros(CONFIG.sample_points, dtype=np.float32)
+    self._cached_fit_curve = np.zeros(CONFIG.sample_points, dtype=np.float32)
+    self._cached_min_y = 0.0
+    self._cached_max_y = 2e-5
 
     self._update_params()
 
@@ -86,6 +91,24 @@ class DynamicSteeringLearnerGraph(Widget):
     if time.monotonic() - self._param_update_time > 2.0:
       self._update_params()
 
+  def _get_curve_samples(self, lcp_frame: int,
+                         preview_corrections: np.ndarray, preview_valid: np.ndarray,
+                         fit_corrections: np.ndarray, fit_valid: np.ndarray,
+                         v_ego: float) -> tuple[np.ndarray, np.ndarray, float, float]:
+    if lcp_frame != self._cached_lcp_frame:
+      self._cached_preview_curve = np.array([
+        CurvatureDLookup.interp_curve_value(preview_corrections, preview_valid, v_ego, abs(float(k)))
+        for k in self._plot_x
+      ], dtype=np.float32)
+      self._cached_fit_curve = np.array([
+        CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, abs(float(k)))
+        for k in self._plot_x
+      ], dtype=np.float32)
+      self._cached_min_y, self._cached_max_y = self._compute_y_bounds(self._cached_preview_curve, self._cached_fit_curve)
+      self._cached_lcp_frame = lcp_frame
+
+    return self._cached_preview_curve, self._cached_fit_curve, self._cached_min_y, self._cached_max_y
+
   def _render(self, rect: rl.Rectangle) -> None:
     if not self._display_enabled:
       return
@@ -111,6 +134,7 @@ class DynamicSteeringLearnerGraph(Widget):
     rl.draw_rectangle_rounded(graph_rect, 0.08, 8, self._panel_bg)
 
     lcp = sm["liveCurvatureParameters"]
+    lcp_frame = sm.recv_frame["liveCurvatureParameters"]
     controls_state = sm["controlsState"]
     car_state = sm["carState"]
 
@@ -137,17 +161,19 @@ class DynamicSteeringLearnerGraph(Widget):
       graph_rect.width - CONFIG.plot_padding_left - CONFIG.plot_padding_right,
       graph_rect.height - CONFIG.plot_padding_top - CONFIG.plot_padding_bottom,
     )
+    preview_curve, corrections, min_y, max_y = self._get_curve_samples(
+      lcp_frame, preview_corrections, preview_valid, fit_corrections, fit_valid, float(car_state.vEgo)
+    )
     _, _, min_y, max_y = self._draw_plot(
-      plot_rect, preview_corrections, preview_valid, fit_corrections, fit_valid,
-      float(car_state.vEgo), transport_valid and payload_valid
+      plot_rect, preview_curve, corrections, min_y, max_y, transport_valid and payload_valid
     )
     self._draw_overlay_info(graph_rect, lcp, float(car_state.vEgo), float(controls_state.modelDesiredCurvature),
                             fit_corrections, fit_valid, min_y, max_y, transport_valid, payload_valid)
 
   def _draw_plot(self, plot_rect: rl.Rectangle,
-                 preview_corrections: np.ndarray, preview_valid: np.ndarray,
-                 fit_corrections: np.ndarray, fit_valid: np.ndarray,
-                 v_ego: float, curve_valid: bool) -> tuple[np.ndarray, np.ndarray, float, float]:
+                 preview_curve: np.ndarray, corrections: np.ndarray,
+                 min_y: float, max_y: float,
+                 curve_valid: bool) -> tuple[np.ndarray, np.ndarray, float, float]:
     rl.draw_rectangle_lines_ex(plot_rect, 1.0, self._grid_color)
 
     zero_x = plot_rect.x + plot_rect.width / 2
@@ -157,15 +183,6 @@ class DynamicSteeringLearnerGraph(Widget):
       rl.draw_line_ex(rl.Vector2(float(x), float(plot_rect.y)),
                       rl.Vector2(float(x), float(plot_rect.y + plot_rect.height)), 1.0, self._grid_color)
 
-    preview_curve = np.array([
-      CurvatureDLookup.interp_curve_value(preview_corrections, preview_valid, v_ego, abs(float(k)))
-      for k in self._plot_x
-    ], dtype=np.float32)
-    corrections = np.array([
-      CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, abs(float(k)))
-      for k in self._plot_x
-    ], dtype=np.float32)
-    min_y, max_y = self._compute_y_bounds(preview_curve, corrections)
     zero_y = self._map_y(plot_rect, 0.0, min_y, max_y)
 
     rl.draw_line_ex(rl.Vector2(float(plot_rect.x), float(zero_y)),

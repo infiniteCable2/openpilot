@@ -40,6 +40,11 @@ class DynamicSteeringLearnerGraphMici(Widget):
     self._curve_invalid_glow_color = rl.Color(255, 170, 70, 44)
     self._curve_invalid_color = rl.Color(235, 185, 95, 166)
     self._plot_x = np.linspace(-CurvatureDLookup.CURVATURE_MAX, CurvatureDLookup.CURVATURE_MAX, CONFIG.sample_points)
+    self._cached_lcp_frame = -1
+    self._cached_preview_curve = np.zeros(CONFIG.sample_points, dtype=np.float32)
+    self._cached_fit_curve = np.zeros(CONFIG.sample_points, dtype=np.float32)
+    self._cached_min_y = 0.0
+    self._cached_max_y = 2e-5
 
     self._update_params()
 
@@ -75,6 +80,24 @@ class DynamicSteeringLearnerGraphMici(Widget):
     if time.monotonic() - self._param_update_time > 2.0:
       self._update_params()
 
+  def _get_curve_samples(self, lcp_frame: int,
+                         preview_corrections: np.ndarray, preview_valid: np.ndarray,
+                         fit_corrections: np.ndarray, fit_valid: np.ndarray,
+                         v_ego: float) -> tuple[np.ndarray, np.ndarray, float, float]:
+    if lcp_frame != self._cached_lcp_frame:
+      self._cached_preview_curve = np.array([
+        CurvatureDLookup.interp_curve_value(preview_corrections, preview_valid, v_ego, abs(float(k)))
+        for k in self._plot_x
+      ], dtype=np.float32)
+      self._cached_fit_curve = np.array([
+        CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, abs(float(k)))
+        for k in self._plot_x
+      ], dtype=np.float32)
+      self._cached_min_y, self._cached_max_y = self._compute_y_bounds(self._cached_preview_curve, self._cached_fit_curve)
+      self._cached_lcp_frame = lcp_frame
+
+    return self._cached_preview_curve, self._cached_fit_curve, self._cached_min_y, self._cached_max_y
+
   def _render(self, rect: rl.Rectangle) -> None:
     if not self._display_enabled:
       return
@@ -94,6 +117,7 @@ class DynamicSteeringLearnerGraphMici(Widget):
     )
 
     lcp = sm["liveCurvatureParameters"]
+    lcp_frame = sm.recv_frame["liveCurvatureParameters"]
     car_state = sm["carState"]
 
     fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
@@ -118,30 +142,23 @@ class DynamicSteeringLearnerGraphMici(Widget):
       graph_rect.width - CONFIG.plot_padding_left - CONFIG.plot_padding_right,
       graph_rect.height - CONFIG.plot_padding_top - CONFIG.plot_padding_bottom,
     )
+    preview_curve, corrections, min_y, max_y = self._get_curve_samples(
+      lcp_frame, preview_corrections, preview_valid, fit_corrections, fit_valid, float(car_state.vEgo)
+    )
 
     self._draw_plot(
       plot_rect,
-      preview_corrections,
-      preview_valid,
-      fit_corrections,
-      fit_valid,
-      float(car_state.vEgo),
+      preview_curve,
+      corrections,
+      min_y,
+      max_y,
       payload_valid,
     )
 
   def _draw_plot(self, plot_rect: rl.Rectangle,
-                 preview_corrections: np.ndarray, preview_valid: np.ndarray,
-                 fit_corrections: np.ndarray, fit_valid: np.ndarray,
-                 v_ego: float, curve_valid: bool) -> None:
-    preview_curve = np.array([
-      CurvatureDLookup.interp_curve_value(preview_corrections, preview_valid, v_ego, abs(float(k)))
-      for k in self._plot_x
-    ], dtype=np.float32)
-    corrections = np.array([
-      CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, abs(float(k)))
-      for k in self._plot_x
-    ], dtype=np.float32)
-    min_y, max_y = self._compute_y_bounds(preview_curve, corrections)
+                 preview_curve: np.ndarray, corrections: np.ndarray,
+                 min_y: float, max_y: float,
+                 curve_valid: bool) -> None:
 
     preview_points = []
     actual_points = []
