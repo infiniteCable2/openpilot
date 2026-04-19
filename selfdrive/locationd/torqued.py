@@ -10,6 +10,7 @@ from openpilot.common.params import Params
 from openpilot.common.realtime import config_realtime_process, DT_MDL
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.swaglog import cloudlog
+from openpilot.selfdrive.locationd.curvatured import CurvatureEstimator
 from openpilot.selfdrive.locationd.helpers import PointBuckets, ParameterEstimator, PoseCalibrator, Pose
 from openpilot.sunnypilot.livedelay.helpers import get_lat_delay
 from openpilot.sunnypilot.selfdrive.locationd.torqued_ext import TorqueEstimatorExt
@@ -252,35 +253,64 @@ class TorqueEstimator(ParameterEstimator, TorqueEstimatorExt):
 
 def main(demo=False):
   config_realtime_process([0, 1, 2, 3], 5)
+  # Standalone CurvatureD reference:
+  # If CurvatureD is split back into its own process, comment out the CurvatureEstimator
+  # import/creation below, remove liveCurvatureParameters from this PubMaster, and stop
+  # forwarding curvature_services / curvature_estimator messages from this loop.
 
   DEBUG = bool(int(os.getenv("DEBUG", "0")))
   torque_services = ['carControl', 'carOutput', 'carState', 'liveCalibration', 'livePose', 'liveDelay']
+  curvature_services = ['carControl', 'carState', 'controlsState', 'liveCalibration', 'livePose', 'liveDelay']
 
-  pm = messaging.PubMaster(['liveTorqueParameters'])
-  sm = messaging.SubMaster(torque_services, poll='livePose')
+  pm = messaging.PubMaster(['liveTorqueParameters', 'liveCurvatureParameters'])
+  sm = messaging.SubMaster(sorted(set(torque_services + curvature_services)), poll='livePose')
 
   params = Params()
   CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
   estimator = TorqueEstimator(CP)
+  curvature_estimator = CurvatureEstimator(CP)
 
   while True:
     sm.update()
     torque_valid = sm.all_checks(torque_services)
+    curvature_valid = sm.all_checks(curvature_services)
+    curvature_transport_valid = curvature_valid or not curvature_estimator.use_params
+    curvature_live_valid = curvature_valid and curvature_estimator.use_params
 
     for which in sm.updated.keys():
       if sm.updated[which]:
         t = sm.logMonoTime[which] * 1e-9
         if torque_valid and which in torque_services:
           estimator.handle_log(t, which, sm[which])
+        if curvature_valid and which in curvature_services:
+          curvature_estimator.handle_log(t, which, sm[which])
 
     TorqueEstimatorExt.update_use_params(estimator)
+    curvature_estimator.update_use_params()
 
+    # liveTorqueParameters stays at 4Hz; liveCurvatureParameters runs at 2Hz
     if sm.frame % 5 == 0:
       pm.send('liveTorqueParameters', estimator.get_msg(valid=torque_valid, with_points=DEBUG))
+    if sm.frame % 10 == 0:
+      t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
+      curvature_estimator.refresh_curve_lookups(curvature_estimator.live_pose_update_index, force_fit=True)
+      curvature_estimator.maybe_log_status(t, sm, curvature_services, curvature_valid)
+      pm.send('liveCurvatureParameters',
+              curvature_estimator.get_msg(valid=curvature_transport_valid,
+                                          live_valid=curvature_live_valid,
+                                          include_debug=curvature_estimator.publish_debug_data,
+                                          include_preview=curvature_estimator.publish_preview_data))
 
     # Cache points every 60 seconds while onroad
     if sm.frame % 240 == 0:
       params.put_nonblocking("LiveTorqueParameters", estimator.get_msg(valid=torque_valid, with_points=True).to_bytes())
+
+    if sm.frame % 240 == 0:
+      params.put_nonblocking("LiveCurvatureParameters",
+                             curvature_estimator.get_msg(valid=curvature_transport_valid,
+                                                         live_valid=curvature_live_valid,
+                                                         include_debug=True,
+                                                         include_preview=False).to_bytes())
 
 
 if __name__ == "__main__":
