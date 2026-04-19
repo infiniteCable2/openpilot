@@ -7,7 +7,7 @@ import cereal.messaging as messaging
 from cereal import car, log
 from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
 from openpilot.common.params import Params
-from openpilot.common.realtime import DT_MDL
+from openpilot.common.realtime import DT_MDL, config_realtime_process
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.sunnypilot import PARAMS_UPDATE_PERIOD
@@ -868,14 +868,46 @@ class CurvatureEstimator(CurvatureDLookup):
                   f"invalid={invalid} not_alive={not_alive}")
 
 
-# Standalone CurvatureD reference:
-# CurvatureD currently runs inside torqued. To restore it as a dedicated process later,
-# add a small main() here that mirrors the old pattern:
-# - config_realtime_process(...)
-# - SubMaster(curvature_services, poll='livePose')
-# - PubMaster(['liveCurvatureParameters'])
-# - CurvatureEstimator(CP)
-# - sm.update() loop with handle_log(...), update_use_params(), get_msg(...), cache writes
-#
-# When doing that, comment out the CurvatureEstimator integration in selfdrive/locationd/torqued.py
-# so liveCurvatureParameters is only produced from one place.
+def main() -> None:
+  config_realtime_process([0, 1, 2, 3], 5)
+
+  curvature_services = ['carControl', 'carState', 'controlsState', 'liveCalibration', 'livePose', 'liveDelay']
+  pm = messaging.PubMaster(['liveCurvatureParameters'])
+  sm = messaging.SubMaster(curvature_services, poll='livePose')
+
+  params = Params()
+  CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
+  estimator = CurvatureEstimator(CP)
+
+  while True:
+    sm.update()
+    curvature_valid = sm.all_checks(curvature_services)
+    curvature_transport_valid = curvature_valid or not estimator.use_params
+    curvature_live_valid = curvature_valid and estimator.use_params
+
+    for which in sm.updated.keys():
+      if sm.updated[which] and curvature_valid and which in curvature_services:
+        estimator.handle_log(sm.logMonoTime[which] * 1e-9, which, sm[which])
+
+    estimator.update_use_params()
+
+    if sm.frame % 10 == 0:
+      estimator.refresh_curve_lookups(estimator.live_pose_update_index, force_fit=True)
+      t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
+      estimator.maybe_log_status(t, sm, curvature_services, curvature_valid)
+      pm.send('liveCurvatureParameters',
+              estimator.get_msg(valid=curvature_transport_valid,
+                                live_valid=curvature_live_valid,
+                                include_debug=estimator.publish_debug_data,
+                                include_preview=estimator.publish_preview_data))
+
+    if sm.frame % 240 == 0:
+      params.put_nonblocking("LiveCurvatureParameters",
+                             estimator.get_msg(valid=curvature_transport_valid,
+                                               live_valid=curvature_live_valid,
+                                               include_debug=True,
+                                               include_preview=False).to_bytes())
+
+
+if __name__ == "__main__":
+  main()

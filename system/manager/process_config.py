@@ -131,10 +131,7 @@ procs = [
   NativeProcess("_pandad", "selfdrive/pandad", ["./pandad"], always_run, enabled=False),
   PythonProcess("calibrationd", "selfdrive.locationd.calibrationd", only_onroad),
   PythonProcess("torqued", "selfdrive.locationd.torqued", only_onroad),
-  # Standalone CurvatureD reference:
-  # To split CurvatureD back out of torqued, re-enable a dedicated process here and
-  # comment out the CurvatureEstimator integration in selfdrive/locationd/torqued.py.
-  # PythonProcess("curvatured", "selfdrive.locationd.curvatured", only_onroad),
+  PythonProcess("curvatured", "selfdrive.locationd.curvatured", only_onroad),
   PythonProcess("controlsd", "selfdrive.controls.controlsd", and_(not_joystick, iscar)),
   PythonProcess("joystickd", "tools.joystick.joystickd", or_(joystick, notcar)),
   PythonProcess("selfdrived", "selfdrive.selfdrived.selfdrived", only_onroad),
