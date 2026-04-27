@@ -882,7 +882,7 @@ def main():
   while True:
     sm.update()
     curvature_valid = sm.all_checks(curvature_services)
-    curvature_transport_valid = curvature_valid or not curvature_estimator.use_params
+    # transport is always valid if the process is running; live_valid indicates data quality
     curvature_live_valid = curvature_valid and curvature_estimator.use_params
 
     for which in sm.updated.keys():
@@ -898,14 +898,14 @@ def main():
       curvature_estimator.refresh_curve_lookups(curvature_estimator.live_pose_update_index, force_fit=True)
       curvature_estimator.maybe_log_status(t, sm, curvature_services, curvature_valid)
       pm.send('liveCurvatureParameters',
-              curvature_estimator.get_msg(valid=curvature_transport_valid,
+              curvature_estimator.get_msg(valid=True,
                                           live_valid=curvature_live_valid,
                                           include_debug=curvature_estimator.publish_debug_data,
                                           include_preview=curvature_estimator.publish_preview_data))
 
     if sm.frame % 240 == 0:
       params.put_nonblocking("LiveCurvatureParameters",
-                             curvature_estimator.get_msg(valid=curvature_transport_valid,
+                             curvature_estimator.get_msg(valid=True,
                                                          live_valid=curvature_live_valid,
                                                          include_debug=True,
                                                          include_preview=False).to_bytes())
