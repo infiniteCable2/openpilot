@@ -540,6 +540,13 @@ class CurvatureEstimator(CurvatureDLookup):
         self.current_correction = 0.0
         self.current_bias = 0.0
         self.current_bucket_points = 0
+        if self.prev_use_params:
+          for d in [self.car_control_t, self.lat_active, self.roll_compensation,
+                    self.car_state_t, self.vego, self.steering_pressed,
+                    self.controls_state_t, self.model_desired_curvature]:
+            d.clear()
+          self.last_lat_inactive_t = 0.0
+          self.last_override_t = 0.0
     self.frame += 1
 
   def _history_ready(self) -> bool:
