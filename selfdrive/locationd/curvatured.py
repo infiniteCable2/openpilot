@@ -889,20 +889,24 @@ def main():
   while True:
     sm.update()
     curvature_valid = sm.all_checks(curvature_services)
-    # transport is always valid if the process is running; live_valid indicates data quality
     curvature_live_valid = curvature_valid and curvature_estimator.use_params
 
     for which in sm.updated.keys():
       if sm.updated[which]:
         t = sm.logMonoTime[which] * 1e-9
-        if curvature_valid and which in curvature_services:
+        try:
           curvature_estimator.handle_log(t, which, sm[which])
+        except Exception:
+          cloudlog.exception(f"curvatured handle_log failed service={which}")
 
     curvature_estimator.update_use_params()
 
-    if sm.frame % 10 == 0:
+    if sm.frame % 5 == 0:
       t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
-      curvature_estimator.refresh_curve_lookups(curvature_estimator.live_pose_update_index, force_fit=True)
+      try:
+        curvature_estimator.refresh_curve_lookups(curvature_estimator.live_pose_update_index, force_fit=True)
+      except Exception:
+        cloudlog.exception("curvatured refresh_curve_lookups failed")
       curvature_estimator.maybe_log_status(t, sm, curvature_services, curvature_valid)
       pm.send('liveCurvatureParameters',
               curvature_estimator.get_msg(valid=True,

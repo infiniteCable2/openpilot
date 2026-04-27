@@ -104,7 +104,7 @@ _services: dict[str, tuple] = {
   "liveLocationKalman": (True, 20.),
 
   # infiniteCable
-  "liveCurvatureParameters": (True, 2., 1),
+  "liveCurvatureParameters": (True, 4., 1),
 
   # debug
   "uiDebug": (True, 0., 1),
