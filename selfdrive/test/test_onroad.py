@@ -50,7 +50,6 @@ PROCS = {
   "system.hardware.hardwared": 4.0,
   "selfdrive.locationd.calibrationd": 2.0,
   "selfdrive.locationd.torqued": 8.0,
-  "selfdrive.locationd.curvatured": 8.0,
   "selfdrive.locationd.locationd": 25.0,
   "selfdrive.locationd.paramsd": 9.0,
   "selfdrive.locationd.lagd": 11.0,
