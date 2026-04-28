@@ -891,7 +891,7 @@ def main():
   frame = 0
 
   while True:
-    sm.update(250)  # 250ms timeout = 4Hz
+    sm.update(100)  # 100ms timeout - Ratekeeper controls actual timing
     t = time.monotonic()
     frame += 1
 
