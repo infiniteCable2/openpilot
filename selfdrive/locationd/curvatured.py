@@ -8,7 +8,7 @@ import cereal.messaging as messaging
 from cereal import car, log
 from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
 from openpilot.common.params import Params
-from openpilot.common.realtime import config_realtime_process, DT_MDL
+from openpilot.common.realtime import config_realtime_process, DT_MDL, Ratekeeper
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.sunnypilot import PARAMS_UPDATE_PERIOD
@@ -880,18 +880,20 @@ def main():
   config_realtime_process([0, 1, 2, 3], 5)
 
   pm = messaging.PubMaster(['liveCurvatureParameters'])
-  sm = messaging.SubMaster(['carControl', 'carState', 'liveCalibration', 'livePose', 'liveDelay', 'controlsState'], poll='carState')
+  # No poll - let Ratekeeper control timing for consistent 4Hz publishing
+  sm = messaging.SubMaster(['carControl', 'carState', 'liveCalibration', 'livePose', 'liveDelay', 'controlsState'])
 
   params = Params()
   CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
   curvature_estimator = CurvatureEstimator(CP)
 
-  last_publish_time = 0.0
-  publish_interval = 1.0 / 4.0  # 4Hz
+  rk = Ratekeeper(4, print_delay_threshold=None)
+  frame = 0
 
   while True:
-    sm.update()
+    sm.update(250)  # 250ms timeout = 4Hz
     t = time.monotonic()
+    frame += 1
 
     for which in sm.updated.keys():
       if sm.updated[which]:
@@ -903,23 +905,26 @@ def main():
 
     curvature_estimator.update_use_params()
 
-    # 4Hz publishing based on wall clock time (ensures consistent frequency for freq_ok check)
-    if t - last_publish_time >= publish_interval:
-      last_publish_time = t
-      try:
-        curvature_estimator.refresh_curve_lookups(curvature_estimator.live_pose_update_index, force_fit=True)
-      except Exception:
-        cloudlog.exception("curvatured refresh_curve_lookups failed")
-      live_valid = sm.all_checks() and curvature_estimator.use_params
-      curvature_estimator.maybe_log_status(t, sm)
-      pm.send('liveCurvatureParameters',
-              curvature_estimator.get_msg(valid=sm.all_checks(),
-                                          live_valid=live_valid,
-                                          include_debug=curvature_estimator.publish_debug_data,
-                                          include_preview=curvature_estimator.publish_preview_data))
+    # Refresh curve lookups based on livePose updates (performance-optimized)
+    # Only refresh when enough livePose updates have been received
+    curvature_estimator.refresh_curve_lookups(
+      curvature_estimator.live_pose_update_index,
+      force_fit=False,
+      force_preview=curvature_estimator.publish_preview_data
+    )
+
+    live_valid = sm.all_checks() and curvature_estimator.use_params
+    curvature_estimator.maybe_log_status(t, sm)
+    pm.send('liveCurvatureParameters',
+            curvature_estimator.get_msg(valid=sm.all_checks(),
+                                        live_valid=live_valid,
+                                        include_debug=curvature_estimator.publish_debug_data,
+                                        include_preview=curvature_estimator.publish_preview_data))
+
+    rk.keep_time()  # Maintain exact 4Hz
 
     # Cache points every 60 seconds while onroad
-    if int(t) % 60 == 0 and int(t) % 60 < 2:
+    if frame % 240 == 0:  # 4Hz * 60s = 240 frames
       params.put_nonblocking("LiveCurvatureParameters",
                              curvature_estimator.get_msg(valid=sm.all_checks(),
                                                          live_valid=live_valid,
