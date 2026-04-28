@@ -1,4 +1,5 @@
 import math
+import time
 from collections import deque
 
 import numpy as np
@@ -885,22 +886,26 @@ def main():
   CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
   curvature_estimator = CurvatureEstimator(CP)
 
+  last_publish_time = 0.0
+  publish_interval = 1.0 / 4.0  # 4Hz
+
   while True:
     sm.update()
+    t = time.monotonic()
 
     for which in sm.updated.keys():
       if sm.updated[which]:
-        t = sm.logMonoTime[which] * 1e-9
+        t_log = sm.logMonoTime[which] * 1e-9
         try:
-          curvature_estimator.handle_log(t, which, sm[which])
+          curvature_estimator.handle_log(t_log, which, sm[which])
         except Exception:
           cloudlog.exception(f"curvatured handle_log failed service={which}")
 
     curvature_estimator.update_use_params()
 
-    # 4Hz publishing (matches torqued cadence)
-    if sm.frame % 5 == 0:
-      t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
+    # 4Hz publishing based on wall clock time (ensures consistent frequency for freq_ok check)
+    if t - last_publish_time >= publish_interval:
+      last_publish_time = t
       try:
         curvature_estimator.refresh_curve_lookups(curvature_estimator.live_pose_update_index, force_fit=True)
       except Exception:
@@ -913,7 +918,8 @@ def main():
                                           include_debug=curvature_estimator.publish_debug_data,
                                           include_preview=curvature_estimator.publish_preview_data))
 
-    if sm.frame % 240 == 0:
+    # Cache points every 60 seconds while onroad
+    if int(t) % 60 == 0 and int(t) % 60 < 2:
       params.put_nonblocking("LiveCurvatureParameters",
                              curvature_estimator.get_msg(valid=sm.all_checks(),
                                                          live_valid=live_valid,
