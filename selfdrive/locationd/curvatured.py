@@ -886,7 +886,7 @@ def main():
   all_services = core_services + auto_services
 
   pm = messaging.PubMaster(['liveCurvatureParameters'])
-  sm = messaging.SubMaster(all_services, poll='livePose')
+  sm = messaging.SubMaster(all_services, poll='carState')
 
   params = Params()
   CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
