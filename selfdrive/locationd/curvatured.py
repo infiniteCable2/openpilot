@@ -878,15 +878,8 @@ class CurvatureEstimator(CurvatureDLookup):
 def main():
   config_realtime_process([0, 1, 2, 3], 5)
 
-  # controlsState creates a circular dependency (curvatured -> controlsState -> controlsd -> selfdrived -> liveCurvatureParameters -> curvatured).
-  # We subscribe to it for data but must NOT gate publishing or liveness on it.
-  # Core services are the locationd pipeline that curvatured fundamentally depends on.
-  core_services = ['carControl', 'carState', 'liveCalibration', 'livePose', 'liveDelay']
-  auto_services = ['controlsState']
-  all_services = core_services + auto_services
-
   pm = messaging.PubMaster(['liveCurvatureParameters'])
-  sm = messaging.SubMaster(all_services, poll='carState')
+  sm = messaging.SubMaster(['carControl', 'carState', 'liveCalibration', 'livePose', 'liveDelay', 'controlsState'], poll='carState')
 
   params = Params()
   CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
@@ -894,12 +887,6 @@ def main():
 
   while True:
     sm.update()
-
-    # Only core locationd services gate our liveness check — controlsState must NOT gate it
-    core_valid = sm.all_checks(core_services)
-
-    # transport is always valid if the process is running; live_valid indicates data quality
-    curvature_live_valid = core_valid and curvature_estimator.use_params
 
     for which in sm.updated.keys():
       if sm.updated[which]:
@@ -911,24 +898,25 @@ def main():
 
     curvature_estimator.update_use_params()
 
-    # 4Hz driven by livePose (matches torqued cadence)
+    # 4Hz publishing (matches torqued cadence)
     if sm.frame % 5 == 0:
       t = sm.logMonoTime['livePose'] * 1e-9 if sm.logMonoTime['livePose'] != 0 else sm.frame * DT_MDL
       try:
         curvature_estimator.refresh_curve_lookups(curvature_estimator.live_pose_update_index, force_fit=True)
       except Exception:
         cloudlog.exception("curvatured refresh_curve_lookups failed")
-      curvature_estimator.maybe_log_status(t, sm, core_services, core_valid)
+      live_valid = sm.all_checks() and curvature_estimator.use_params
+      curvature_estimator.maybe_log_status(t, sm)
       pm.send('liveCurvatureParameters',
-              curvature_estimator.get_msg(valid=True,
-                                          live_valid=curvature_live_valid,
+              curvature_estimator.get_msg(valid=sm.all_checks(),
+                                          live_valid=live_valid,
                                           include_debug=curvature_estimator.publish_debug_data,
                                           include_preview=curvature_estimator.publish_preview_data))
 
     if sm.frame % 240 == 0:
       params.put_nonblocking("LiveCurvatureParameters",
-                             curvature_estimator.get_msg(valid=True,
-                                                         live_valid=curvature_live_valid,
+                             curvature_estimator.get_msg(valid=sm.all_checks(),
+                                                         live_valid=live_valid,
                                                          include_debug=True,
                                                          include_preview=False).to_bytes())
 
