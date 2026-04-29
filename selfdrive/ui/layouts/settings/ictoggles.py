@@ -18,8 +18,8 @@ DESCRIPTIONS = {
   "EnableCurvatureD": tr_noop(
     "Learns speed- and curvature-dependent steering corrections around center for dynamic steering behavior. Experimental and only used on curvature-based steering paths."
   ),
-  "ApplyCurvatureD": tr_noop(
-    "Applies the learned dynamic steering correction in controlsd. Disable this to keep learning and graphing without changing curvature commands."
+  "ShowDynamicSteeringLearnerGraph": tr_noop(
+    "Display the current dynamic steering learner fit, marker, and status information in the onroad UI."
   ),
   "EnableLongComfortMode": tr_noop(
     "Enables longitudinal jerk and accel deviation limit control for safe and comfortable driving"
@@ -145,12 +145,6 @@ class ICTogglesLayout(Widget):
         "chffr_wheel.png",
         False,
       ),
-      "ApplyCurvatureD": (
-        lambda: tr("Apply Dynamic Steering Learner"),
-        DESCRIPTIONS["ApplyCurvatureD"],
-        "chffr_wheel.png",
-        False,
-      ),
       "ShowDynamicSteeringLearnerGraph": (
         lambda: tr("Show Dynamic Steering Learner Graph"),
         DESCRIPTIONS["ShowDynamicSteeringLearnerGraph"],
@@ -219,8 +213,8 @@ class ICTogglesLayout(Widget):
       if toggle_def not in self._locked_toggles:
         self._toggles[toggle_def].action_item.set_enabled(ui_state.is_offroad())
 
-    if "ApplyCurvatureD" not in self._locked_toggles:
-      self._toggles["ApplyCurvatureD"].action_item.set_enabled(self._params.get_bool("EnableCurvatureD"))
+    if "EnableCurvatureD" not in self._locked_toggles:
+      self._toggles["EnableCurvatureD"].action_item.set_enabled(ui_state.is_offroad())
 
   def _render(self, rect):
     self._scroller.render(rect)
