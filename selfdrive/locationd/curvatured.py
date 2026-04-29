@@ -876,21 +876,60 @@ class CurvatureEstimator(CurvatureDLookup):
                    f"invalid={invalid} not_alive={not_alive}")
 
 
-# --- MINIMAL TEST ---
-# Tests if the mere EXISTENCE of this process causes locationd pipeline lag
-# All logic is stripped - only publish dummy messages at 4Hz
-
 def main():
+  config_realtime_process([0, 1, 2, 3], 5)
+
   pm = messaging.PubMaster(['liveCurvatureParameters'])
-  sm = messaging.SubMaster(['carState'])
+  # No poll - let Ratekeeper control timing for consistent 4Hz publishing
+  sm = messaging.SubMaster(['carControl', 'carState', 'liveCalibration', 'livePose', 'liveDelay', 'controlsState'])
+
+  params = Params()
+  CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
+  curvature_estimator = CurvatureEstimator(CP)
+
+  rk = Ratekeeper(4, print_delay_threshold=None)
+  frame = 0
 
   while True:
-    sm.update()
-    time.sleep(0.25)  # 4Hz
-    msg = messaging.new_message('liveCurvatureParameters')
-    msg.valid = True
-    msg.liveCurvatureParameters.version = 1
-    pm.send('liveCurvatureParameters', msg)
+    sm.update(100)  # 100ms timeout - Ratekeeper controls actual timing
+    t = time.monotonic()
+    frame += 1
+
+    for which in sm.updated.keys():
+      if sm.updated[which]:
+        t_log = sm.logMonoTime[which] * 1e-9
+        try:
+          curvature_estimator.handle_log(t_log, which, sm[which])
+        except Exception:
+          cloudlog.exception(f"curvatured handle_log failed service={which}")
+
+    curvature_estimator.update_use_params()
+
+    # Refresh curve lookups based on livePose updates (performance-optimized)
+    # Only refresh when enough livePose updates have been received
+    curvature_estimator.refresh_curve_lookups(
+      curvature_estimator.live_pose_update_index,
+      force_fit=False,
+      force_preview=curvature_estimator.publish_preview_data
+    )
+
+    live_valid = sm.all_checks() and curvature_estimator.use_params
+    curvature_estimator.maybe_log_status(t, sm)
+    pm.send('liveCurvatureParameters',
+            curvature_estimator.get_msg(valid=sm.all_checks(),
+                                        live_valid=live_valid,
+                                        include_debug=curvature_estimator.publish_debug_data,
+                                        include_preview=curvature_estimator.publish_preview_data))
+
+    rk.keep_time()  # Maintain exact 4Hz
+
+    # Cache points every 60 seconds while onroad
+    if frame % 240 == 0:  # 4Hz * 60s = 240 frames
+      params.put_nonblocking("LiveCurvatureParameters",
+                             curvature_estimator.get_msg(valid=sm.all_checks(),
+                                                         live_valid=live_valid,
+                                                         include_debug=True,
+                                                         include_preview=False).to_bytes())
 
 
 if __name__ == "__main__":
