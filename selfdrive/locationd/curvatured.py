@@ -719,25 +719,28 @@ class CurvatureEstimator(CurvatureDLookup):
       self.fit_refresh_pending_rows.clear()
       self.last_fit_refresh_update = update_index
 
-    if preview_due and (self.publish_preview_data or force_preview) and self.preview_refresh_pending_rows:
-      for speed_idx, changed_indices in list(self.preview_refresh_pending_rows.items()):
-        row, valid, _ = self._refresh_row(
-          speed_idx,
-          changed_indices,
-          lambda speed_counts: speed_counts > 0.0,
-          lambda _speed_idx: 1,
-          self.preview_local_strength,
-          lambda _all_counts, _row_idx, _valid_idx, _local_strength: 1.0,
-          False,
-          False,
-          self.preview_corrections[speed_idx],
-          self.preview_valid[speed_idx],
-          1.0,
-        )
-        self.preview_corrections[speed_idx] = row
-        self.preview_valid[speed_idx] = valid
+    if preview_due:
+      if (self.publish_preview_data or force_preview) and self.preview_refresh_pending_rows:
+        for speed_idx, changed_indices in list(self.preview_refresh_pending_rows.items()):
+          row, valid, _ = self._refresh_row(
+            speed_idx,
+            changed_indices,
+            lambda speed_counts: speed_counts > 0.0,
+            lambda _speed_idx: 1,
+            self.preview_local_strength,
+            lambda _all_counts, _speed_idx, _valid_idx, _local_strength: 1.0,
+            False,
+            False,
+            self.preview_corrections[speed_idx],
+            self.preview_valid[speed_idx],
+            1.0,
+          )
+          self.preview_corrections[speed_idx] = row
+          self.preview_valid[speed_idx] = valid
+      # Always clear pending rows even if not publishing, to prevent unbounded growth
       self.preview_refresh_pending_rows.clear()
       self.last_preview_refresh_update = update_index
+
 
   def _update_current_lookup(self, desired_curvature: float, v_ego: float) -> None:
     idx = self.indices(desired_curvature, v_ego)

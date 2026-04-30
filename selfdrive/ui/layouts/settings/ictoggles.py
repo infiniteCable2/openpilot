@@ -39,9 +39,6 @@ DESCRIPTIONS = {
   "BatteryDetails": tr_noop(
     "Display battery detail panel"
   ),
-  "ShowDynamicSteeringLearnerGraph": tr_noop(
-    "Display the current dynamic steering learner fit, marker, and status information in the onroad UI."
-  ),
   "ForceRHDForBSM": tr_noop(
     "Switch BSM detection side to RHD. Driver is on the right side."
   ),
