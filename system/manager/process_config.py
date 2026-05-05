@@ -64,6 +64,9 @@ def only_onroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not started
 
+def curvatured_enabled(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return only_onroad(started, params, CP) and params.get_bool("EnableCurvatureD")
+
 def use_github_runner(started, params, CP: car.CarParams) -> bool:
   return not PC and params.get_bool("EnableGithubRunner") and (
     not params.get_bool("NetworkMetered") and not params.get_bool("GithubRunnerSufficientVoltage"))
@@ -131,7 +134,7 @@ procs = [
   NativeProcess("_pandad", "selfdrive/pandad", ["./pandad"], always_run, enabled=False),
   PythonProcess("calibrationd", "selfdrive.locationd.calibrationd", only_onroad),
   PythonProcess("torqued", "selfdrive.locationd.torqued", only_onroad),
-  PythonProcess("curvatured", "selfdrive.locationd.curvatured", only_onroad),
+  PythonProcess("curvatured", "selfdrive.locationd.curvatured", curvatured_enabled),
   PythonProcess("controlsd", "selfdrive.controls.controlsd", and_(not_joystick, iscar)),
   PythonProcess("joystickd", "tools.joystick.joystickd", or_(joystick, notcar)),
   PythonProcess("selfdrived", "selfdrive.selfdrived.selfdrived", only_onroad),
