@@ -380,21 +380,12 @@ class Updater:
     run(["git", "config", "--replace-all", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"], OVERLAY_MERGED)
 
     branch = self.target_branch
-    fetch_cmd = ["git", "fetch", "origin", branch]
     if force:
-      fetch_cmd = ["git", "fetch", "--prune", "origin", branch]
-    git_fetch_output = run(fetch_cmd, OVERLAY_MERGED)
-    cloudlog.info("git fetch success: %s", git_fetch_output)
+      self.fetch_update_force(branch)
+      return
 
-    if force:
-      cloudlog.info("force download: tearing down current submodule state before checkout")
-      pre_checkout_cmds = [
-        ["git", "submodule", "sync", "--recursive"],
-        ["git", "submodule", "deinit", "--force", "--all"],
-        ["git", "clean", "-xdff"],
-      ]
-      pre_checkout_results = [run(cmd, OVERLAY_MERGED) for cmd in pre_checkout_cmds]
-      cloudlog.info("force download pre-checkout success: %s", '\n'.join(pre_checkout_results))
+    git_fetch_output = run(["git", "fetch", "origin", branch], OVERLAY_MERGED)
+    cloudlog.info("git fetch success: %s", git_fetch_output)
 
     cloudlog.info("git reset in progress")
     cmds = [
@@ -402,23 +393,10 @@ class Updater:
       ["git", "branch", "--set-upstream-to", f"origin/{branch}"],
       ["git", "reset", "--hard"],
       ["git", "clean", "-xdff"],
+      ["git", "submodule", "sync"],
+      ["git", "submodule", "update", "--init", "--recursive"],
+      ["git", "submodule", "foreach", "--recursive", "git", "reset", "--hard"],
     ]
-    if force:
-      cmds += [
-        ["git", "submodule", "sync", "--recursive"],
-        ["git", "submodule", "update", "--init", "--force", "--recursive"],
-        ["git", "submodule", "sync", "--recursive"],
-        ["git", "submodule", "update", "--init", "--force", "--recursive"],
-        ["git", "submodule", "foreach", "--recursive", "git", "reset", "--hard"],
-        ["git", "submodule", "foreach", "--recursive", "git", "clean", "-xdff"],
-        ["git", "submodule", "update", "--init", "--force", "--recursive"],
-      ]
-    else:
-      cmds += [
-        ["git", "submodule", "sync"],
-        ["git", "submodule", "update", "--init", "--recursive"],
-        ["git", "submodule", "foreach", "--recursive", "git", "reset", "--hard"],
-      ]
     r = [run(cmd, OVERLAY_MERGED) for cmd in cmds]
     cloudlog.info("git reset success: %s", '\n'.join(r))
 
@@ -430,6 +408,61 @@ class Updater:
     self.params.put("UpdaterState", "finalizing update...")
     finalize_update()
     cloudlog.info("finalize success!")
+
+  def fetch_update_force(self, branch: str) -> None:
+    git_fetch_output = run(["git", "fetch", "--prune", "origin", branch], OVERLAY_MERGED)
+    cloudlog.info("force download git fetch success: %s", git_fetch_output)
+
+    def run_cmds(label: str, cmds: list[list[str]]) -> list[str]:
+      results = [run(cmd, OVERLAY_MERGED) for cmd in cmds]
+      cloudlog.info("%s success: %s", label, '\n'.join(results))
+      return results
+
+    cloudlog.info("force download: tearing down current submodule state before checkout")
+    pre_checkout_cmds = [
+      ["git", "submodule", "sync", "--recursive"],
+      ["git", "submodule", "deinit", "--force", "--all"],
+      ["git", "clean", "-xdff"],
+    ]
+    run_cmds("force download pre-checkout", pre_checkout_cmds)
+
+    cloudlog.info("force download git reset in progress")
+    root_cmds = [
+      ["git", "checkout", "--force", "--no-recurse-submodules", "-B", branch, "FETCH_HEAD"],
+      ["git", "branch", "--set-upstream-to", f"origin/{branch}"],
+      ["git", "reset", "--hard"],
+      ["git", "clean", "-xdff"],
+    ]
+    run_cmds("force download git reset", root_cmds)
+
+    first_pass_cmds = [
+      ["git", "submodule", "sync", "--recursive"],
+      ["git", "submodule", "update", "--init", "--force", "--recursive"],
+    ]
+    second_pass_cmds = [
+      ["git", "submodule", "sync", "--recursive"],
+      ["git", "submodule", "update", "--init", "--force", "--recursive"],
+      ["git", "submodule", "foreach", "--recursive", "git", "reset", "--hard"],
+      ["git", "submodule", "foreach", "--recursive", "git", "clean", "-xdff"],
+      ["git", "submodule", "update", "--init", "--force", "--recursive"],
+    ]
+
+    try:
+      run_cmds("force download submodule pass 1", first_pass_cmds)
+    except subprocess.CalledProcessError as e:
+      cloudlog.warning("force download submodule pass 1 failed on %s (%s), retrying with second pass\n%s",
+                       e.cmd, e.returncode, e.output)
+
+    run_cmds("force download submodule pass 2", second_pass_cmds)
+
+    # TODO: show agnos download progress
+    if AGNOS:
+      handle_agnos_update()
+
+    # Create the finalized, ready-to-swap update
+    self.params.put("UpdaterState", "finalizing update...")
+    finalize_update()
+    cloudlog.info("force download finalize success!")
 
 
 def main() -> None:
