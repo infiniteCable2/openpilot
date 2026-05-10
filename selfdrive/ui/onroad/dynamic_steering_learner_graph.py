@@ -25,7 +25,7 @@ class DynamicSteeringLearnerGraphConfig:
   plot_padding_left: int = 73
   plot_padding_right: int = 25
   plot_padding_top: int = 59
-  plot_padding_bottom: int = 48
+  plot_padding_bottom: int = 64
   sample_points: int = 121
 
 
