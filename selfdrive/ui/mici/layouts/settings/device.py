@@ -15,8 +15,7 @@ from openpilot.selfdrive.ui.mici.onroad.driver_camera_dialog import DriverCamera
 from openpilot.selfdrive.ui.mici.layouts.onboarding import TrainingGuide, TermsPage
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
 from openpilot.system.ui.lib.multilang import tr
-from openpilot.system.ui.widgets import Widget, DialogResult
-from openpilot.system.ui.widgets.option_dialog import MultiOptionDialog
+from openpilot.system.ui.widgets import Widget
 from openpilot.selfdrive.ui.ui_state import device, ui_state
 from openpilot.system.ui.widgets.label import UnifiedLabel
 from openpilot.system.ui.widgets.html_render import HtmlModal, HtmlRenderer
@@ -168,34 +167,104 @@ class PairBigButton(BigButton):
 UPDATER_TIMEOUT = 10.0  # seconds to wait for updater to respond
 
 
+def get_ordered_branches() -> list[str]:
+  current_git_branch = ui_state.params.get("GitBranch") or ""
+  branches_str = ui_state.params.get("UpdaterAvailableBranches") or ""
+  branches = [b for b in branches_str.split(",") if b]
+
+  for b in [current_git_branch, "devel-staging", "devel", "nightly", "nightly-dev", "master"]:
+    if b in branches:
+      branches.remove(b)
+      branches.insert(0, b)
+
+  return branches
+
+
+class BranchInfoLayoutMici(Widget):
+  def __init__(self):
+    super().__init__()
+    self.set_rect(rl.Rectangle(0, 0, 360, 180))
+
+    header_color = rl.Color(255, 255, 255, int(255 * 0.9))
+    subheader_color = rl.Color(255, 255, 255, int(255 * 0.9 * 0.65))
+    max_width = int(self._rect.width - 20)
+    self._current_branch_header = UnifiedLabel(tr("current branch"), 48, max_width=max_width, text_color=header_color,
+                                               font_weight=FontWeight.DISPLAY)
+    self._current_branch_text = UnifiedLabel("", 32, max_width=max_width, text_color=subheader_color,
+                                             font_weight=FontWeight.ROMAN, scroll=True)
+    self._target_branch_header = UnifiedLabel(tr("target branch"), 48, max_width=max_width, text_color=header_color,
+                                              font_weight=FontWeight.DISPLAY)
+    self._target_branch_text = UnifiedLabel("", 32, max_width=max_width, text_color=subheader_color,
+                                            font_weight=FontWeight.ROMAN, scroll=True)
+
+  def _update_state(self):
+    super()._update_state()
+    current_branch = ui_state.params.get("GitBranch") or ""
+    target_branch = ui_state.params.get("UpdaterTargetBranch") or current_branch
+    self._current_branch_text.set_text(current_branch)
+    self._target_branch_text.set_text(target_branch)
+
+  def _render(self, _):
+    self._current_branch_header.set_position(self._rect.x + 20, self._rect.y - 10)
+    self._current_branch_header.render()
+
+    self._current_branch_text.set_position(self._rect.x + 20, self._rect.y + 68 - 25)
+    self._current_branch_text.render()
+
+    self._target_branch_header.set_position(self._rect.x + 20, self._rect.y + 114 - 30)
+    self._target_branch_header.render()
+
+    self._target_branch_text.set_position(self._rect.x + 20, self._rect.y + 161 - 25)
+    self._target_branch_text.render()
+
+
+class BranchSelectionLayoutMici(NavScroller):
+  def __init__(self, back_callback: Callable):
+    super().__init__()
+    self.set_back_callback(back_callback)
+    self._branch_info = BranchInfoLayoutMici()
+    self._branch_buttons: list[BigButton] = []
+    self._branch_snapshot: tuple[str, ...] = ()
+    self._scroller.add_widget(self._branch_info)
+    self._rebuild_branch_buttons()
+
+  def _rebuild_branch_buttons(self):
+    branches = get_ordered_branches()
+    snapshot = tuple(branches)
+    if snapshot == self._branch_snapshot:
+      return
+
+    self._branch_snapshot = snapshot
+    items = [self._branch_info]
+    self._branch_buttons = []
+
+    for branch in branches:
+      btn = BigButton(branch, scroll=True)
+      btn.set_click_callback(lambda b=branch: self._select_branch(b))
+      self._branch_buttons.append(btn)
+      items.append(btn)
+
+    self._scroller._items.clear()
+    for item in items:
+      self._scroller.add_widget(item)
+
+  def _select_branch(self, branch: str):
+    ui_state.params.put("UpdaterTargetBranch", branch)
+    os.system("pkill -SIGUSR1 -f system.updated.updated")
+    gui_app.pop_widget()
+
+  def _update_state(self):
+    super()._update_state()
+    self._rebuild_branch_buttons()
+    is_offroad = ui_state.is_offroad()
+    for btn in self._branch_buttons:
+      btn.set_enabled(is_offroad)
+
+
 class TargetBranchBigButton(BigButton):
   def __init__(self):
     super().__init__("target branch", "", gui_app.texture("icons_mici/settings/device/update.png", 64, 75), scroll=True)
-    self._branch_dialog: MultiOptionDialog | None = None
-    self.set_click_callback(self._on_select_branch)
-
-  def _on_select_branch(self):
-    current_git_branch = ui_state.params.get("GitBranch") or ""
-    branches_str = ui_state.params.get("UpdaterAvailableBranches") or ""
-    branches = [b for b in branches_str.split(",") if b]
-
-    for b in [current_git_branch, "devel-staging", "devel", "nightly", "nightly-dev", "master"]:
-      if b in branches:
-        branches.remove(b)
-        branches.insert(0, b)
-
-    current_target = ui_state.params.get("UpdaterTargetBranch") or ""
-
-    def handle_selection(result: DialogResult):
-      if result == DialogResult.CONFIRM and self._branch_dialog is not None and self._branch_dialog.selection:
-        selection = self._branch_dialog.selection
-        ui_state.params.put("UpdaterTargetBranch", selection)
-        os.system("pkill -SIGUSR1 -f system.updated.updated")
-        self.set_value(selection)
-      self._branch_dialog = None
-
-    self._branch_dialog = MultiOptionDialog(tr("Select a branch"), branches, current_target, callback=handle_selection)
-    gui_app.push_widget(self._branch_dialog)
+    self.set_click_callback(lambda: gui_app.push_widget(BranchSelectionLayoutMici(gui_app.pop_widget)))
 
   def _update_state(self):
     super()._update_state()
