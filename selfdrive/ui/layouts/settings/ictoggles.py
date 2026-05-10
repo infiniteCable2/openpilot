@@ -15,6 +15,12 @@ DESCRIPTIONS = {
   "EnableCurvatureController": tr_noop(
     "Enables curvature PID post-processing additionally to QFK curvature offset"
   ),
+  "EnableCurvatureD": tr_noop(
+    "Learns speed- and curvature-dependent steering corrections around center for dynamic steering behavior. Experimental and only used on curvature-based steering paths."
+  ),
+  "ShowDynamicSteeringLearnerGraph": tr_noop(
+    "Display the current dynamic steering learner fit, marker, and status information in the onroad UI."
+  ),
   "EnableLongComfortMode": tr_noop(
     "Enables longitudinal jerk and accel deviation limit control for safe and comfortable driving"
   ),
@@ -94,12 +100,6 @@ class ICTogglesLayout(Widget):
         "speed_limit.png",
         False,
       ),
-      "BatteryDetails": (
-        lambda: tr("VW MEB: Display Battery Details"),
-        DESCRIPTIONS["BatteryDetails"],
-        "capslock-fill.png",
-        False,
-      ),
       "ForceRHDForBSM": (
         lambda: tr("VW: Force RHD for BSM"),
         DESCRIPTIONS["ForceRHDForBSM"],
@@ -130,10 +130,29 @@ class ICTogglesLayout(Widget):
         "eye_closed.png",
         False,
       ),
+      "BatteryDetails": (
+        lambda: tr("VW MEB: Display Battery Details"),
+        DESCRIPTIONS["BatteryDetails"],
+        "capslock-fill.png",
+        False,
+      ),
+      "EnableCurvatureD": (
+        lambda: tr("Enable Dynamic Steering Learner"),
+        DESCRIPTIONS["EnableCurvatureD"],
+        "chffr_wheel.png",
+        False,
+      ),
+      "ShowDynamicSteeringLearnerGraph": (
+        lambda: tr("Show Dynamic Steering Learner Graph"),
+        DESCRIPTIONS["ShowDynamicSteeringLearnerGraph"],
+        "chffr_wheel.png",
+        False,
+      ),
     }
 
     self._toggles = {}
     self._locked_toggles = set()
+    self._offroad_only_toggles = {"EnableCurvatureD"}
     for param, (title, desc, icon, needs_restart) in self._toggle_defs.items():
       toggle = toggle_item(
         title,
@@ -164,6 +183,7 @@ class ICTogglesLayout(Widget):
     self._scroller = Scroller(list(self._toggles.values()), line_separator=True, spacing=0)
 
     ui_state.add_engaged_transition_callback(self._update_toggles)
+    ui_state.add_offroad_transition_callback(self._update_toggles)
 
   def _update_state(self):
     return
@@ -185,6 +205,13 @@ class ICTogglesLayout(Widget):
     for toggle_def in self._toggle_defs:
       if self._toggle_defs[toggle_def][3] and toggle_def not in self._locked_toggles:
         self._toggles[toggle_def].action_item.set_enabled(not ui_state.engaged)
+
+    for toggle_def in self._offroad_only_toggles:
+      if toggle_def not in self._locked_toggles:
+        self._toggles[toggle_def].action_item.set_enabled(ui_state.is_offroad())
+
+    if "EnableCurvatureD" not in self._locked_toggles:
+      self._toggles["EnableCurvatureD"].action_item.set_enabled(ui_state.is_offroad())
 
   def _render(self, rect):
     self._scroller.render(rect)

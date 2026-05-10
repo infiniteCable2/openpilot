@@ -23,6 +23,8 @@ class ICTogglesLayoutMici(NavScroller):
     enable_dark_mode            = BigParamControl("Dark Mode", "DarkMode")
     enable_onroad_screen_timer  = BigParamControl("Onroad Screen Timeout", "DisableScreenTimer")
     enable_accel_bar            = BigParamControl("Enable Accel Bar", "ShowAccelBar")
+    enable_curvatured           = BigParamControl("Enable Dynamic Steering Learner", "EnableCurvatureD")
+    show_curvatured_graph       = BigParamControl("Show Dynamic Steering Learner Graph", "ShowDynamicSteeringLearnerGraph")
     
     self._scroller.add_widgets([
       enable_curvature_correction,
@@ -37,6 +39,8 @@ class ICTogglesLayoutMici(NavScroller):
       enable_dark_mode,
       enable_onroad_screen_timer,
       enable_accel_bar,
+      enable_curvatured,
+      show_curvatured_graph,
     ])
 
     # Toggle lists
@@ -53,13 +57,18 @@ class ICTogglesLayoutMici(NavScroller):
       ("DarkMode", enable_dark_mode),
       ("DisableScreenTimer", enable_onroad_screen_timer),
       ("ShowAccelBar", enable_accel_bar),
+      ("EnableCurvatureD", enable_curvatured),
+      ("ShowDynamicSteeringLearnerGraph", show_curvatured_graph),
     )
+
+    enable_curvatured.set_enabled(lambda: ui_state.is_offroad())
 
     if ui_state.params.get_bool("ShowDebugInfo"):
       gui_app.set_show_touches(True)
       gui_app.set_show_fps(True)
 
     ui_state.add_engaged_transition_callback(self._update_toggles)
+    ui_state.add_offroad_transition_callback(self._update_toggles)
 
   def _update_state(self):
     super()._update_state()
