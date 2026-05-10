@@ -42,6 +42,7 @@ class UserRequest:
   NONE = 0
   CHECK = 1
   FETCH = 2
+  FORCE_FETCH = 3
 
 class WaitTimeHelper:
   def __init__(self):
@@ -49,6 +50,7 @@ class WaitTimeHelper:
     self.user_request = UserRequest.NONE
     signal.signal(signal.SIGHUP, self.update_now)
     signal.signal(signal.SIGUSR1, self.check_now)
+    signal.signal(signal.SIGUSR2, self.force_update_now)
 
   def update_now(self, signum: int, frame) -> None:
     cloudlog.info("caught SIGHUP, attempting to downloading update")
@@ -58,6 +60,11 @@ class WaitTimeHelper:
   def check_now(self, signum: int, frame) -> None:
     cloudlog.info("caught SIGUSR1, checking for updates")
     self.user_request = UserRequest.CHECK
+    self.ready_event.set()
+
+  def force_update_now(self, signum: int, frame) -> None:
+    cloudlog.info("caught SIGUSR2, attempting forced update download")
+    self.user_request = UserRequest.FORCE_FETCH
     self.ready_event.set()
 
   def sleep(self, t: float) -> None:
@@ -359,7 +366,7 @@ class Updater:
     else:
       cloudlog.info(f"up to date on {cur_branch} ({str(cur_commit)[:7]})")
 
-  def fetch_update(self) -> None:
+  def fetch_update(self, force: bool = False) -> None:
     cloudlog.info("attempting git fetch inside staging overlay")
 
     self.params.put("UpdaterState", "downloading...")
@@ -373,7 +380,10 @@ class Updater:
     run(["git", "config", "--replace-all", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"], OVERLAY_MERGED)
 
     branch = self.target_branch
-    git_fetch_output = run(["git", "fetch", "origin", branch], OVERLAY_MERGED)
+    fetch_cmd = ["git", "fetch", "origin", branch]
+    if force:
+      fetch_cmd = ["git", "fetch", "--prune", "origin", branch]
+    git_fetch_output = run(fetch_cmd, OVERLAY_MERGED)
     cloudlog.info("git fetch success: %s", git_fetch_output)
 
     cloudlog.info("git reset in progress")
@@ -382,10 +392,22 @@ class Updater:
       ["git", "branch", "--set-upstream-to", f"origin/{branch}"],
       ["git", "reset", "--hard"],
       ["git", "clean", "-xdff"],
-      ["git", "submodule", "sync"],
-      ["git", "submodule", "update", "--init", "--recursive"],
-      ["git", "submodule", "foreach", "--recursive", "git", "reset", "--hard"],
     ]
+    if force:
+      cmds += [
+        ["git", "submodule", "sync", "--recursive"],
+        ["git", "submodule", "deinit", "--force", "--all"],
+        ["git", "clean", "-xdff"],
+        ["git", "submodule", "update", "--init", "--force", "--recursive"],
+        ["git", "submodule", "foreach", "--recursive", "git", "reset", "--hard"],
+        ["git", "submodule", "foreach", "--recursive", "git", "clean", "-xdff"],
+      ]
+    else:
+      cmds += [
+        ["git", "submodule", "sync"],
+        ["git", "submodule", "update", "--init", "--recursive"],
+        ["git", "submodule", "foreach", "--recursive", "git", "reset", "--hard"],
+      ]
     r = [run(cmd, OVERLAY_MERGED) for cmd in cmds]
     cloudlog.info("git reset success: %s", '\n'.join(r))
 
@@ -463,13 +485,13 @@ def main() -> None:
         # download update
         last_fetch = params.get("UpdaterLastFetchTime")
         timed_out = last_fetch is None or (datetime.datetime.now(datetime.UTC).replace(tzinfo=None) - last_fetch > datetime.timedelta(days=3))
-        user_requested_fetch = wait_helper.user_request == UserRequest.FETCH
+        user_requested_fetch = wait_helper.user_request in (UserRequest.FETCH, UserRequest.FORCE_FETCH)
         if params.get_bool("NetworkMetered") and not timed_out and not user_requested_fetch:
           cloudlog.info("skipping fetch, connection metered")
         elif wait_helper.user_request == UserRequest.CHECK:
           cloudlog.info("skipping fetch, only checking")
         else:
-          updater.fetch_update()
+          updater.fetch_update(force=(wait_helper.user_request == UserRequest.FORCE_FETCH))
           write_time_to_param(params, "UpdaterLastFetchTime")
         update_failed_count = 0
       except subprocess.CalledProcessError as e:

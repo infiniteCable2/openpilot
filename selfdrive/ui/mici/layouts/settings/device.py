@@ -15,7 +15,8 @@ from openpilot.selfdrive.ui.mici.onroad.driver_camera_dialog import DriverCamera
 from openpilot.selfdrive.ui.mici.layouts.onboarding import TrainingGuide, TermsPage
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
 from openpilot.system.ui.lib.multilang import tr
-from openpilot.system.ui.widgets import Widget
+from openpilot.system.ui.widgets import Widget, DialogResult
+from openpilot.system.ui.widgets.option_dialog import MultiOptionDialog
 from openpilot.selfdrive.ui.ui_state import device, ui_state
 from openpilot.system.ui.widgets.label import UnifiedLabel
 from openpilot.system.ui.widgets.html_render import HtmlModal, HtmlRenderer
@@ -167,6 +168,42 @@ class PairBigButton(BigButton):
 UPDATER_TIMEOUT = 10.0  # seconds to wait for updater to respond
 
 
+class TargetBranchBigButton(BigButton):
+  def __init__(self):
+    super().__init__("target branch", "", gui_app.texture("icons_mici/settings/device/update.png", 64, 75), scroll=True)
+    self._branch_dialog: MultiOptionDialog | None = None
+    self.set_click_callback(self._on_select_branch)
+
+  def _on_select_branch(self):
+    current_git_branch = ui_state.params.get("GitBranch") or ""
+    branches_str = ui_state.params.get("UpdaterAvailableBranches") or ""
+    branches = [b for b in branches_str.split(",") if b]
+
+    for b in [current_git_branch, "devel-staging", "devel", "nightly", "nightly-dev", "master"]:
+      if b in branches:
+        branches.remove(b)
+        branches.insert(0, b)
+
+    current_target = ui_state.params.get("UpdaterTargetBranch") or ""
+
+    def handle_selection(result: DialogResult):
+      if result == DialogResult.CONFIRM and self._branch_dialog is not None and self._branch_dialog.selection:
+        selection = self._branch_dialog.selection
+        ui_state.params.put("UpdaterTargetBranch", selection)
+        os.system("pkill -SIGUSR1 -f system.updated.updated")
+        self.set_value(selection)
+      self._branch_dialog = None
+
+    self._branch_dialog = MultiOptionDialog(tr("Select a branch"), branches, current_target, callback=handle_selection)
+    gui_app.push_widget(self._branch_dialog)
+
+  def _update_state(self):
+    super()._update_state()
+    current_branch = ui_state.params.get("UpdaterTargetBranch") or ui_state.params.get("GitBranch") or ""
+    if self.get_value() != current_branch:
+      self.set_value(current_branch)
+
+
 class UpdateOpenpilotBigButton(BigButton):
   def __init__(self):
     self._txt_update_icon = gui_app.texture("icons_mici/settings/device/update.png", 64, 75)
@@ -285,6 +322,84 @@ class UpdateOpenpilotBigButton(BigButton):
       self._waiting_for_updater_t = None
 
 
+class ForceDownloadBigButton(BigButton):
+  def __init__(self):
+    self._txt_update_icon = gui_app.texture("icons_mici/settings/device/update.png", 64, 75)
+    super().__init__("force download", "", self._txt_update_icon)
+
+    self._waiting_for_updater_t: float | None = None
+    self._hide_value_t: float | None = None
+    self._state: UpdaterState = UpdaterState.IDLE
+
+    ui_state.add_offroad_transition_callback(self.offroad_transition)
+
+  def offroad_transition(self):
+    if ui_state.is_offroad():
+      self.set_enabled(True)
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+
+    if not system_time_valid():
+      dlg = BigDialog("", tr("Please connect to Wi-Fi to update."))
+      gui_app.push_widget(dlg)
+      return
+
+    self.set_enabled(False)
+    self._state = UpdaterState.WAITING_FOR_UPDATER
+    self.set_icon(self._txt_update_icon)
+
+    def run():
+      os.system("pkill -SIGUSR2 -f system.updated.updated")
+
+    threading.Thread(target=run, daemon=True).start()
+
+  def _update_state(self):
+    super()._update_state()
+
+    if ui_state.started:
+      self.set_enabled(False)
+      return
+
+    updater_state = ui_state.params.get("UpdaterState") or ""
+
+    if self._state == UpdaterState.WAITING_FOR_UPDATER:
+      self.set_rotate_icon(True)
+      if updater_state != "idle":
+        self._state = UpdaterState.UPDATER_RESPONDING
+
+      if self._waiting_for_updater_t is None:
+        self._waiting_for_updater_t = rl.get_time()
+
+      if self._waiting_for_updater_t is not None and rl.get_time() - self._waiting_for_updater_t > UPDATER_TIMEOUT:
+        self.set_rotate_icon(False)
+        self.set_value("updater failed\nto respond")
+        self._state = UpdaterState.IDLE
+        self._hide_value_t = rl.get_time()
+
+    elif self._state == UpdaterState.UPDATER_RESPONDING:
+      if updater_state == "idle":
+        self.set_rotate_icon(False)
+        self._state = UpdaterState.IDLE
+        self._hide_value_t = rl.get_time()
+      elif self.get_value() != updater_state:
+        self.set_value(updater_state)
+
+    elif self._state == UpdaterState.IDLE:
+      self.set_rotate_icon(False)
+      self.set_enabled(True)
+
+      if self._hide_value_t is not None:
+        if rl.get_time() - self._hide_value_t > 3.0:
+          self._hide_value_t = None
+          self.set_value("")
+      elif self.get_value() != "":
+        self.set_value("")
+
+    if self._state != UpdaterState.WAITING_FOR_UPDATER:
+      self._waiting_for_updater_t = None
+
+
 class DeviceLayoutMici(NavScroller):
   def __init__(self):
     super().__init__()
@@ -340,7 +455,9 @@ class DeviceLayoutMici(NavScroller):
 
     self._scroller.add_widgets([
       DeviceInfoLayoutMici(),
+      TargetBranchBigButton(),
       UpdateOpenpilotBigButton(),
+      ForceDownloadBigButton(),
       PairBigButton(),
       review_training_guide_btn,
       driver_cam_btn,
