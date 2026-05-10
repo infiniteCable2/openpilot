@@ -410,7 +410,7 @@ class Updater:
     cloudlog.info("finalize success!")
 
   def fetch_update_force(self, branch: str) -> None:
-    git_fetch_output = run(["git", "fetch", "--prune", "origin", branch], OVERLAY_MERGED)
+    git_fetch_output = run(["git", "-c", "fetch.recurseSubmodules=false", "fetch", "--no-recurse-submodules", "--prune", "origin", branch], OVERLAY_MERGED)
     cloudlog.info("force download git fetch success: %s", git_fetch_output)
 
     def run_cmds(label: str, cmds: list[list[str]]) -> list[str]:
@@ -435,25 +435,14 @@ class Updater:
     ]
     run_cmds("force download git reset", root_cmds)
 
-    first_pass_cmds = [
-      ["git", "submodule", "sync", "--recursive"],
-      ["git", "submodule", "update", "--init", "--force", "--recursive"],
-    ]
-    second_pass_cmds = [
+    submodule_cmds = [
       ["git", "submodule", "sync", "--recursive"],
       ["git", "submodule", "update", "--init", "--force", "--recursive"],
       ["git", "submodule", "foreach", "--recursive", "git", "reset", "--hard"],
       ["git", "submodule", "foreach", "--recursive", "git", "clean", "-xdff"],
       ["git", "submodule", "update", "--init", "--force", "--recursive"],
     ]
-
-    try:
-      run_cmds("force download submodule pass 1", first_pass_cmds)
-    except subprocess.CalledProcessError as e:
-      cloudlog.warning("force download submodule pass 1 failed on %s (%s), retrying with second pass\n%s",
-                       e.cmd, e.returncode, e.output)
-
-    run_cmds("force download submodule pass 2", second_pass_cmds)
+    run_cmds("force download submodules", submodule_cmds)
 
     # TODO: show agnos download progress
     if AGNOS:
