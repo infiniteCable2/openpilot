@@ -344,6 +344,14 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       Priority.LOW, VisualAlert.steerRequired, AudibleAlert.prompt, 1.8),
   },
 
+  EventName.steerFaultWarning: {
+    ET.WARNING: Alert(
+      "Steering Fault May Be Imminent",
+      "",
+      AlertStatus.userPrompt, AlertSize.small,
+      Priority.LOW, VisualAlert.steerRequired, AudibleAlert.prompt, 1.8),
+  },
+
   EventName.driverDistracted1: {
     ET.PERMANENT: Alert(
       "Pay Attention",
