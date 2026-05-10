@@ -386,6 +386,16 @@ class Updater:
     git_fetch_output = run(fetch_cmd, OVERLAY_MERGED)
     cloudlog.info("git fetch success: %s", git_fetch_output)
 
+    if force:
+      cloudlog.info("force download: tearing down current submodule state before checkout")
+      pre_checkout_cmds = [
+        ["git", "submodule", "sync", "--recursive"],
+        ["git", "submodule", "deinit", "--force", "--all"],
+        ["git", "clean", "-xdff"],
+      ]
+      pre_checkout_results = [run(cmd, OVERLAY_MERGED) for cmd in pre_checkout_cmds]
+      cloudlog.info("force download pre-checkout success: %s", '\n'.join(pre_checkout_results))
+
     cloudlog.info("git reset in progress")
     cmds = [
       ["git", "checkout", "--force", "--no-recurse-submodules", "-B", branch, "FETCH_HEAD"],
@@ -396,11 +406,12 @@ class Updater:
     if force:
       cmds += [
         ["git", "submodule", "sync", "--recursive"],
-        ["git", "submodule", "deinit", "--force", "--all"],
-        ["git", "clean", "-xdff"],
+        ["git", "submodule", "update", "--init", "--force", "--recursive"],
+        ["git", "submodule", "sync", "--recursive"],
         ["git", "submodule", "update", "--init", "--force", "--recursive"],
         ["git", "submodule", "foreach", "--recursive", "git", "reset", "--hard"],
         ["git", "submodule", "foreach", "--recursive", "git", "clean", "-xdff"],
+        ["git", "submodule", "update", "--init", "--force", "--recursive"],
       ]
     else:
       cmds += [
