@@ -809,6 +809,7 @@ struct ControlsState @0x97ff69c53601abf1 {
   uiAccelCmd @5 :Float32;
   ufAccelCmd @33 :Float32;
   curvature @37 :Float32;  # path curvature from vehicle model
+  modelDesiredCurvature @67 :Float32;  # raw desired curvature from modelV2 before smoothing/adaptation
   desiredCurvature @61 :Float32;  # lag adjusted curvatures used by lateral controllers
   forceDecel @51 :Bool;
 
@@ -2509,7 +2510,7 @@ struct Event {
     customReserved16 @142 :Custom.CustomReserved16;
     customReserved17 @143 :Custom.CustomReserved17;
     customReserved18 @144 :Custom.CustomReserved18;
-    customReserved19 @145 :Custom.CustomReserved19;
+    liveCurvatureParameters @145 :Custom.LiveCurvatureParameters;
 
     # *********** legacy + deprecated ***********
     model @9 :Deprecated.ModelData; # TODO: rename modelV2 and mark this as deprecated

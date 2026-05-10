@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from openpilot.common.constants import CV
 from openpilot.selfdrive.ui.onroad.exp_button import ExpButton
 from openpilot.selfdrive.ui.onroad.battery_details import BatteryDetails
+from openpilot.selfdrive.ui.onroad.dynamic_steering_learner_graph import DynamicSteeringLearnerGraph
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.system.ui.lib.application import gui_app, FontWeight
 from openpilot.system.ui.lib.multilang import tr
@@ -73,6 +74,7 @@ class HudRenderer(Widget):
 
     self._exp_button: ExpButton = ExpButton(UI_CONFIG.button_size, UI_CONFIG.wheel_icon_size)
     self._battery_details = BatteryDetails()
+    self._dynamic_steering_learner_graph = DynamicSteeringLearnerGraph()
 
   def _update_state(self) -> None:
     """Update HUD state based on car state and controls state."""
@@ -121,6 +123,7 @@ class HudRenderer(Widget):
 
     button_x = rect.x + rect.width - UI_CONFIG.border_size - UI_CONFIG.button_size
     button_y = rect.y + UI_CONFIG.border_size
+    self._dynamic_steering_learner_graph.render(rect)
     self._battery_details.render(rect)
     self._exp_button.render(rl.Rectangle(button_x, button_y, UI_CONFIG.button_size, UI_CONFIG.button_size))
 
