@@ -187,8 +187,9 @@ class Controls(ControlsExt):
     self.model_desired_curvature = float(model_v2.action.desiredCurvature)
     if self.enable_smooth_steer:
       new_desired_curvature = self.smooth_steer.update(new_desired_curvature)
-    if CC.latActive and self.CP.steerControlType == car.CarParams.SteerControlType.curvatureDEPRECATED and self.enable_curvatured:
-      new_desired_curvature = self.curvatured.apply(new_desired_curvature, CS.vEgo)
+    # CurvatureD completely disabled (minimal hard-disable)
+    # if CC.latActive and self.CP.steerControlType == car.CarParams.SteerControlType.curvatureDEPRECATED and self.enable_curvatured:
+    #   new_desired_curvature = self.curvatured.apply(new_desired_curvature, CS.vEgo)
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
     lat_delay = self.sm["liveDelay"].lateralDelay + LAT_SMOOTH_SECONDS
 
