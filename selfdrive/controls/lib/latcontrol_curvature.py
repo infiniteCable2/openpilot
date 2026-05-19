@@ -4,9 +4,7 @@ import numpy as np
 from cereal import log
 from openpilot.selfdrive.controls.lib.latcontrol import LatControl
 from openpilot.common.pid import MultiplicativeUnwindPID
-from openpilot.common.filter_simple import FirstOrderFilter
-
-LAT_CURVATURE_SATURATION_ACCEL = 0.4
+LAT_CURVATURE_SATURATION_ACCEL = 0.2
 
 
 class LatControlCurvature(LatControl):
@@ -16,14 +14,10 @@ class LatControlCurvature(LatControl):
     self.pid = MultiplicativeUnwindPID((ct.kpBP, ct.kpV),
                                        (ct.kiBP, ct.kiV),
                                        k_f=ct.kf,
-                                       k_d=(ct.kdBP, ct.kdV),
                                        pos_limit=self.curvature_max, neg_limit=-self.curvature_max)
     self.useCarSteerCurvature = ct.useCarSteerCurvature
     self.curvature_correction = 0.0
     self.enable_pid = False
-
-    self.curvature_filter = FirstOrderFilter(0.0, rc=0.03, dt=dt)
-    self.filtered_curvature_prev = 0.0
 
   def set_curvature_correction(self, correction: float) -> None:
     self.curvature_correction = correction
@@ -41,8 +35,6 @@ class LatControlCurvature(LatControl):
       output_curvature = 0.0
       pid_log.active = False
       self.pid.reset()
-      self.curvature_filter.x = 0.0
-      self.filtered_curvature_prev = 0.0
     else:
       roll_compensation = -VM.roll_compensation(params.roll, CS.vEgo)
       actual_curvature_vm_no_roll = -VM.calc_curvature(math.radians(CS.steeringAngleDeg - params.angleOffsetDeg), CS.vEgo, 0.)
@@ -56,15 +48,10 @@ class LatControlCurvature(LatControl):
       desired_curvature_with_ff = desired_curvature + self.curvature_correction
 
       if self.enable_pid:
-        self.curvature_filter.update(float(actual_curvature))
-        d_actual_curvature_dt = (self.curvature_filter.x - self.filtered_curvature_prev) / self.dt
-        self.filtered_curvature_prev = self.curvature_filter.x
-        error_rate = -d_actual_curvature_dt
-
         pid_log.error = float(desired_curvature - actual_curvature)
         freeze_integrator = steer_limited_by_safety or CS.vEgo < 5 or CS.steeringPressed
 
-        pid_curvature = self.pid.update(pid_log.error, error_rate=error_rate, speed=CS.vEgo,
+        pid_curvature = self.pid.update(pid_log.error, speed=CS.vEgo,
                                         feedforward=desired_curvature_with_ff,
                                         freeze_integrator=freeze_integrator, override=CS.steeringPressed)
       else:
