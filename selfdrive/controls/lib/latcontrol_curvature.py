@@ -36,7 +36,7 @@ class LatControlCurvature(LatControl):
     self.pid.reset()
 
   def update(self, active, CS, VM, params, steer_limited_by_safety, desired_curvature, calibrated_pose, curvature_limited, lat_delay):
-    pid_log = log.Deprecated.LateralCurvatureState.new_message()
+    pid_log = log.ControlsState.LateralCurvatureState.new_message()
     if not active:
       output_curvature = 0.0
       pid_log.active = False
