@@ -101,7 +101,8 @@ class Controls(ControlsExt):
     if self.param_counter >= 100:
       self.param_counter = 0
       self.enable_curvature_controller = self.params.get_bool("EnableCurvatureController")
-      self.enable_curvatured = self.params.get_bool("EnableCurvatureD")
+      if self.CP.steerControlType == car.CarParams.SteerControlType.curvatureDEPRECATED:
+        self.LaC.set_pid_enabled(self.enable_curvature_controller)
       self.enable_smooth_steer = self.params.get_bool("EnableSmoothSteer")
       self.enable_speed_limit_control = self.params.get_bool("EnableSpeedLimitControl")
       self.enable_speed_limit_predicative = self.params.get_bool("EnableSpeedLimitPredicative")
