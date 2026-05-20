@@ -46,21 +46,22 @@ class LatControlCurvature(LatControl):
         actual_curvature_pose = calibrated_pose.angular_velocity.yaw / max(CS.vEgo, 0.1)
         actual_curvature = np.interp(CS.vEgo, [2.0, 5.0], [actual_curvature_vm, actual_curvature_pose])
 
-      desired_curvature_with_ff = desired_curvature + self.curvature_correction
+      desired_curvature_eff = desired_curvature + self.curvature_correction
+      feedforward = desired_curvature_eff - roll_compensation
 
       if self.enable_pid:
-        pid_log.error = float(desired_curvature_with_ff - actual_curvature)
+        pid_log.error = float(desired_curvature_eff - actual_curvature)
         freeze_integrator = steer_limited_by_safety or CS.vEgo < 5 or CS.steeringPressed
 
         pid_curvature = self.pid.update(pid_log.error, speed=CS.vEgo,
-                                        feedforward=desired_curvature_with_ff,
+                                        feedforward=feedforward,
                                         freeze_integrator=freeze_integrator, override=CS.steeringPressed)
       else:
-        pid_curvature = desired_curvature_with_ff
-        pid_log.error = float(desired_curvature_with_ff - actual_curvature)
+        pid_curvature = feedforward
+        pid_log.error = float(desired_curvature_eff - actual_curvature)
         pid_log.p = 0.0
         pid_log.i = 0.0
-        pid_log.f = float(desired_curvature_with_ff)
+        pid_log.f = float(feedforward)
 
       output_curvature = pid_curvature + (CS.steeringCurvature - actual_curvature_vm_no_roll) if self.useCarSteerCurvature else pid_curvature
 
