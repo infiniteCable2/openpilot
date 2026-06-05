@@ -916,11 +916,10 @@ def main():
     # Cache params every 60 seconds
     if sm.frame % 240 == 0:
       live_valid = sm.all_checks() and curvature_estimator.use_params
-      params.put_nonblocking("LiveCurvatureParameters",
-                             curvature_estimator.get_msg(valid=sm.all_checks(),
-                                                         live_valid=live_valid,
-                                                         include_debug=True,
-                                                         include_preview=False).to_bytes())
+      params.put("LiveCurvatureParameters", curvature_estimator.get_msg(valid=sm.all_checks(),
+                                                                        live_valid=live_valid,
+                                                                        include_debug=True,
+                                                                        include_preview=False).to_bytes())
 
 
 if __name__ == "__main__":

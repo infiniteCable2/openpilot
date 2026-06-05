@@ -217,6 +217,6 @@ class ICTogglesLayout(Widget):
     self._scroller.render(rect)
 
   def _toggle_callback(self, state: bool, param: str):
-    self._params.put_bool(param, state)
+    self._params.put_bool(param, state, block=True)
     if self._toggle_defs[param][3]:
-      self._params.put_bool("OnroadCycleRequested", True)
+      self._params.put_bool("OnroadCycleRequested", True, block=True)
