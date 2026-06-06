@@ -68,9 +68,9 @@ class CurvatureDLookup:
   LAST_BUCKET_WIDTH = float(CURVATURE_BUCKET_EDGES[-1] - CURVATURE_BUCKET_EDGES[-2])
   CURVATURE_MAX = CURVATURE_BUCKET_MAX + LAST_BUCKET_WIDTH
 
-  # Precomputed constant for sample interpolation (Befund 5: avoid recomputing np.log on every call)
+  # Precomputed log of bucket centers for sample interpolation. Avoids recomputing
+  # np.log on every interp_curve_value / _interp_curve_impl call.
   _LOG_CENTERS = np.log(CURVATURE_BUCKET_CENTERS.astype(np.float64))
-  _LOG_BUCKET_MIN = float(np.log(max(CURVATURE_BUCKET_MIN, 1e-12)))
 
   MIN_SPEED = float(SPEED_ANCHORS[0] * 0.5)  # learning/apply speed floor
   MAX_LAT_ACCEL_APPLY = 1.0  # apply accel gate

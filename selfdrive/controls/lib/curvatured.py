@@ -2,6 +2,13 @@ import numpy as np
 
 from openpilot.selfdrive.locationd.curvatured import CurvatureDLookup, VERSION
 
+# Cache granularity for get_correction(). Inputs are rounded before comparison so that
+# sensor noise (typically ~0.001 m/s on v_ego, ~1e-9 on curvature) does not invalidate
+# the cache between consecutive 100Hz calls. The chosen values are well below steering
+# precision but ~10x larger than typical sensor noise.
+CACHE_V_EGO_DECIMALS = 2        # 0.01 m/s, ~0.04 km/h
+CACHE_CURVATURE_DECIMALS = 7    # sub-cm radius precision
+
 
 class CurvatureDController(CurvatureDLookup):
   def __init__(self) -> None:
@@ -12,10 +19,6 @@ class CurvatureDController(CurvatureDLookup):
     self.live_valid = False
     self.fit_corrections = np.zeros(self.bucket_shape(), dtype=np.float32)
     self.fit_valid = np.zeros(self.bucket_shape(), dtype=bool)
-    # Cache state for get_correction(): avoids recomputing the (vectorized) interpolation
-    # when the (v_ego, abs_curvature) inputs are stable across consecutive 100Hz calls.
-    # Quantization: v_ego rounded to 0.01 m/s (~0.04 km/h), abs_curvature to 1e-7 (~sub-cm radius).
-    # These levels are well below steering precision but high enough to ride out sensor noise.
     self._cached_v_ego_q: float | None = None
     self._cached_curvature_q: float | None = None
     self._cached_projected: float = 0.0
@@ -39,7 +42,6 @@ class CurvatureDController(CurvatureDLookup):
       self.reset()
       return
 
-    # fit_corrections / fit_valid just changed; previous cached correction is now stale.
     self._invalidate_correction_cache()
 
   def _invalidate_correction_cache(self) -> None:
@@ -57,9 +59,8 @@ class CurvatureDController(CurvatureDLookup):
     if abs_curvature * (float(v_ego) ** 2) > self.MAX_LAT_ACCEL_APPLY:
       return 0.0
 
-    # Quantize inputs to ride out sensor noise. Both round() operations are O(1).
-    v_ego_q = round(v_ego, 2)
-    curvature_q = round(abs_curvature, 7)
+    v_ego_q = round(v_ego, CACHE_V_EGO_DECIMALS)
+    curvature_q = round(abs_curvature, CACHE_CURVATURE_DECIMALS)
     if v_ego_q == self._cached_v_ego_q and curvature_q == self._cached_curvature_q:
       projected = self._cached_projected
     else:

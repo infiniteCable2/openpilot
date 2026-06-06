@@ -88,10 +88,11 @@ class DynamicSteeringLearnerGraphMici(Widget):
                          v_ego: float) -> tuple[np.ndarray, np.ndarray, float, float]:
     if lcp_frame != self._cached_lcp_frame:
       abs_curvatures = np.abs(self._plot_x).astype(np.float64)
-      # Cached across UI frames; recomputes only when liveCurvatureParameters changes (4Hz).
+      # Recomputes only when liveCurvatureParameters changes (4Hz); cached across UI frames.
       self._cached_fit_curve = CurvatureDLookup.interp_curve_value(
         fit_corrections, fit_valid, v_ego, abs_curvatures
       )
+      # Preview is only populated when ShowDynamicSteeringLearnerGraph is on.
       has_preview = preview_corrections.shape == fit_corrections.shape and np.any(preview_corrections)
       if has_preview:
         self._cached_preview_curve = CurvatureDLookup.interp_curve_value(

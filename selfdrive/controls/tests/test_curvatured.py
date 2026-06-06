@@ -1,6 +1,6 @@
 import cereal.messaging as messaging
 
-from openpilot.selfdrive.controls.lib.curvatured import CurvatureDController
+from openpilot.selfdrive.controls.lib.curvatured import CACHE_CURVATURE_DECIMALS, CACHE_V_EGO_DECIMALS, CurvatureDController
 from openpilot.selfdrive.locationd.curvatured import CurvatureDLookup, VERSION
 
 
@@ -192,13 +192,15 @@ class TestCurvatureDController:
         assert cached == first
       assert call_count["n"] == 1
 
-      # v_ego noise below quantization (0.01 m/s) must still hit the cache
-      noised = controller.get_correction(32e-6, v_ego + 0.005)
+      # v_ego noise below quantization must still hit the cache
+      v_ego_step = 10 ** -CACHE_V_EGO_DECIMALS
+      noised = controller.get_correction(32e-6, v_ego + v_ego_step * 0.5)
       assert noised == first
       assert call_count["n"] == 1
 
-      # Curvature noise below quantization (1e-7) must still hit the cache
-      noised = controller.get_correction(32e-6 + 5e-8, v_ego)
+      # Curvature noise below quantization must still hit the cache
+      curvature_step = 10 ** -CACHE_CURVATURE_DECIMALS
+      noised = controller.get_correction(32e-6 + curvature_step * 0.5, v_ego)
       assert noised == first
       assert call_count["n"] == 1
     finally:

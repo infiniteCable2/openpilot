@@ -382,26 +382,34 @@ class TestCurvatureEstimator:
       assert np.isclose(scalar_result, array_result[0]), f"mismatch at c={c}: scalar={scalar_result}, array={array_result[0]}"
 
   def test_interp_curve_value_handles_speed_interp_transition(self):
-    """Ensure interp_curve_value still does the (1-alpha)*low + alpha*high blend
-    when low_speed != high_speed, since it's now routed through interp_curve_samples.
+    """When v_ego falls between two SPEED_ANCHORS, interp_curve_value must blend
+    the two speed buckets with weight (1-alpha, alpha). This exercises the speed
+    blending path that the vectorized impl shares with the scalar path.
     """
-    v_ego_low = float(CurvatureDLookup.SPEED_ANCHORS[0]) + 0.1
-    v_ego_high = float(CurvatureDLookup.SPEED_ANCHORS[-1]) - 0.1
-    v_ego_mid = 0.5 * (float(CurvatureDLookup.SPEED_ANCHORS[2]) + float(CurvatureDLookup.SPEED_ANCHORS[3]))
-
     fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
     fit_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
 
+    # Use a value per speed_idx that is easy to verify after blending.
+    per_speed_value = 1.0e-5 * np.arange(1, len(CurvatureDLookup.SPEED_ANCHORS) + 1, dtype=np.float32)
     for s in range(len(CurvatureDLookup.SPEED_ANCHORS)):
       fit_valid[s, 5] = True
-      fit_corrections[s, 5] = 1.0e-5 * (s + 1)
+      fit_corrections[s, 5] = per_speed_value[s]
 
     c = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[5])
-    # At boundary v_egos the result is just one speed bucket
-    val_low = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego_low, c)
-    val_high = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego_high, c)
-    val_mid = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego_mid, c)
 
-    # The mid value must lie between the two boundary values (interpolation property)
-    lo, hi = sorted([val_low, val_high])
-    assert lo <= val_mid <= hi, f"mid={val_mid} not in [{lo}, {hi}]"
+    # At v_ego exactly at a SPEED_ANCHOR, alpha=0 -> only the low bucket contributes.
+    v_ego_at_anchor = float(CurvatureDLookup.SPEED_ANCHORS[3])
+    expected_at_anchor = float(per_speed_value[3])
+    val = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego_at_anchor, c)
+    assert np.isclose(val, expected_at_anchor), f"at anchor: {val} != {expected_at_anchor}"
+
+    # Midpoint between two anchors: alpha=0.5 -> exact 50/50 blend.
+    v_ego_mid = 0.5 * (float(CurvatureDLookup.SPEED_ANCHORS[2]) + float(CurvatureDLookup.SPEED_ANCHORS[3]))
+    expected_mid = 0.5 * (float(per_speed_value[2]) + float(per_speed_value[3]))
+    val = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego_mid, c)
+    assert np.isclose(val, expected_mid, rtol=1e-6), f"at midpoint: {val} != {expected_mid}"
+
+    # General position: verify the explicit (1-alpha) * low + alpha * high formula.
+    low, high, alpha = CurvatureDLookup.speed_interp(v_ego_mid)
+    expected = (1.0 - alpha) * float(per_speed_value[low]) + alpha * float(per_speed_value[high])
+    assert np.isclose(val, expected, rtol=1e-6), f"blend formula: {val} != {expected}"
