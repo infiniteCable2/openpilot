@@ -72,7 +72,10 @@ class TestCurvatureDController:
     assert neg < 0.0
     assert abs(pos + neg) < 1e-12
 
-  def test_invalid_message_disables_corrections(self):
+  def test_live_valid_false_disables_corrections(self):
+    """When the message's liveValid flag is False, get_correction must return 0.0
+    regardless of any cached state, since the upstream signal is invalid.
+    """
     controller = CurvatureDController()
     msg = messaging.new_message('liveCurvatureParameters')
     msg.liveCurvatureParameters.liveValid = False
@@ -86,6 +89,53 @@ class TestCurvatureDController:
     controller.update_live_params(msg.liveCurvatureParameters)
 
     # Without a learnable curve and no live_valid, get_correction returns 0.0.
+    assert controller.get_correction(32e-6, 20.0) == 0.0
+
+  def test_version_mismatch_resets_controller(self):
+    """A message with the wrong version number must trigger a full reset, not
+    a partial state update. This is the actual 'invalid message' path.
+    """
+    controller = CurvatureDController()
+    msg = messaging.new_message('liveCurvatureParameters')
+    msg.liveCurvatureParameters.liveValid = True
+    msg.liveCurvatureParameters.version = VERSION + 99  # intentionally wrong
+    msg.liveCurvatureParameters.useParams = True
+    msg.liveCurvatureParameters.corrections = [0.0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.counts = [0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.biases = [0.0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.fitValid = [False] * CurvatureDLookup.total_size()
+
+    # Pretend we had a valid state before the bad message
+    controller.use_params = True
+    controller.live_valid = True
+
+    controller.update_live_params(msg.liveCurvatureParameters)
+
+    # Bad version -> full reset -> both flags back to False
+    assert not controller.use_params
+    assert not controller.live_valid
+    assert controller.get_correction(32e-6, 20.0) == 0.0
+
+  def test_size_mismatch_resets_controller(self):
+    """A message with the wrong corrections array size must also trigger a full reset."""
+    controller = CurvatureDController()
+    msg = messaging.new_message('liveCurvatureParameters')
+    msg.liveCurvatureParameters.liveValid = True
+    msg.liveCurvatureParameters.version = VERSION
+    msg.liveCurvatureParameters.useParams = True
+    # Wrong size (1 element instead of total_size())
+    msg.liveCurvatureParameters.corrections = [0.0]
+    msg.liveCurvatureParameters.counts = [0]
+    msg.liveCurvatureParameters.biases = [0.0]
+    msg.liveCurvatureParameters.fitValid = [False]
+
+    controller.use_params = True
+    controller.live_valid = True
+
+    controller.update_live_params(msg.liveCurvatureParameters)
+
+    assert not controller.use_params
+    assert not controller.live_valid
     assert controller.get_correction(32e-6, 20.0) == 0.0
 
   def test_correction_fades_outside_supported_curvature_range(self):
