@@ -341,3 +341,123 @@ class TestCurvatureEstimator:
 
     assert estimator.steering_pressed[-1]
     assert estimator.last_override_t == 12.0
+
+  def test_interp_curve_value_matches_interp_curve_samples(self):
+    """Verifies the unified interp_curve_value API returns the same result for
+    scalar and array input, and that both branches share the same code path.
+    This protects both UI and controlsd (100Hz) code paths from drift.
+    """
+    speed_idx = 3
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[speed_idx])
+    fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    fit_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
+
+    # Two valid runs with a gap
+    fit_valid[speed_idx, 3] = True
+    fit_valid[speed_idx, 6] = True
+    fit_corrections[speed_idx, 3] = 1.0e-6
+    fit_corrections[speed_idx, 6] = 8.0e-6
+
+    # Test points covering: out of range, in valid run, in gap (returns 0), fade regions
+    test_curvatures = [
+      0.0,
+      1.0e-7,
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[2]),  # before first valid run (fade-in)
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[3]),  # in first run
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[4]),  # in gap (should be 0)
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[6]),  # in second run
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[7]),  # after second run (fade-out)
+      float(CurvatureDLookup.CURVATURE_MAX + 1.0),  # out of range
+    ]
+
+    for c in test_curvatures:
+      scalar_result = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, c)
+      array_result = CurvatureDLookup.interp_curve_value(
+        fit_corrections, fit_valid, v_ego, np.asarray([c], dtype=np.float64)
+      )
+      # Scalar path returns float
+      assert isinstance(scalar_result, float)
+      # Array path returns np.ndarray
+      assert isinstance(array_result, np.ndarray)
+      assert np.isclose(scalar_result, array_result[0]), f"mismatch at c={c}: scalar={scalar_result}, array={array_result[0]}"
+
+  def test_interp_curve_value_handles_speed_interp_transition(self):
+    """When v_ego falls between two SPEED_ANCHORS, interp_curve_value must blend
+    the two speed buckets with weight (1-alpha, alpha). This exercises the speed
+    blending path that the vectorized impl shares with the scalar path.
+    """
+    fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    fit_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
+
+    # Use a value per speed_idx that is easy to verify after blending.
+    per_speed_value = 1.0e-5 * np.arange(1, len(CurvatureDLookup.SPEED_ANCHORS) + 1, dtype=np.float32)
+    for s in range(len(CurvatureDLookup.SPEED_ANCHORS)):
+      fit_valid[s, 5] = True
+      fit_corrections[s, 5] = per_speed_value[s]
+
+    c = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[5])
+
+    # At v_ego exactly at a SPEED_ANCHOR, alpha=0 -> only the low bucket contributes.
+    v_ego_at_anchor = float(CurvatureDLookup.SPEED_ANCHORS[3])
+    expected_at_anchor = float(per_speed_value[3])
+    val = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego_at_anchor, c)
+    assert np.isclose(val, expected_at_anchor), f"at anchor: {val} != {expected_at_anchor}"
+
+    # Midpoint between two anchors: alpha=0.5 -> exact 50/50 blend.
+    v_ego_mid = 0.5 * (float(CurvatureDLookup.SPEED_ANCHORS[2]) + float(CurvatureDLookup.SPEED_ANCHORS[3]))
+    expected_mid = 0.5 * (float(per_speed_value[2]) + float(per_speed_value[3]))
+    val = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego_mid, c)
+    assert np.isclose(val, expected_mid, rtol=1e-6), f"at midpoint: {val} != {expected_mid}"
+
+    # General position: verify the explicit (1-alpha) * low + alpha * high formula.
+    low, high, alpha = CurvatureDLookup.speed_interp(v_ego_mid)
+    expected = (1.0 - alpha) * float(per_speed_value[low]) + alpha * float(per_speed_value[high])
+    assert np.isclose(val, expected, rtol=1e-6), f"blend formula: {val} != {expected}"
+
+  def test_exceeds_safety_bounds(self):
+    """Centralized safety check used by both controller.get_correction and
+    CurvatureEstimator._update_current_lookup.
+    """
+    # In-range curvature is safe
+    assert not CurvatureDLookup._exceeds_safety_bounds(1.0e-5, 20.0)
+
+    # Below CURVATURE_MIN -> exceed
+    assert CurvatureDLookup._exceeds_safety_bounds(-1.0, 20.0)
+
+    # Above CURVATURE_MAX -> exceed
+    assert CurvatureDLookup._exceeds_safety_bounds(CurvatureDLookup.CURVATURE_MAX + 1.0, 20.0)
+
+    # abs_curvature * v_ego^2 > MAX_LAT_ACCEL_APPLY (1.0 m/s^2) -> exceed
+    # v=20 m/s, c=3e-3 -> 3e-3 * 400 = 1.2 > 1.0
+    assert CurvatureDLookup._exceeds_safety_bounds(3.0e-3, 20.0)
+
+    # At the boundary, exactly at the limit: 2.5e-3 * 400 = 1.0, must NOT exceed (strict >)
+    assert not CurvatureDLookup._exceeds_safety_bounds(2.5e-3, 20.0)
+
+  def test_update_current_lookup_respects_safety_bounds(self):
+    """Ensure the published current_correction is 0.0 when the requested
+    curvature would exceed the lateral acceleration limit, not just when the
+    curvature is out of bucket range.
+    """
+    estimator = get_estimator()
+    estimator.use_params = True
+    estimator.update_use_params(force=True)
+
+    # Populate fit_corrections and fit_valid so we can isolate the safety check
+    estimator.fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    estimator.fit_valid = np.ones(CurvatureDLookup.bucket_shape(), dtype=bool)
+
+    # Inputs within the bucket range but exceeding the lateral-accel cap:
+    # 3e-3 * 20^2 = 1.2 m/s^2, above 1.0 m/s^2 limit
+    estimator._update_current_lookup(3.0e-3, 20.0)
+    assert estimator.current_correction == 0.0
+
+    # Inputs at exactly the limit: 2.5e-3 * 20^2 = 1.0, must not exceed
+    estimator._update_current_lookup(2.5e-3, 20.0)
+    # Not necessarily zero here (correction is small at the limit), but must be finite
+    assert np.isfinite(estimator.current_correction)
+
+    # use_params = False forces 0.0 even if all other conditions would allow a value
+    estimator.use_params = False
+    estimator._update_current_lookup(1.0e-4, 20.0)
+    assert estimator.current_correction == 0.0

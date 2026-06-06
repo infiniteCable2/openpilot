@@ -194,12 +194,13 @@ class ICTogglesLayout(Widget):
     self._update_toggles()
 
   def _update_toggles(self):
+    # Use ui_state's params cache (refreshed in own thread at 5Hz) to avoid extra IPC roundtrips
     ui_state.update_params()
 
     # TODO: make a param control list item so we don't need to manage internal state as much here
     # refresh toggles from params to mirror external changes
     for param in self._toggle_defs:
-      self._toggles[param].action_item.set_state(self._params.get_bool(param))
+      self._toggles[param].action_item.set_state(ui_state.params.get_bool(param))
 
     # these toggles need restart, block while engaged
     for toggle_def in self._toggle_defs:
@@ -217,6 +218,6 @@ class ICTogglesLayout(Widget):
     self._scroller.render(rect)
 
   def _toggle_callback(self, state: bool, param: str):
-    self._params.put_bool(param, state, block=True)
+    self._params.put_bool(param, state)
     if self._toggle_defs[param][3]:
-      self._params.put_bool("OnroadCycleRequested", True, block=True)
+      self._params.put_bool("OnroadCycleRequested", True)

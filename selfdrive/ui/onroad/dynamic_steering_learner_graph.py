@@ -96,14 +96,17 @@ class DynamicSteeringLearnerGraph(Widget):
                          fit_corrections: np.ndarray, fit_valid: np.ndarray,
                          v_ego: float) -> tuple[np.ndarray, np.ndarray, float, float]:
     if lcp_frame != self._cached_lcp_frame:
-      self._cached_preview_curve = np.array([
-        CurvatureDLookup.interp_curve_value(preview_corrections, preview_valid, v_ego, abs(float(k)))
-        for k in self._plot_x
-      ], dtype=np.float32)
-      self._cached_fit_curve = np.array([
-        CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, abs(float(k)))
-        for k in self._plot_x
-      ], dtype=np.float32)
+      abs_curvatures = np.abs(self._plot_x).astype(np.float64)
+      # Recomputes only when liveCurvatureParameters changes (4Hz); cached across UI frames.
+      self._cached_fit_curve = CurvatureDLookup.interp_curve_value(
+        fit_corrections, fit_valid, v_ego, abs_curvatures
+      )
+      # Preview is only populated when ShowDynamicSteeringLearnerGraph is on.
+      has_preview = preview_corrections.shape == fit_corrections.shape and np.any(preview_corrections)
+      if has_preview:
+        self._cached_preview_curve = CurvatureDLookup.interp_curve_value(
+          preview_corrections, preview_valid, v_ego, abs_curvatures
+        )
       self._cached_min_y, self._cached_max_y = self._compute_y_bounds(self._cached_preview_curve, self._cached_fit_curve)
       self._cached_lcp_frame = lcp_frame
 
@@ -117,23 +120,18 @@ class DynamicSteeringLearnerGraph(Widget):
     if sm.recv_frame["carState"] < ui_state.started_frame or sm.recv_frame["controlsState"] < ui_state.started_frame:
       return
 
-    battery_line_height = int(BATTERY_CONFIG.line_height * BATTERY_CONFIG.scale_factor)
-    battery_panel_height = battery_line_height * 4
-    battery_panel_margin = BATTERY_CONFIG.panel_margin
-    graph_bottom = rect.y + rect.height - CONFIG.bottom_gap_to_battery - battery_panel_height - battery_panel_margin
-    graph_top = rect.y + CONFIG.speed_display_bottom_y + CONFIG.top_gap_to_speed
-    graph_height = max(CONFIG.height, int(graph_bottom - graph_top))
-    graph_width = int(graph_height * CONFIG.aspect_ratio)
+    # When curvatured is not running for this car, render a placeholder instead of
+    # doing any interpolation work.
+    lcp = sm["liveCurvatureParameters"]
+    if not bool(getattr(lcp, "useParams", False)):
+      graph_rect = self._build_graph_rect(rect)
+      rl.draw_rectangle_rounded(graph_rect, 0.08, 8, self._panel_bg)
+      self._draw_title_only(graph_rect)
+      return
 
-    graph_rect = rl.Rectangle(
-      rect.x + rect.width - graph_width - battery_panel_margin,
-      graph_bottom - graph_height,
-      graph_width,
-      graph_height,
-    )
+    graph_rect = self._build_graph_rect(rect)
     rl.draw_rectangle_rounded(graph_rect, 0.08, 8, self._panel_bg)
 
-    lcp = sm["liveCurvatureParameters"]
     lcp_frame = sm.recv_frame["liveCurvatureParameters"]
     controls_state = sm["controlsState"]
     car_state = sm["carState"]
@@ -169,6 +167,30 @@ class DynamicSteeringLearnerGraph(Widget):
     )
     self._draw_overlay_info(graph_rect, lcp, float(car_state.vEgo), float(controls_state.modelDesiredCurvature),
                             fit_corrections, fit_valid, min_y, max_y, transport_valid, payload_valid)
+
+  def _build_graph_rect(self, rect: rl.Rectangle) -> rl.Rectangle:
+    """Compute the on-screen rectangle for the dynamic steering learner panel."""
+    battery_line_height = int(BATTERY_CONFIG.line_height * BATTERY_CONFIG.scale_factor)
+    battery_panel_height = battery_line_height * 4
+    battery_panel_margin = BATTERY_CONFIG.panel_margin
+    graph_bottom = rect.y + rect.height - CONFIG.bottom_gap_to_battery - battery_panel_height - battery_panel_margin
+    graph_top = rect.y + CONFIG.speed_display_bottom_y + CONFIG.top_gap_to_speed
+    graph_height = max(CONFIG.height, int(graph_bottom - graph_top))
+    graph_width = int(graph_height * CONFIG.aspect_ratio)
+    return rl.Rectangle(
+      rect.x + rect.width - graph_width - battery_panel_margin,
+      graph_bottom - graph_height,
+      graph_width,
+      graph_height,
+    )
+
+  def _draw_title_only(self, graph_rect: rl.Rectangle) -> None:
+    """Draw the panel title when no live curve data is available."""
+    title_size = min(42, max(34, int(graph_rect.height * 0.095)))
+    text_x = float(graph_rect.x + CONFIG.padding)
+    title_y = float(graph_rect.y + 12)
+    rl.draw_text_ex(self._font_bold, "Dynamic Steering Learner", rl.Vector2(text_x, title_y),
+                    title_size, 0, self._text_color)
 
   def _draw_plot(self, plot_rect: rl.Rectangle,
                  preview_curve: np.ndarray, corrections: np.ndarray,
