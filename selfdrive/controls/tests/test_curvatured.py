@@ -85,7 +85,8 @@ class TestCurvatureDController:
 
     controller.update_live_params(msg.liveCurvatureParameters)
 
-    assert controller.apply(32e-6, 20.0) == 32e-6
+    # Without a learnable curve and no live_valid, get_correction returns 0.0.
+    assert controller.get_correction(32e-6, 20.0) == 0.0
 
   def test_correction_fades_outside_supported_curvature_range(self):
     controller = CurvatureDController()

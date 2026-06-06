@@ -399,11 +399,25 @@ class CurvatureDLookup:
     was_scalar = abs_curvatures.ndim == 0
     if was_scalar:
       abs_curvatures = abs_curvatures.reshape(1)
-    if was_scalar and (abs_curvatures[0] < cls.CURVATURE_MIN or abs_curvatures[0] > cls.CURVATURE_MAX):
+    if was_scalar and cls._exceeds_safety_bounds(abs_curvatures[0], float(v_ego)):
       return 0.0
 
     result = cls._interp_curve_impl(fit_corrections, fit_valid, v_ego, abs_curvatures)
     return float(result[0]) if was_scalar else result
+
+  @classmethod
+  def _exceeds_safety_bounds(cls, abs_curvature: float, v_ego: float) -> bool:
+    """Single source of truth for the physical safety bounds.
+
+    Returns True if the requested curvature should not be applied because
+    it would exceed the per-vehicle lateral acceleration limit or is
+    outside the learned bucket range.
+    """
+    if abs_curvature < cls.CURVATURE_MIN or abs_curvature > cls.CURVATURE_MAX:
+      return True
+    if abs_curvature * (float(v_ego) ** 2) > cls.MAX_LAT_ACCEL_APPLY:
+      return True
+    return False
 
   @classmethod
   def _interp_curve_impl(cls, fit_corrections: np.ndarray, fit_valid: np.ndarray,
@@ -800,7 +814,13 @@ class CurvatureEstimator(CurvatureDLookup):
     self.current_bias = float(self.bias[speed_idx, curvature_idx])
     self.current_bucket_points = self.bucket_points_for_index(self.counts, idx)
 
+    if not self.use_params:
+      self.current_correction = 0.0
+      return
     if not self.fit_valid[speed_idx].any():
+      self.current_correction = 0.0
+      return
+    if self._exceeds_safety_bounds(abs(float(desired_curvature)), float(v_ego)):
       self.current_correction = 0.0
       return
 
@@ -957,7 +977,8 @@ def main():
                                           include_debug=curvature_estimator.publish_debug_data,
                                           include_preview=curvature_estimator.publish_preview_data))
 
-    # Cache params every 60 seconds
+    # Persistence is non-blocking by default (Params.put with block=False).
+    # We do this every 60s and accept the rare latency if the disk stalls.
     if sm.frame % 240 == 0:
       live_valid = sm.all_checks() and curvature_estimator.use_params
       params.put("LiveCurvatureParameters", curvature_estimator.get_msg(valid=sm.all_checks(),

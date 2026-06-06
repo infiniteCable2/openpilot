@@ -413,3 +413,51 @@ class TestCurvatureEstimator:
     low, high, alpha = CurvatureDLookup.speed_interp(v_ego_mid)
     expected = (1.0 - alpha) * float(per_speed_value[low]) + alpha * float(per_speed_value[high])
     assert np.isclose(val, expected, rtol=1e-6), f"blend formula: {val} != {expected}"
+
+  def test_exceeds_safety_bounds(self):
+    """Centralized safety check used by both controller.get_correction and
+    CurvatureEstimator._update_current_lookup.
+    """
+    # In-range curvature is safe
+    assert not CurvatureDLookup._exceeds_safety_bounds(1.0e-5, 20.0)
+
+    # Below CURVATURE_MIN -> exceed
+    assert CurvatureDLookup._exceeds_safety_bounds(-1.0, 20.0)
+
+    # Above CURVATURE_MAX -> exceed
+    assert CurvatureDLookup._exceeds_safety_bounds(CurvatureDLookup.CURVATURE_MAX + 1.0, 20.0)
+
+    # abs_curvature * v_ego^2 > MAX_LAT_ACCEL_APPLY (1.0 m/s^2) -> exceed
+    # v=20 m/s, c=3e-3 -> 3e-3 * 400 = 1.2 > 1.0
+    assert CurvatureDLookup._exceeds_safety_bounds(3.0e-3, 20.0)
+
+    # At the boundary, exactly at the limit: 2.5e-3 * 400 = 1.0, must NOT exceed (strict >)
+    assert not CurvatureDLookup._exceeds_safety_bounds(2.5e-3, 20.0)
+
+  def test_update_current_lookup_respects_safety_bounds(self):
+    """Ensure the published current_correction is 0.0 when the requested
+    curvature would exceed the lateral acceleration limit, not just when the
+    curvature is out of bucket range.
+    """
+    estimator = get_estimator()
+    estimator.use_params = True
+    estimator.update_use_params(force=True)
+
+    # Populate fit_corrections and fit_valid so we can isolate the safety check
+    estimator.fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    estimator.fit_valid = np.ones(CurvatureDLookup.bucket_shape(), dtype=bool)
+
+    # Inputs within the bucket range but exceeding the lateral-accel cap:
+    # 3e-3 * 20^2 = 1.2 m/s^2, above 1.0 m/s^2 limit
+    estimator._update_current_lookup(3.0e-3, 20.0)
+    assert estimator.current_correction == 0.0
+
+    # Inputs at exactly the limit: 2.5e-3 * 20^2 = 1.0, must not exceed
+    estimator._update_current_lookup(2.5e-3, 20.0)
+    # Not necessarily zero here (correction is small at the limit), but must be finite
+    assert np.isfinite(estimator.current_correction)
+
+    # use_params = False forces 0.0 even if all other conditions would allow a value
+    estimator.use_params = False
+    estimator._update_current_lookup(1.0e-4, 20.0)
+    assert estimator.current_correction == 0.0

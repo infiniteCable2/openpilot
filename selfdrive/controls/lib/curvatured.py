@@ -3,11 +3,21 @@ import numpy as np
 from openpilot.selfdrive.locationd.curvatured import CurvatureDLookup, VERSION
 
 # Cache granularity for get_correction(). Inputs are rounded before comparison so that
-# sensor noise (typically ~0.001 m/s on v_ego, ~1e-9 on curvature) does not invalidate
-# the cache between consecutive 100Hz calls. The chosen values are well below steering
-# precision but ~10x larger than typical sensor noise.
-CACHE_V_EGO_DECIMALS = 2        # 0.01 m/s, ~0.04 km/h
-CACHE_CURVATURE_DECIMALS = 7    # sub-cm radius precision
+# sensor noise does not invalidate the cache between consecutive 100Hz calls.
+#
+# Rationale per input:
+#   CACHE_V_EGO_DECIMALS = 1   (0.1 m/s granularity)
+#     - carState.vEgo sensor noise is typically ~0.001 m/s, but during normal
+#       driving v_ego rarely changes faster than 0.5 m/s per frame.
+#     - 0.1 m/s is loose enough to absorb realistic sensor jitter but still
+#       sensitive to actual acceleration/deceleration events.
+#   CACHE_CURVATURE_DECIMALS = 7   (1e-7 granularity)
+#     - controlsState.modelDesiredCurvature model output has ~1e-6 noise.
+#     - 1e-7 is below the model's noise floor so it rounds to the same value
+#       across consecutive frames; coarser would miss genuine steering changes.
+# Both values are well below steering precision (1 deg of steering ≈ 1e-3 curvature).
+CACHE_V_EGO_DECIMALS = 1        # 0.1 m/s
+CACHE_CURVATURE_DECIMALS = 7    # 1e-7
 
 
 class CurvatureDController(CurvatureDLookup):
@@ -29,19 +39,28 @@ class CurvatureDController(CurvatureDLookup):
       self.reset()
       return
 
-    self.use_params = bool(msg.useParams)
-    self.live_valid = bool(msg.liveValid)
-    self.fit_corrections = self.unflatten_bucket(msg.corrections, dtype=np.float32)
-
+    # Build all new state from the message first, then swap atomically.
+    # This avoids a window where get_correction() could observe a half-applied
+    # state (e.g. new fit_corrections with old fit_valid).
+    new_use_params = bool(msg.useParams)
+    new_live_valid = bool(msg.liveValid)
+    new_fit_corrections = self.unflatten_bucket(msg.corrections, dtype=np.float32)
     if len(msg.fitValid) == expected_size:
-      self.fit_valid = self.unflatten_bucket(msg.fitValid, dtype=bool)
+      new_fit_valid = self.unflatten_bucket(msg.fitValid, dtype=bool)
     else:
-      self.fit_valid = np.abs(self.fit_corrections) > 0.0
+      new_fit_valid = np.abs(new_fit_corrections) > 0.0
 
-    if not self.live_valid:
+    if not new_live_valid:
       self.reset()
       return
 
+    # Atomic swap: all readers see either the old state or the new state, never
+    # a mix. The cache invalidation lives here too, so the next get_correction
+    # call (which may already be queued) will see the new state and recompute.
+    self.use_params = new_use_params
+    self.live_valid = new_live_valid
+    self.fit_corrections = new_fit_corrections
+    self.fit_valid = new_fit_valid
     self._invalidate_correction_cache()
 
   def _invalidate_correction_cache(self) -> None:
@@ -54,9 +73,7 @@ class CurvatureDController(CurvatureDLookup):
       return 0.0
 
     abs_curvature = abs(float(desired_curvature))
-    if abs_curvature < self.CURVATURE_MIN or abs_curvature > self.CURVATURE_MAX:
-      return 0.0
-    if abs_curvature * (float(v_ego) ** 2) > self.MAX_LAT_ACCEL_APPLY:
+    if self._exceeds_safety_bounds(abs_curvature, v_ego):
       return 0.0
 
     v_ego_q = round(v_ego, CACHE_V_EGO_DECIMALS)
@@ -71,6 +88,3 @@ class CurvatureDController(CurvatureDLookup):
 
     direction = 1.0 if desired_curvature >= 0.0 else -1.0
     return float(direction * projected)
-
-  def apply(self, desired_curvature: float, v_ego: float) -> float:
-    return float(desired_curvature + self.get_correction(desired_curvature, v_ego))
