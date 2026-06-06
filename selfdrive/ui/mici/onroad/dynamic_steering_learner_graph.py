@@ -87,14 +87,15 @@ class DynamicSteeringLearnerGraphMici(Widget):
                          fit_corrections: np.ndarray, fit_valid: np.ndarray,
                          v_ego: float) -> tuple[np.ndarray, np.ndarray, float, float]:
     if lcp_frame != self._cached_lcp_frame:
-      self._cached_preview_curve = np.array([
-        CurvatureDLookup.interp_curve_value(preview_corrections, preview_valid, v_ego, abs(float(k)))
-        for k in self._plot_x
-      ], dtype=np.float32)
-      self._cached_fit_curve = np.array([
-        CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, abs(float(k)))
-        for k in self._plot_x
-      ], dtype=np.float32)
+      abs_curvatures = np.abs(self._plot_x).astype(np.float64)
+      # Befund 3-5: Use vectorized interp_curve_samples instead of Python-loop calls
+      self._cached_preview_curve = CurvatureDLookup.interp_curve_samples(
+        preview_corrections, preview_valid, v_ego, abs_curvatures
+      ) if (preview_corrections.shape == fit_corrections.shape and preview_valid.shape == fit_valid.shape) \
+        else self._cached_preview_curve
+      self._cached_fit_curve = CurvatureDLookup.interp_curve_samples(
+        fit_corrections, fit_valid, v_ego, abs_curvatures
+      )
       self._cached_min_y, self._cached_max_y = self._compute_y_bounds(self._cached_preview_curve, self._cached_fit_curve)
       self._cached_lcp_frame = lcp_frame
 

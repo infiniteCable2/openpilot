@@ -69,6 +69,10 @@ class CurvatureDLookup:
   LAST_BUCKET_WIDTH = float(CURVATURE_BUCKET_EDGES[-1] - CURVATURE_BUCKET_EDGES[-2])
   CURVATURE_MAX = CURVATURE_BUCKET_MAX + LAST_BUCKET_WIDTH
 
+  # Precomputed constant for sample interpolation (Befund 5: avoid recomputing np.log on every call)
+  _LOG_CENTERS = np.log(CURVATURE_BUCKET_CENTERS.astype(np.float64))
+  _LOG_BUCKET_MIN = float(np.log(max(CURVATURE_BUCKET_MIN, 1e-12)))
+
   MIN_SPEED = float(SPEED_ANCHORS[0] * 0.5)  # learning/apply speed floor
   MAX_LAT_ACCEL_APPLY = 1.0  # apply accel gate
   RELATIVE_CAP_FULL_RATIO = 0.50  # inner relative cap
@@ -388,7 +392,7 @@ class CurvatureDLookup:
     if not low_valid.any() and not high_valid.any():
       return 0.0
 
-    log_centers = np.log(cls.CURVATURE_BUCKET_CENTERS.astype(np.float64))
+    log_centers = cls._LOG_CENTERS
     log_curvature = math.log(max(abs_curvature, cls.CURVATURE_BUCKET_MIN))
 
     def curve_value(curve: np.ndarray, valid_mask: np.ndarray) -> float:
@@ -435,6 +439,87 @@ class CurvatureDLookup:
     if low_speed == high_speed:
       return low_val
     return float((1.0 - speed_alpha) * low_val + speed_alpha * high_val)
+
+  @classmethod
+  def interp_curve_samples(cls, fit_corrections: np.ndarray, fit_valid: np.ndarray,
+                           v_ego: float, abs_curvatures: np.ndarray) -> np.ndarray:
+    """Vectorized version of interp_curve_value for many sample points.
+
+    Befund 3-5: Avoids Python-loop overhead, repeated speed_interp() calls,
+    and repeated np.log() of constants when interpolating many samples
+    (e.g. 121 sample points from the dynamic steering learner graph).
+    """
+    n = len(abs_curvatures)
+    out = np.zeros(n, dtype=np.float32)
+
+    abs_curvatures = np.asarray(abs_curvatures, dtype=np.float64)
+    log_curvatures = np.log(np.maximum(abs_curvatures, cls.CURVATURE_BUCKET_MIN))
+
+    # Compute speed interpolation indices once (Befund 4: avoid 242 redundant calls)
+    low_speed, high_speed, speed_alpha = cls.speed_interp(v_ego)
+    low_curve = fit_corrections[low_speed]
+    high_curve = fit_corrections[high_speed]
+    low_valid = fit_valid[low_speed]
+    high_valid = fit_valid[high_speed]
+
+    if not low_valid.any() and not high_valid.any():
+      return out
+
+    log_centers = cls._LOG_CENTERS
+    curvature_edges = cls.CURVATURE_BUCKET_EDGES
+    curvature_max = cls.CURVATURE_MAX
+    curvature_min = cls.CURVATURE_MIN
+    n_centers = len(cls.CURVATURE_BUCKET_CENTERS)
+
+    def interp_speed_row(curve: np.ndarray, valid_mask: np.ndarray) -> np.ndarray:
+      row_out = np.zeros(n, dtype=np.float32)
+      runs = cls.valid_runs(valid_mask)
+      if len(runs) == 0:
+        return row_out
+
+      for start, end in runs:
+        run_idx = np.arange(start, end + 1)
+        run_log_x = log_centers[run_idx]
+        run_curve = curve[run_idx]
+        first_edge = float(curvature_edges[start])
+        last_edge = float(curvature_edges[end + 1])
+
+        # Main interpolation: curvature within run range
+        in_range = (abs_curvatures >= first_edge) & (abs_curvatures <= last_edge)
+        if in_range.any():
+          row_out[in_range] = np.interp(log_curvatures[in_range], run_log_x, run_curve).astype(np.float32)
+
+        # Fade in (between previous bucket and first_edge)
+        if start > 0:
+          fade_in_start = float(curvature_edges[start - 1])
+          fade_in_mask = (abs_curvatures >= fade_in_start) & (abs_curvatures < first_edge)
+        else:
+          fade_in_start = curvature_min
+          fade_in_mask = (abs_curvatures >= curvature_min) & (abs_curvatures < first_edge)
+        if fade_in_mask.any():
+          fade_span = max(first_edge - fade_in_start, 1e-9)
+          fade_vals = cls.smoothstep((abs_curvatures[fade_in_mask] - fade_in_start) / fade_span)
+          row_out[fade_in_mask] = (run_curve[0] * np.clip(fade_vals, 0.0, 1.0)).astype(np.float32)
+
+        # Fade out (between last_edge and next bucket)
+        if end < n_centers - 1:
+          fade_out_end = float(curvature_edges[end + 2])
+          fade_out_mask = (abs_curvatures > last_edge) & (abs_curvatures <= fade_out_end)
+        else:
+          fade_out_end = curvature_max
+          fade_out_mask = (abs_curvatures > last_edge) & (abs_curvatures <= fade_out_end)
+        if fade_out_mask.any():
+          fade_span = max(fade_out_end - last_edge, 1e-9)
+          fade_vals = 1.0 - cls.smoothstep((abs_curvatures[fade_out_mask] - last_edge) / fade_span)
+          row_out[fade_out_mask] = (run_curve[-1] * np.clip(fade_vals, 0.0, 1.0)).astype(np.float32)
+
+      return row_out
+
+    low_vals = interp_speed_row(low_curve, low_valid)
+    if low_speed == high_speed:
+      return low_vals
+    high_vals = interp_speed_row(high_curve, high_valid)
+    return ((1.0 - speed_alpha) * low_vals + speed_alpha * high_vals).astype(np.float32)
 
 
 class CurvatureEstimator(CurvatureDLookup):

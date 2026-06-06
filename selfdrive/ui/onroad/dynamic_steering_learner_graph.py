@@ -96,14 +96,16 @@ class DynamicSteeringLearnerGraph(Widget):
                          fit_corrections: np.ndarray, fit_valid: np.ndarray,
                          v_ego: float) -> tuple[np.ndarray, np.ndarray, float, float]:
     if lcp_frame != self._cached_lcp_frame:
-      self._cached_preview_curve = np.array([
-        CurvatureDLookup.interp_curve_value(preview_corrections, preview_valid, v_ego, abs(float(k)))
-        for k in self._plot_x
-      ], dtype=np.float32)
-      self._cached_fit_curve = np.array([
-        CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, abs(float(k)))
-        for k in self._plot_x
-      ], dtype=np.float32)
+      abs_curvatures = np.abs(self._plot_x).astype(np.float64)
+      # Befund 3-5: Use vectorized interp_curve_samples instead of 242 Python-loop calls
+      # to np.interp + valid_runs + smoothstep + log()
+      self._cached_preview_curve = CurvatureDLookup.interp_curve_samples(
+        preview_corrections, preview_valid, v_ego, abs_curvatures
+      ) if (preview_corrections.shape == fit_corrections.shape and preview_valid.shape == fit_valid.shape) \
+        else self._cached_preview_curve
+      self._cached_fit_curve = CurvatureDLookup.interp_curve_samples(
+        fit_corrections, fit_valid, v_ego, abs_curvatures
+      )
       self._cached_min_y, self._cached_max_y = self._compute_y_bounds(self._cached_preview_curve, self._cached_fit_curve)
       self._cached_lcp_frame = lcp_frame
 
@@ -115,6 +117,14 @@ class DynamicSteeringLearnerGraph(Widget):
 
     sm = ui_state.sm
     if sm.recv_frame["carState"] < ui_state.started_frame or sm.recv_frame["controlsState"] < ui_state.started_frame:
+      return
+
+    # Befund 6: If curvatured is not actively running for this car (useParams=False),
+    # there is no meaningful curve data to interpolate. Render an empty/disabled graph
+    # without running the expensive interp_curve_samples.
+    lcp = sm["liveCurvatureParameters"]
+    if not bool(getattr(lcp, "useParams", False)):
+      self._render_disabled(rect)
       return
 
     battery_line_height = int(BATTERY_CONFIG.line_height * BATTERY_CONFIG.scale_factor)
@@ -133,7 +143,6 @@ class DynamicSteeringLearnerGraph(Widget):
     )
     rl.draw_rectangle_rounded(graph_rect, 0.08, 8, self._panel_bg)
 
-    lcp = sm["liveCurvatureParameters"]
     lcp_frame = sm.recv_frame["liveCurvatureParameters"]
     controls_state = sm["controlsState"]
     car_state = sm["carState"]
@@ -169,6 +178,31 @@ class DynamicSteeringLearnerGraph(Widget):
     )
     self._draw_overlay_info(graph_rect, lcp, float(car_state.vEgo), float(controls_state.modelDesiredCurvature),
                             fit_corrections, fit_valid, min_y, max_y, transport_valid, payload_valid)
+
+  def _render_disabled(self, rect: rl.Rectangle) -> None:
+    """Lightweight render when curvatured is not active for this car (useParams=False).
+    Befund 6: Avoid the expensive interpolation path when no data is available.
+    """
+    battery_line_height = int(BATTERY_CONFIG.line_height * BATTERY_CONFIG.scale_factor)
+    battery_panel_height = battery_line_height * 4
+    battery_panel_margin = BATTERY_CONFIG.panel_margin
+    graph_bottom = rect.y + rect.height - CONFIG.bottom_gap_to_battery - battery_panel_height - battery_panel_margin
+    graph_top = rect.y + CONFIG.speed_display_bottom_y + CONFIG.top_gap_to_speed
+    graph_height = max(CONFIG.height, int(graph_bottom - graph_top))
+    graph_width = int(graph_height * CONFIG.aspect_ratio)
+
+    graph_rect = rl.Rectangle(
+      rect.x + rect.width - graph_width - battery_panel_margin,
+      graph_bottom - graph_height,
+      graph_width,
+      graph_height,
+    )
+    rl.draw_rectangle_rounded(graph_rect, 0.08, 8, self._panel_bg)
+    title_size = min(42, max(34, int(graph_rect.height * 0.095)))
+    text_x = float(graph_rect.x + CONFIG.padding)
+    title_y = float(graph_rect.y + 12)
+    rl.draw_text_ex(self._font_bold, "Dynamic Steering Learner", rl.Vector2(text_x, title_y),
+                    title_size, 0, self._text_color)
 
   def _draw_plot(self, plot_rect: rl.Rectangle,
                  preview_curve: np.ndarray, corrections: np.ndarray,
