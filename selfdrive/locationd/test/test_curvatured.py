@@ -343,8 +343,8 @@ class TestCurvatureEstimator:
     assert estimator.last_override_t == 12.0
 
   def test_interp_curve_value_matches_interp_curve_samples(self):
-    """Verifies the vectorized interp_curve_value (now wrapping interp_curve_samples)
-    produces the same results as a direct call to interp_curve_samples for single points.
+    """Verifies the unified interp_curve_value API returns the same result for
+    scalar and array input, and that both branches share the same code path.
     This protects both UI and controlsd (100Hz) code paths from drift.
     """
     speed_idx = 3
@@ -371,11 +371,15 @@ class TestCurvatureEstimator:
     ]
 
     for c in test_curvatures:
-      single = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, c)
-      vec = CurvatureDLookup.interp_curve_samples(
+      scalar_result = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, c)
+      array_result = CurvatureDLookup.interp_curve_value(
         fit_corrections, fit_valid, v_ego, np.asarray([c], dtype=np.float64)
-      )[0]
-      assert np.isclose(single, vec), f"mismatch at c={c}: single={single}, vec={vec}"
+      )
+      # Scalar path returns float
+      assert isinstance(scalar_result, float)
+      # Array path returns np.ndarray
+      assert isinstance(array_result, np.ndarray)
+      assert np.isclose(scalar_result, array_result[0]), f"mismatch at c={c}: scalar={scalar_result}, array={array_result[0]}"
 
   def test_interp_curve_value_handles_speed_interp_transition(self):
     """Ensure interp_curve_value still does the (1-alpha)*low + alpha*high blend

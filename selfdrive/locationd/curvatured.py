@@ -268,8 +268,13 @@ class CurvatureDLookup:
     return int(round(100.0 * fully_calibrated_speeds / float(len(cls.SPEED_ANCHORS))))
 
   @classmethod
-  def smoothstep(cls, x: float) -> float:
-    y = float(np.clip(x, 0.0, 1.0))
+  def smoothstep(cls, x) -> np.ndarray:
+    """Smoothstep, vectorized. Accepts scalar or array input.
+
+    Note: the original scalar-only form is preserved implicitly via np.clip
+    on the input - it just no longer raises on arrays.
+    """
+    y = np.clip(x, 0.0, 1.0)
     return y * y * (3.0 - 2.0 * y)
 
   @classmethod
@@ -378,36 +383,38 @@ class CurvatureDLookup:
 
   @classmethod
   def interp_curve_value(cls, fit_corrections: np.ndarray, fit_valid: np.ndarray,
-                         v_ego: float, abs_curvature: float) -> float:
-    """Single-point interpolation. Internal: delegates to vectorized interp_curve_samples.
+                         v_ego: float, abs_curvature: float | np.ndarray) -> float | np.ndarray:
+    """Interpolate curvature correction(s) from the learned fit curves.
 
-    This is called 100Hz from controlsd (controls/lib/curvatured.py:get_correction).
-    By dispatching to the vectorized implementation we keep both code paths in sync
-    and ensure the same optimizations (cached _LOG_CENTERS, single speed_interp call)
-    apply to the realtime control loop.
+    Single Public-API that accepts both scalar and array input, dispatching
+    internally to the vectorized implementation:
+
+    - Scalar input (float)  -> returns float (100Hz controlsd hot path)
+    - Array input (np.ndarray) -> returns np.ndarray (UI rendering, batched)
+
+    Caching of common constants (_LOG_CENTERS) and a single speed_interp() call
+    per batch keep both paths fast.
     """
-    if abs_curvature < cls.CURVATURE_MIN or abs_curvature > cls.CURVATURE_MAX:
+    abs_curvatures = np.asarray(abs_curvature, dtype=np.float64)
+    was_scalar = abs_curvatures.ndim == 0
+    if was_scalar:
+      abs_curvatures = abs_curvatures.reshape(1)
+    if was_scalar and (abs_curvatures[0] < cls.CURVATURE_MIN or abs_curvatures[0] > cls.CURVATURE_MAX):
       return 0.0
-    result = cls.interp_curve_samples(fit_corrections, fit_valid, v_ego,
-                                      np.asarray([abs_curvature], dtype=np.float64))
-    return float(result[0])
+
+    result = cls._interp_curve_impl(fit_corrections, fit_valid, v_ego, abs_curvatures)
+    return float(result[0]) if was_scalar else result
 
   @classmethod
-  def interp_curve_samples(cls, fit_corrections: np.ndarray, fit_valid: np.ndarray,
-                           v_ego: float, abs_curvatures: np.ndarray) -> np.ndarray:
-    """Vectorized version of interp_curve_value for many sample points.
-
-    Befund 3-5: Avoids Python-loop overhead, repeated speed_interp() calls,
-    and repeated np.log() of constants when interpolating many samples
-    (e.g. 121 sample points from the dynamic steering learner graph).
-    """
+  def _interp_curve_impl(cls, fit_corrections: np.ndarray, fit_valid: np.ndarray,
+                         v_ego: float, abs_curvatures: np.ndarray) -> np.ndarray:
+    """Vectorized core. Always receives a 1-D abs_curvatures array of len >= 1."""
     n = len(abs_curvatures)
     out = np.zeros(n, dtype=np.float32)
 
-    abs_curvatures = np.asarray(abs_curvatures, dtype=np.float64)
     log_curvatures = np.log(np.maximum(abs_curvatures, cls.CURVATURE_BUCKET_MIN))
 
-    # Compute speed interpolation indices once (Befund 4: avoid 242 redundant calls)
+    # Compute speed interpolation indices once (avoid per-sample calls)
     low_speed, high_speed, speed_alpha = cls.speed_interp(v_ego)
     low_curve = fit_corrections[low_speed]
     high_curve = fit_corrections[high_speed]
@@ -451,7 +458,7 @@ class CurvatureDLookup:
         if fade_in_mask.any():
           fade_span = max(first_edge - fade_in_start, 1e-9)
           fade_vals = cls.smoothstep((abs_curvatures[fade_in_mask] - fade_in_start) / fade_span)
-          row_out[fade_in_mask] = (run_curve[0] * np.clip(fade_vals, 0.0, 1.0)).astype(np.float32)
+          row_out[fade_in_mask] = (run_curve[0] * fade_vals).astype(np.float32)
 
         # Fade out (between last_edge and next bucket)
         if end < n_centers - 1:
@@ -463,7 +470,7 @@ class CurvatureDLookup:
         if fade_out_mask.any():
           fade_span = max(fade_out_end - last_edge, 1e-9)
           fade_vals = 1.0 - cls.smoothstep((abs_curvatures[fade_out_mask] - last_edge) / fade_span)
-          row_out[fade_out_mask] = (run_curve[-1] * np.clip(fade_vals, 0.0, 1.0)).astype(np.float32)
+          row_out[fade_out_mask] = (run_curve[-1] * fade_vals).astype(np.float32)
 
       return row_out
 

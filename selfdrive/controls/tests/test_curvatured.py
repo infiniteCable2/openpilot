@@ -155,3 +155,134 @@ class TestCurvatureDController:
     assert at_last_edge > 0.0
     assert 0.0 < in_fade < at_last_edge
     assert at_max == 0.0
+
+  def test_get_correction_caches_within_quantization_window(self):
+    """Identical (v_ego, abs_curvature) within quantization granularity must
+    hit the cache. The interp_curve_value source must not be called twice.
+    """
+    controller = CurvatureDController()
+    msg = messaging.new_message('liveCurvatureParameters')
+    msg.liveCurvatureParameters.liveValid = True
+    msg.liveCurvatureParameters.version = VERSION
+    msg.liveCurvatureParameters.useParams = True
+    msg.liveCurvatureParameters.counts = [0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.biases = [0.0] * CurvatureDLookup.total_size()
+
+    curvature_idx = CurvatureDLookup.curvature_index(32e-6)
+    assert curvature_idx is not None
+    self._set_curve(msg, 3, {curvature_idx: 8e-6})
+    controller.update_live_params(msg.liveCurvatureParameters)
+
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[3])
+
+    # Wrap the source to count calls
+    call_count = {"n": 0}
+    original = CurvatureDLookup.interp_curve_value
+    def counting(*args, **kwargs):
+      call_count["n"] += 1
+      return original(*args, **kwargs)
+    CurvatureDLookup.interp_curve_value = counting
+    try:
+      # First call: cache miss, calls interp_curve_value once
+      first = controller.get_correction(32e-6, v_ego)
+      assert call_count["n"] == 1
+      # Subsequent identical calls: cache hit, no further invocations
+      for _ in range(5):
+        cached = controller.get_correction(32e-6, v_ego)
+        assert cached == first
+      assert call_count["n"] == 1
+
+      # v_ego noise below quantization (0.01 m/s) must still hit the cache
+      noised = controller.get_correction(32e-6, v_ego + 0.005)
+      assert noised == first
+      assert call_count["n"] == 1
+
+      # Curvature noise below quantization (1e-7) must still hit the cache
+      noised = controller.get_correction(32e-6 + 5e-8, v_ego)
+      assert noised == first
+      assert call_count["n"] == 1
+    finally:
+      CurvatureDLookup.interp_curve_value = original
+
+  def test_get_correction_cache_invalidates_on_live_params_update(self):
+    """Cache must be invalidated when fit_corrections / fit_valid change,
+    otherwise stale corrections would be served after a params update.
+    """
+    controller = CurvatureDController()
+    msg = messaging.new_message('liveCurvatureParameters')
+    msg.liveCurvatureParameters.liveValid = True
+    msg.liveCurvatureParameters.version = VERSION
+    msg.liveCurvatureParameters.useParams = True
+    msg.liveCurvatureParameters.counts = [0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.biases = [0.0] * CurvatureDLookup.total_size()
+
+    curvature_idx = CurvatureDLookup.curvature_index(32e-6)
+    assert curvature_idx is not None
+    self._set_curve(msg, 3, {curvature_idx: 4e-6})
+    controller.update_live_params(msg.liveCurvatureParameters)
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[3])
+
+    first = controller.get_correction(32e-6, v_ego)
+
+    # Update the underlying curve to a different value
+    self._set_curve(msg, 3, {curvature_idx: 16e-6})
+    controller.update_live_params(msg.liveCurvatureParameters)
+
+    second = controller.get_correction(32e-6, v_ego)
+    assert second > first
+    # Specifically: must not be the cached value
+    assert second != first
+
+  def test_get_correction_cache_invalidates_on_reset(self):
+    """reset() must clear the cache to avoid stale hits after disengage/engage."""
+    controller = CurvatureDController()
+    msg = messaging.new_message('liveCurvatureParameters')
+    msg.liveCurvatureParameters.liveValid = True
+    msg.liveCurvatureParameters.version = VERSION
+    msg.liveCurvatureParameters.useParams = True
+    msg.liveCurvatureParameters.counts = [0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.biases = [0.0] * CurvatureDLookup.total_size()
+
+    curvature_idx = CurvatureDLookup.curvature_index(32e-6)
+    assert curvature_idx is not None
+    self._set_curve(msg, 3, {curvature_idx: 8e-6})
+    controller.update_live_params(msg.liveCurvatureParameters)
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[3])
+
+    # Warm the cache
+    controller.get_correction(32e-6, v_ego)
+    assert controller._cached_v_ego_q is not None
+
+    controller.reset()
+    # Cache state must be reset
+    assert controller._cached_v_ego_q is None
+    assert controller._cached_curvature_q is None
+    assert controller._cached_projected == 0.0
+
+  def test_get_correction_bypasses_cache_when_params_disabled(self):
+    """When use_params is False, the early-return at the top of get_correction
+    must not interfere with cache invariants (the cache may legitimately be stale).
+    """
+    controller = CurvatureDController()
+    msg = messaging.new_message('liveCurvatureParameters')
+    msg.liveCurvatureParameters.liveValid = True
+    msg.liveCurvatureParameters.version = VERSION
+    msg.liveCurvatureParameters.useParams = True
+    msg.liveCurvatureParameters.counts = [0] * CurvatureDLookup.total_size()
+    msg.liveCurvatureParameters.biases = [0.0] * CurvatureDLookup.total_size()
+
+    curvature_idx = CurvatureDLookup.curvature_index(32e-6)
+    assert curvature_idx is not None
+    self._set_curve(msg, 3, {curvature_idx: 8e-6})
+    controller.update_live_params(msg.liveCurvatureParameters)
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[3])
+
+    # Warm the cache
+    controller.get_correction(32e-6, v_ego)
+    assert controller._cached_projected != 0.0
+
+    # Disable params -> early return 0.0
+    controller.use_params = False
+    assert controller.get_correction(32e-6, v_ego) == 0.0
+    # The cache still holds the old value but is not consulted on this path
+    assert controller._cached_projected != 0.0  # cache not touched
