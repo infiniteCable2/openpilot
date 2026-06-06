@@ -1,4 +1,3 @@
-import math
 import time
 from collections import deque
 
@@ -380,65 +379,18 @@ class CurvatureDLookup:
   @classmethod
   def interp_curve_value(cls, fit_corrections: np.ndarray, fit_valid: np.ndarray,
                          v_ego: float, abs_curvature: float) -> float:
+    """Single-point interpolation. Internal: delegates to vectorized interp_curve_samples.
+
+    This is called 100Hz from controlsd (controls/lib/curvatured.py:get_correction).
+    By dispatching to the vectorized implementation we keep both code paths in sync
+    and ensure the same optimizations (cached _LOG_CENTERS, single speed_interp call)
+    apply to the realtime control loop.
+    """
     if abs_curvature < cls.CURVATURE_MIN or abs_curvature > cls.CURVATURE_MAX:
       return 0.0
-
-    low_speed, high_speed, speed_alpha = cls.speed_interp(v_ego)
-    low_curve = fit_corrections[low_speed]
-    high_curve = fit_corrections[high_speed]
-    low_valid = fit_valid[low_speed]
-    high_valid = fit_valid[high_speed]
-
-    if not low_valid.any() and not high_valid.any():
-      return 0.0
-
-    log_centers = cls._LOG_CENTERS
-    log_curvature = math.log(max(abs_curvature, cls.CURVATURE_BUCKET_MIN))
-
-    def curve_value(curve: np.ndarray, valid_mask: np.ndarray) -> float:
-      runs = cls.valid_runs(valid_mask)
-      if len(runs) == 0:
-        return 0.0
-
-      for start, end in runs:
-        run_idx = np.arange(start, end + 1)
-        run_log_x = log_centers[run_idx]
-        run_curve = curve[run_idx]
-        first_edge = cls.CURVATURE_BUCKET_EDGES[start]
-        last_edge = cls.CURVATURE_BUCKET_EDGES[end + 1]
-
-        if first_edge <= abs_curvature <= last_edge:
-          return float(np.interp(log_curvature, run_log_x, run_curve))
-
-        if start > 0:
-          fade_in_start = cls.CURVATURE_BUCKET_EDGES[start - 1]
-          if fade_in_start <= abs_curvature < first_edge:
-            fade_span = first_edge - fade_in_start
-            fade = cls.smoothstep((abs_curvature - fade_in_start) / max(fade_span, 1e-9))
-            return float(run_curve[0] * np.clip(fade, 0.0, 1.0))
-        elif cls.CURVATURE_MIN <= abs_curvature < first_edge:
-          fade_span = first_edge - cls.CURVATURE_MIN
-          fade = cls.smoothstep((abs_curvature - cls.CURVATURE_MIN) / max(fade_span, 1e-9))
-          return float(run_curve[0] * np.clip(fade, 0.0, 1.0))
-
-        if end < len(cls.CURVATURE_BUCKET_CENTERS) - 1:
-          fade_out_end = cls.CURVATURE_BUCKET_EDGES[end + 2]
-          if last_edge < abs_curvature <= fade_out_end:
-            fade_span = fade_out_end - last_edge
-            fade = 1.0 - cls.smoothstep((abs_curvature - last_edge) / max(fade_span, 1e-9))
-            return float(run_curve[-1] * np.clip(fade, 0.0, 1.0))
-        elif last_edge < abs_curvature <= cls.CURVATURE_MAX:
-          fade_span = cls.CURVATURE_MAX - last_edge
-          fade = 1.0 - cls.smoothstep((abs_curvature - last_edge) / max(fade_span, 1e-9))
-          return float(run_curve[-1] * np.clip(fade, 0.0, 1.0))
-
-      return 0.0
-
-    low_val = curve_value(low_curve, low_valid)
-    high_val = curve_value(high_curve, high_valid)
-    if low_speed == high_speed:
-      return low_val
-    return float((1.0 - speed_alpha) * low_val + speed_alpha * high_val)
+    result = cls.interp_curve_samples(fit_corrections, fit_valid, v_ego,
+                                      np.asarray([abs_curvature], dtype=np.float64))
+    return float(result[0])
 
   @classmethod
   def interp_curve_samples(cls, fit_corrections: np.ndarray, fit_valid: np.ndarray,

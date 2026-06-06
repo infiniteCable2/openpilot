@@ -98,14 +98,20 @@ class DynamicSteeringLearnerGraph(Widget):
     if lcp_frame != self._cached_lcp_frame:
       abs_curvatures = np.abs(self._plot_x).astype(np.float64)
       # Befund 3-5: Use vectorized interp_curve_samples instead of 242 Python-loop calls
-      # to np.interp + valid_runs + smoothstep + log()
-      self._cached_preview_curve = CurvatureDLookup.interp_curve_samples(
-        preview_corrections, preview_valid, v_ego, abs_curvatures
-      ) if (preview_corrections.shape == fit_corrections.shape and preview_valid.shape == fit_valid.shape) \
-        else self._cached_preview_curve
+      # to np.interp + valid_runs + smoothstep + log().
+      # Note: liveCurvatureParameters is published at 4Hz from curvatured.py:992
+      # (sm.frame % 5 == 0 with sm driven by 20Hz livePose), so this fires 4 times per
+      # second and is cached across the other 56 UI-frames at 60Hz.
       self._cached_fit_curve = CurvatureDLookup.interp_curve_samples(
         fit_corrections, fit_valid, v_ego, abs_curvatures
       )
+      # Preview samples only meaningful if preview data is non-empty (only published when
+      # ShowDynamicSteeringLearnerGraph is on); otherwise keep the cached zeros.
+      has_preview = preview_corrections.shape == fit_corrections.shape and np.any(preview_corrections)
+      if has_preview:
+        self._cached_preview_curve = CurvatureDLookup.interp_curve_samples(
+          preview_corrections, preview_valid, v_ego, abs_curvatures
+        )
       self._cached_min_y, self._cached_max_y = self._compute_y_bounds(self._cached_preview_curve, self._cached_fit_curve)
       self._cached_lcp_frame = lcp_frame
 

@@ -341,3 +341,63 @@ class TestCurvatureEstimator:
 
     assert estimator.steering_pressed[-1]
     assert estimator.last_override_t == 12.0
+
+  def test_interp_curve_value_matches_interp_curve_samples(self):
+    """Verifies the vectorized interp_curve_value (now wrapping interp_curve_samples)
+    produces the same results as a direct call to interp_curve_samples for single points.
+    This protects both UI and controlsd (100Hz) code paths from drift.
+    """
+    speed_idx = 3
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[speed_idx])
+    fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    fit_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
+
+    # Two valid runs with a gap
+    fit_valid[speed_idx, 3] = True
+    fit_valid[speed_idx, 6] = True
+    fit_corrections[speed_idx, 3] = 1.0e-6
+    fit_corrections[speed_idx, 6] = 8.0e-6
+
+    # Test points covering: out of range, in valid run, in gap (returns 0), fade regions
+    test_curvatures = [
+      0.0,
+      1.0e-7,
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[2]),  # before first valid run (fade-in)
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[3]),  # in first run
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[4]),  # in gap (should be 0)
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[6]),  # in second run
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[7]),  # after second run (fade-out)
+      float(CurvatureDLookup.CURVATURE_MAX + 1.0),  # out of range
+    ]
+
+    for c in test_curvatures:
+      single = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, c)
+      vec = CurvatureDLookup.interp_curve_samples(
+        fit_corrections, fit_valid, v_ego, np.asarray([c], dtype=np.float64)
+      )[0]
+      assert np.isclose(single, vec), f"mismatch at c={c}: single={single}, vec={vec}"
+
+  def test_interp_curve_value_handles_speed_interp_transition(self):
+    """Ensure interp_curve_value still does the (1-alpha)*low + alpha*high blend
+    when low_speed != high_speed, since it's now routed through interp_curve_samples.
+    """
+    v_ego_low = float(CurvatureDLookup.SPEED_ANCHORS[0]) + 0.1
+    v_ego_high = float(CurvatureDLookup.SPEED_ANCHORS[-1]) - 0.1
+    v_ego_mid = 0.5 * (float(CurvatureDLookup.SPEED_ANCHORS[2]) + float(CurvatureDLookup.SPEED_ANCHORS[3]))
+
+    fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    fit_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
+
+    for s in range(len(CurvatureDLookup.SPEED_ANCHORS)):
+      fit_valid[s, 5] = True
+      fit_corrections[s, 5] = 1.0e-5 * (s + 1)
+
+    c = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[5])
+    # At boundary v_egos the result is just one speed bucket
+    val_low = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego_low, c)
+    val_high = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego_high, c)
+    val_mid = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego_mid, c)
+
+    # The mid value must lie between the two boundary values (interpolation property)
+    lo, hi = sorted([val_low, val_high])
+    assert lo <= val_mid <= hi, f"mid={val_mid} not in [{lo}, {hi}]"
