@@ -1,4 +1,5 @@
 import math
+import numpy as np
 
 from cereal import log
 from openpilot.common.pid import PIDController
