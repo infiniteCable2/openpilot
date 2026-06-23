@@ -2,11 +2,11 @@ import math
 import numpy as np
 
 from cereal import log
-from openpilot.common.pid import PIDController
+from openpilot.common.pid import MultiplicativeUnwindPID
 from openpilot.selfdrive.controls.lib.latcontrol import LatControl
 from openpilot.selfdrive.controls.lib.drive_helpers import MAX_CURVATURE
 
-CURVATURE_SATURATION_THRESHOLD = 1e-3  # 1/m
+LAT_ACCEL_SATURATION_THRESHOLD = 0.5  # m/s^2
 
 
 class LatControlCurvature(LatControl):
@@ -17,8 +17,10 @@ class LatControlCurvature(LatControl):
     self.curvature_correction = 0.0
     if CP.lateralTuning.which() == 'pid':
       ct = CP.lateralTuning.pid
-      self.pid = PIDController((ct.kpBP, ct.kpV), (ct.kiBP, ct.kiV),
-                               pos_limit=MAX_CURVATURE, neg_limit=-MAX_CURVATURE, rate=1 / dt)
+      self.pid = MultiplicativeUnwindPID((ct.kpBP, ct.kpV), (ct.kiBP, ct.kiV),
+                                         k_f=ct.kf,
+                                         pos_limit=MAX_CURVATURE, neg_limit=-MAX_CURVATURE,
+                                         rate=1 / dt, min_cmd=1e-6, ki_red_time=0.1)
       self.kf = ct.kf
     else:
       self.pid = None
@@ -37,25 +39,26 @@ class LatControlCurvature(LatControl):
 
   def update(self, active, CS, VM, params, steer_limited_by_safety, desired_curvature, calibrated_pose, curvature_limited, lat_delay):
     curvature_log = log.ControlsState.LateralCurvatureState.new_message()
-    actual_curvature = -VM.calc_curvature(math.radians(CS.steeringAngleDeg - params.angleOffsetDeg), CS.vEgo, params.roll)
-    if calibrated_pose is not None:
-      actual_curvature_pose = calibrated_pose.angular_velocity.yaw / CS.vEgo
-      actual_curvature = np.interp(CS.vEgo, [2.0, 5.0], [actual_curvature, actual_curvature_pose])
+    roll_compensation = -VM.roll_compensation(params.roll, CS.vEgo)
+    actual_curvature = -VM.calc_curvature(math.radians(CS.steeringAngleDeg - params.angleOffsetDeg), CS.vEgo, 0.)
     error = desired_curvature - actual_curvature
+    feedforward = self.kf * (desired_curvature - roll_compensation)
 
     if not active:
       output_curvature = 0.0
       curvature_log.active = False
       if self.pid is not None:
         self.pid.reset()      
-    elif self.pid is None or CS.steeringPressed or not self.enable_pid:
-      # no PID or override: feedforward only
+    elif self.pid is None or not self.enable_pid:
       if self.pid is not None:
         self.pid.reset()
-      output_curvature = self.kf * desired_curvature
+      output_curvature = feedforward
       curvature_log.active = True
     else:
-      output_curvature = self.pid.update(error, speed=CS.vEgo, feedforward=self.kf * desired_curvature)
+      freeze_integrator = steer_limited_by_safety or CS.vEgo < 5
+      output_curvature = self.pid.update(error, speed=CS.vEgo, feedforward=feedforward,
+                                         override=CS.steeringPressed,
+                                         freeze_integrator=freeze_integrator)
       curvature_log.p = float(self.pid.p)
       curvature_log.i = float(self.pid.i)
       curvature_log.f = float(self.pid.f)
@@ -66,6 +69,7 @@ class LatControlCurvature(LatControl):
     curvature_log.desiredCurvature = float(desired_curvature)
     output_curvature = output_curvature + self.curvature_correction
     curvature_log.output = float(output_curvature)
-    curvature_log.saturated = bool(self._check_saturation(abs(error) > CURVATURE_SATURATION_THRESHOLD, CS,
+    lat_accel_error = error * CS.vEgo ** 2
+    curvature_log.saturated = bool(self._check_saturation(abs(lat_accel_error) > LAT_ACCEL_SATURATION_THRESHOLD, CS,
                                                           False, curvature_limited))
     return 0.0, 0.0, float(output_curvature), curvature_log
