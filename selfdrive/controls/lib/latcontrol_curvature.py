@@ -6,7 +6,7 @@ from openpilot.common.pid import MultiplicativeUnwindPID
 from openpilot.selfdrive.controls.lib.latcontrol import LatControl
 from openpilot.selfdrive.controls.lib.drive_helpers import MAX_CURVATURE
 
-LAT_ACCEL_SATURATION_THRESHOLD = 0.1  # m/s^2
+LAT_ACCEL_SATURATION_THRESHOLD = 0.2  # m/s^2
 
 
 class LatControlCurvature(LatControl):
