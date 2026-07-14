@@ -102,6 +102,7 @@ class FontWeight(StrEnum):
   BOLD = "Inter-Bold.fnt"
   SEMI_BOLD = "Inter-SemiBold.fnt"
   UNIFONT = "unifont.fnt"
+  TAIWAN_SANS_UI = "C4TaiwanSans-Regular.fnt"
   AUDIOWIDE = "Audiowide-Regular.fnt"
 
   # Small UI fonts
@@ -110,9 +111,11 @@ class FontWeight(StrEnum):
   DISPLAY = "Inter-Bold.fnt"
 
 
-def font_fallback(font: rl.Font) -> rl.Font:
-  """Fall back to unifont for languages that require it."""
-  if multilang.requires_unifont():
+def font_fallback(font: rl.Font, text: str = "") -> rl.Font:
+  """Use a language-appropriate font only when text needs non-ASCII glyphs."""
+  if multilang.requires_unifont() and any(ord(char) > 0x7F for char in text):
+    if multilang.language == "zh-CHT":
+      return gui_app.font(FontWeight.TAIWAN_SANS_UI)
     return gui_app.font(FontWeight.UNIFONT)
   return font
 
@@ -715,7 +718,7 @@ class GuiApplication(GuiApplicationExt):
       rl._orig_draw_text_ex = rl.draw_text_ex
 
     def _draw_text_ex_scaled(font, text, position, font_size, spacing, tint):
-      font = font_fallback(font)
+      font = font_fallback(font, text)
       return rl._orig_draw_text_ex(font, text, position, font_size * FONT_SCALE, spacing, tint)
 
     rl.draw_text_ex = _draw_text_ex_scaled

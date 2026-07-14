@@ -23,6 +23,66 @@ UNIFONT_LANGUAGES = [
   "ja",
 ]
 
+C4_ZH_CHT_TRANSLATIONS = {
+  "Advanced Settings": "進階設定",
+  "driving personality": "駕駛風格",
+  "aggressive": "積極",
+  "standard": "標準",
+  "relaxed": "舒適",
+  "experimental mode": "實驗模式",
+  "use metric units": "使用公制單位",
+  "lane departure warnings": "車道偏離警示",
+  "always-on driver monitor": "持續駕駛監控",
+  "record & upload driver camera": "錄製並上傳駕駛監控影像",
+  "record & upload mic audio": "錄製並上傳麥克風音訊",
+  "enable sunnypilot": "啟用 sunnypilot",
+  "VW: Lateral Correction (Recommended)": "VW：橫向修正（建議）",
+  "Dark Mode": "深色模式",
+  "Enable Accel Bar": "顯示加速度條",
+  "SSH keys": "SSH 金鑰",
+  "joystick debug mode": "搖桿除錯模式",
+  "longitudinal maneuver mode": "縱向操控測試模式",
+  "lateral maneuver mode": "橫向操控測試模式",
+  "alpha longitudinal": "Alpha 縱向控制",
+  "ui debug mode": "UI 除錯模式",
+  "Loading...": "載入中...",
+  "Not set": "尚未設定",
+  "Please connect to Wi-Fi to fetch your key.": "請連接 Wi-Fi 以取得金鑰。",
+  "device ID": "裝置 ID",
+  "serial": "序號",
+  "target branch": "目標分支",
+  "update sunnypilot": "更新 sunnypilot",
+  "force download": "強制下載",
+  "regulatory info": "法規資訊",
+  "driver\ncamera preview": "駕駛監控鏡頭\n預覽",
+  "review\ntraining guide": "檢視\n使用教學",
+  "terms &\nconditions": "條款與\n細則",
+  "subscribed": "已訂閱",
+  "upgrade to prime": "升級至 Prime",
+  "update now": "立即更新",
+  "updater failed\nto respond": "更新程式\n沒有回應",
+  "failed to update": "更新失敗",
+  "download update": "下載更新",
+  "up to date": "已是最新版本",
+  "wi-fi": "Wi-Fi",
+  "not connected": "未連線",
+  "enable tethering": "啟用網路共享",
+  "tethering password": "網路共享密碼",
+  "network usage": "網路用量設定",
+  "apn settings": "APN 設定",
+  "edit": "編輯",
+  "slide to forget": "滑動以移除此網路",
+  "searching for networks": "正在搜尋網路",
+  "forgetting...": "正在移除…",
+  "not in range": "不在範圍內",
+  "unsupported": "不支援",
+  "start the car to\nuse sunnypilot": "發動車輛以\n使用 sunnypilot",
+  "system booting": "系統啟動中",
+  "openpilot can't start\ncheck alerts": "openpilot 無法啟動\n請查看警示",
+  "pair with comma connect": "與 comma connect 配對",
+  "cache size": "快取大小",
+}
+
 # Plural form selectors for supported languages
 PLURAL_SELECTORS = {
   'en': lambda n: 0 if n == 1 else 1,
@@ -169,6 +229,8 @@ class Multilang:
     try:
       po_path = TRANSLATIONS_DIR.joinpath(f'app_{self._language}.po')
       self._translations, self._plurals = load_translations(po_path)
+      if self._language == "zh-CHT":
+        self._translations.update(C4_ZH_CHT_TRANSLATIONS)
       self._plural_selector = PLURAL_SELECTORS.get(self._language, lambda n: 0)
       cloudlog.debug(f"Loaded translations for language: {self._language}")
     except FileNotFoundError:
