@@ -91,7 +91,7 @@ PLURAL_SELECTORS = {
   'en': lambda n: 0 if n == 1 else 1,
   'de': lambda n: 0 if n == 1 else 1,
   'fr': lambda n: 0 if n <= 1 else 1,
-  'pt-BR': lambda n: 0 if n <= 1 else 1,
+  'pt-BR': lambda n: 0 if n == 1 else 1,
   'es': lambda n: 0 if n == 1 else 1,
   'tr': lambda n: 0 if n == 1 else 1,
   'uk': lambda n: 0 if n % 10 == 1 and n % 100 != 11 else (1 if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else 2),
@@ -212,7 +212,7 @@ def load_translations(path) -> tuple[dict[str, str], dict[str, list[str]]]:
 class Multilang:
   def __init__(self):
     self._params = Params() if Params is not None else None
-    self._language: str = "en"
+    self._language: str = "zh-CHT"
     self.languages: dict[str, str] = {}
     self.codes: dict[str, str] = {}
     self._translations: dict[str, str] = {}
