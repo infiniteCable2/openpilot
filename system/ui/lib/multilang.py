@@ -81,6 +81,9 @@ C4_ZH_CHT_TRANSLATIONS = {
   "openpilot can't start\ncheck alerts": "openpilot 無法啟動\n請查看警示",
   "pair with comma connect": "與 comma connect 配對",
   "cache size": "快取大小",
+  "Vehicle in Left Blind Spot": "左側盲點有車輛",
+  "Vehicle in Right Blind Spot": "右側盲點有車輛",
+  "Vehicle in Blind Spot": "盲點有車輛",
 }
 
 # Plural form selectors for supported languages

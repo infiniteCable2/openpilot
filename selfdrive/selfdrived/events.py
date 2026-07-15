@@ -22,6 +22,7 @@ AlertStatus = log.SelfdriveState.AlertStatus
 VisualAlert = car.CarControl.HUDControl.VisualAlert
 AudibleAlert = car.CarControl.HUDControl.AudibleAlert
 EventName = log.OnroadEvent.EventName
+LaneChangeDirection = log.LaneChangeDirection
 
 
 # get event name from enum
@@ -85,6 +86,22 @@ def below_steer_speed_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.S
     "",
     AlertStatus.userPrompt, AlertSize.small,
     Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 0.4)
+
+
+def lane_change_blocked_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
+  direction = sm['modelV2'].meta.laneChangeDirection
+  if direction == LaneChangeDirection.left:
+    text = "Vehicle in Left Blind Spot"
+  elif direction == LaneChangeDirection.right:
+    text = "Vehicle in Right Blind Spot"
+  else:
+    text = "Vehicle in Blind Spot"
+
+  return Alert(
+    text,
+    "",
+    AlertStatus.userPrompt, AlertSize.small,
+    Priority.LOW, VisualAlert.none, AudibleAlert.prompt, .1)
 
 
 def calibration_incomplete_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
@@ -437,11 +454,7 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   },
 
   EventName.laneChangeBlocked: {
-    ET.WARNING: Alert(
-      "Car Detected in Blindspot",
-      "",
-      AlertStatus.userPrompt, AlertSize.small,
-      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, .1),
+    ET.WARNING: lane_change_blocked_alert,
   },
 
   EventName.laneChange: {
@@ -918,11 +931,7 @@ if HARDWARE.get_device_type() == 'mici':
         Priority.LOW, VisualAlert.none, AudibleAlert.none, .1),
     },
     EventName.laneChangeBlocked: {
-      ET.WARNING: Alert(
-        "Car in Blindspot",
-        "",
-        AlertStatus.userPrompt, AlertSize.small,
-        Priority.LOW, VisualAlert.none, AudibleAlert.prompt, .1),
+      ET.WARNING: lane_change_blocked_alert,
     },
     EventName.steerSaturated: {
       ET.WARNING: Alert(

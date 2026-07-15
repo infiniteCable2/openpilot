@@ -52,12 +52,12 @@ class CircularAlertsRenderer:
       self._e2e_alert_frame += 1
       self._e2e_alert_display_timer -= 1
 
-      if self._green_light_alert:
-        self._alert_text = "GREEN\nLIGHT"
-        self._alert_img = self._green_light_alert_img
-      elif self._lead_depart_alert:
+      if self._lead_depart_alert:
         self._alert_text = "LEAD VEHICLE\nDEPARTING"
         self._alert_img = self._lead_depart_alert_img
+      elif self._green_light_alert:
+        self._alert_text = "GREEN\nLIGHT"
+        self._alert_img = self._green_light_alert_img
 
     elif ui_state.standstill_timer and self._is_standstill:
       self._alert_img = None
