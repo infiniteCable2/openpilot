@@ -8,6 +8,7 @@ from openpilot.common.constants import CV
 from openpilot.common.git import get_short_branch
 from openpilot.common.realtime import DT_CTRL
 from openpilot.selfdrive.locationd.calibrationd import MIN_SPEED_FILTER
+from openpilot.selfdrive.selfdrived.blind_spot import LEFT, RIGHT, warning_direction
 from openpilot.system.micd import SAMPLE_RATE, SAMPLE_BUFFER
 from openpilot.selfdrive.ui.feedback.feedbackd import FEEDBACK_MAX_DURATION
 from openpilot.system.hardware import HARDWARE
@@ -22,7 +23,6 @@ AlertStatus = log.SelfdriveState.AlertStatus
 VisualAlert = car.CarControl.HUDControl.VisualAlert
 AudibleAlert = car.CarControl.HUDControl.AudibleAlert
 EventName = log.OnroadEvent.EventName
-LaneChangeDirection = log.LaneChangeDirection
 
 
 # get event name from enum
@@ -89,19 +89,21 @@ def below_steer_speed_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.S
 
 
 def lane_change_blocked_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
-  direction = sm['modelV2'].meta.laneChangeDirection
-  if direction == LaneChangeDirection.left:
+  direction = warning_direction(CS.leftBlinker, CS.rightBlinker, CS.leftBlindspot, CS.rightBlindspot)
+  audible_alert = AudibleAlert.prompt
+  if direction == LEFT:
     text = "Vehicle in Left Blind Spot"
-  elif direction == LaneChangeDirection.right:
+  elif direction == RIGHT:
     text = "Vehicle in Right Blind Spot"
   else:
     text = "Vehicle in Blind Spot"
+    audible_alert = AudibleAlert.none
 
   return Alert(
     text,
     "",
     AlertStatus.userPrompt, AlertSize.small,
-    Priority.LOW, VisualAlert.none, AudibleAlert.prompt, .1)
+    Priority.LOW, VisualAlert.none, audible_alert, .1)
 
 
 def calibration_incomplete_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:

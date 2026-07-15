@@ -16,6 +16,7 @@ from openpilot.common.gps import get_gps_location_service
 
 from openpilot.selfdrive.car.car_specific import CarSpecificEvents
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
+from openpilot.selfdrive.selfdrived.blind_spot import warning_direction
 from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
@@ -330,8 +331,7 @@ class SelfdriveD(CruiseHelper):
     # Handle lane change
     if self.sm['modelV2'].meta.laneChangeState == LaneChangeState.preLaneChange:
       direction = self.sm['modelV2'].meta.laneChangeDirection
-      if (CS.leftBlindspot and direction == LaneChangeDirection.left) or \
-         (CS.rightBlindspot and direction == LaneChangeDirection.right):
+      if warning_direction(CS.leftBlinker, CS.rightBlinker, CS.leftBlindspot, CS.rightBlindspot) is not None:
         self.events.add(EventName.laneChangeBlocked)
       else:
         if direction == LaneChangeDirection.left:
