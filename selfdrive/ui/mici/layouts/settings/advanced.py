@@ -46,6 +46,8 @@ class AdvancedSettingsLayoutMici(NavScroller):
       [tr("Off"), tr("Information"), tr("Warning")],
     )
     self._accel_bar = BigParamControl(tr("Real-time Acceleration Bar"), "RocketFuel")
+    self._green_light_alert = BigParamControl(tr("Green Traffic Light Alert (Beta)"), "GreenLightAlert")
+    self._lead_depart_alert = BigParamControl(tr("Lead Departure Alert (Beta)"), "LeadDepartAlert")
 
     self._scroller.add_widgets([
       self._blind_spot,
@@ -53,12 +55,16 @@ class AdvancedSettingsLayoutMici(NavScroller):
       self._disable_steer_chime,
       self._speed_limit_mode,
       self._accel_bar,
+      self._green_light_alert,
+      self._lead_depart_alert,
     ])
 
     self._refresh_controls = (
       ("BlindSpot", self._blind_spot),
       ("DisableCarSteerAlerts", self._disable_steer_chime),
       ("RocketFuel", self._accel_bar),
+      ("GreenLightAlert", self._green_light_alert),
+      ("LeadDepartAlert", self._lead_depart_alert),
     )
 
     ui_state.add_offroad_transition_callback(self._update_controls)
