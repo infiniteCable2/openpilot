@@ -33,6 +33,7 @@ class SettingsLayout(NavScroller):
     device_panel = DeviceLayoutMici()
     device_btn = SettingsBigButton(tr("Device"), "", gui_app.texture("icons_mici/settings/device_icon.png", 72, 58))
     device_btn.set_click_callback(lambda: gui_app.push_widget(device_panel))
+    self._device_btn = device_btn
 
     software_panel = SoftwareLayoutMici()
     software_btn = SettingsBigButton("software", "", gui_app.texture("icons_mici/settings/software.png", 64, 75))
@@ -52,6 +53,7 @@ class SettingsLayout(NavScroller):
 
     self._scroller.add_widgets([
       toggles_btn,
+      advanced_btn,
       network_btn,
       device_btn,
       software_btn,
@@ -59,7 +61,6 @@ class SettingsLayout(NavScroller):
       #BigDialogButton("manual", "", "icons_mici/settings/manual_icon.png", "Check out the mici user\nmanual at comma.ai/setup"),
       firehose_btn,
       developer_btn,
-      advanced_btn,
     ])
 
     self._font_medium = gui_app.font(FontWeight.MEDIUM)

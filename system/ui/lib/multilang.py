@@ -25,9 +25,8 @@ UNIFONT_LANGUAGES = [
 
 C4_ZH_CHT_TRANSLATIONS = {
   "Advanced Settings": "進階設定",
-  "VW / Caddy Support": "VW／Caddy 支援",
-  "Active": "已啟用",
-  "Caddy Mk5 and MQB EVO support remains active. Curvature steering and the VW-specific MADS adapter are selected automatically from the detected vehicle; they are not separate toggles.": "Caddy Mk5 與 MQB EVO 支援仍然有效。曲率轉向與 VW 專用 MADS 介面會依辨識到的車型自動套用，不需另外切換。",
+  "Automatic": "自動",
+  "VW curvature steering is enabled automatically for supported Caddy and MQB EVO vehicles. The frozen-opendbc compatibility layer remains active; no separate toggle is required.": "支援的 Caddy 與 MQB EVO 車型會自動啟用 VW 曲率轉向。frozen-opendbc 相容層仍然有效，不需另外切換。",
   "driving personality": "駕駛風格",
   "aggressive": "積極",
   "standard": "標準",
