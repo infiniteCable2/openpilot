@@ -1,5 +1,6 @@
-from openpilot.selfdrive.ui.mici.widgets.button import BigMultiParamToggle, BigParamControl
+from openpilot.selfdrive.ui.mici.widgets.button import BigMultiParamToggle, BigMultiToggle, BigParamControl
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.system.ui.lib.application import MousePos
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.widgets.scroller import NavScroller
 
@@ -12,6 +13,21 @@ class SpeedLimitDisplayControl(BigMultiParamToggle):
     self.set_value(self._options[min(max(value, 0), len(self._options) - 1)])
 
 
+class DrivingSideControl(BigMultiToggle):
+  """Two-option control backed by the boolean ForceRHDForBSM parameter."""
+
+  def __init__(self):
+    super().__init__(tr("VW: Blind Spot Driving Side"), [tr("Left-Hand Drive"), tr("Right-Hand Drive")])
+    self._load_value()
+
+  def _load_value(self):
+    self.set_value(self._options[int(ui_state.params.get_bool("ForceRHDForBSM"))])
+
+  def _handle_mouse_release(self, mouse_pos: MousePos):
+    super()._handle_mouse_release(mouse_pos)
+    ui_state.params.put_bool("ForceRHDForBSM", self.value == self._options[1], block=True)
+
+
 class AdvancedSettingsLayoutMici(NavScroller):
   """Small set of working C4/VW controls for the mici settings UI."""
 
@@ -19,11 +35,7 @@ class AdvancedSettingsLayoutMici(NavScroller):
     super().__init__()
 
     self._blind_spot = BigParamControl(tr("Show Blind Spot Warnings"), "BlindSpot")
-    self._bsm_side = BigMultiParamToggle(
-      tr("VW: Blind Spot Driving Side"),
-      "ForceRHDForBSM",
-      [tr("Left-Hand Drive"), tr("Right-Hand Drive")],
-    )
+    self._bsm_side = DrivingSideControl()
     self._disable_steer_chime = BigParamControl(
       tr("VW: Disable Car Steer Alert Chime"),
       "DisableCarSteerAlerts",
