@@ -25,8 +25,11 @@ UNIFONT_LANGUAGES = [
 
 C4_ZH_CHT_TRANSLATIONS = {
   "Advanced Settings": "進階設定",
-  "Automatic": "自動",
-  "VW curvature steering is enabled automatically for supported Caddy and MQB EVO vehicles. The frozen-opendbc compatibility layer remains active; no separate toggle is required.": "支援的 Caddy 與 MQB EVO 車型會自動啟用 VW 曲率轉向。frozen-opendbc 相容層仍然有效，不需另外切換。",
+  "VW: Blind Spot Driving Side": "VW：盲點系統駕駛側",
+  "Left-Hand Drive": "左駕",
+  "Right-Hand Drive": "右駕",
+  "Speed Limit Display & Warning": "速限顯示與警告",
+  "Off": "關閉",
   "driving personality": "駕駛風格",
   "aggressive": "積極",
   "standard": "標準",

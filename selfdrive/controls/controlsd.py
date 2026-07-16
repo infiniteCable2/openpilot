@@ -52,6 +52,8 @@ class Controls(ControlsExt):
     self.steer_limited_by_safety = False
     self.curvature = 0.0
     self.desired_curvature = 0.0
+    self.force_rhd_for_bsm = self.params.get_bool("ForceRHDForBSM")
+    self.disable_car_steer_alerts = self.params.get_bool("DisableCarSteerAlerts")
 
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
@@ -72,6 +74,9 @@ class Controls(ControlsExt):
 
   def update(self):
     self.sm.update(15)
+    if self.sm.frame % int(1. / DT_CTRL) == 0:
+      self.force_rhd_for_bsm = self.params.get_bool("ForceRHDForBSM")
+      self.disable_car_steer_alerts = self.params.get_bool("DisableCarSteerAlerts")
     if self.sm.updated["liveCalibration"]:
       self.pose_calibrator.feed_live_calib(self.sm['liveCalibration'])
     if self.sm.updated["livePose"]:
@@ -108,6 +113,8 @@ class Controls(ControlsExt):
 
     CC = car.CarControl.new_message()
     CC.enabled = self.sm['selfdriveState'].enabled
+    CC.forceRHDForBSM = self.force_rhd_for_bsm
+    CC.disableCarSteerAlerts = self.disable_car_steer_alerts
 
     # Check which actuators can be enabled
     standstill = abs(CS.vEgo) <= max(self.CP.minSteerSpeed, 0.3) or CS.standstill
