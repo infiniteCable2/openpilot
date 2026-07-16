@@ -102,7 +102,8 @@ done
 RUN=$([ -z "$RUN" ] && echo "" || echo "!($(echo $RUN | sed 's/ /|/g'))")
 SKIP="@($(echo $SKIP | sed 's/ /|/g'))"
 
-GIT_FILES="$(git ls-files openpilot)"
+IGNORED_DIRS="^openpilot/third_party/.*"
+GIT_FILES="$(git ls-files openpilot | grep -vE "$IGNORED_DIRS")"
 ALL_FILES=""
 for f in $GIT_FILES; do
   if [[ -f $f ]]; then

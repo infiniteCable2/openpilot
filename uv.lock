@@ -1032,7 +1032,6 @@ dependencies = [
     { name = "libusb-package" },
     { name = "libusb1" },
     { name = "opendbc" },
-    { name = "spidev", marker = "sys_platform == 'linux'" },
 ]
 
 [package.metadata]
@@ -1043,7 +1042,7 @@ requires-dist = [
     { name = "gcc-arm-none-eabi", marker = "extra == 'dev'", git = "https://github.com/commaai/dependencies.git?subdirectory=gcc-arm-none-eabi&rev=release-gcc-arm-none-eabi" },
     { name = "libusb-package" },
     { name = "libusb1" },
-    { name = "opendbc", git = "https://github.com/commaai/opendbc.git?rev=master" },
+    { name = "opendbc", git = "https://github.com/sunnypilot/opendbc.git?rev=master" },
     { name = "pycryptodome", marker = "extra == 'dev'", specifier = ">=3.9.8" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-mock", marker = "extra == 'dev'" },
@@ -1052,7 +1051,6 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "scons", marker = "extra == 'dev'" },
     { name = "setuptools", marker = "extra == 'dev'" },
-    { name = "spidev", marker = "sys_platform == 'linux'" },
 ]
 provides-extras = ["dev"]
 
@@ -1310,7 +1308,7 @@ wheels = [
 
 [[package]]
 name = "pytest-xdist"
-version = "3.7.1.dev24+g2b4372bd6"
+version = "3.7.1.dev24+g2b4372b"
 source = { git = "https://github.com/sshane/pytest-xdist?rev=2b4372bd62699fb412c4fe2f95bf9f01bd2018da#2b4372bd62699fb412c4fe2f95bf9f01bd2018da" }
 dependencies = [
     { name = "execnet" },
@@ -1542,12 +1540,6 @@ wheels = [
 ]
 
 [[package]]
-name = "spidev"
-version = "3.8"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/67/87/039b6eeea781598015b538691bc174cc0bf77df9d4d2d3b8bf9245c0de8c/spidev-3.8.tar.gz", hash = "sha256:2bc02fb8c6312d519ebf1f4331067427c0921d3f77b8bcaf05189a2e8b8382c0", size = 13893, upload-time = "2025-09-15T18:56:20.672Z" }
-
-[[package]]
 name = "sympy"
 version = "1.14.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1586,7 +1578,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "tinygrad"
-version = "0.13.0"
+version = "0.12.0"
 source = { editable = "tinygrad_repo" }
 
 [package.metadata]
@@ -1633,7 +1625,6 @@ requires-dist = [
     { name = "tiktoken", marker = "extra == 'testing'" },
     { name = "tinygrad", extras = ["testing-minimal"], marker = "extra == 'testing-unit'" },
     { name = "tinygrad", extras = ["testing-unit"], marker = "extra == 'testing'" },
-    { name = "tinymesa", marker = "extra == 'mesa'", specifier = "==25.2.7.2" },
     { name = "torch", marker = "extra == 'testing-minimal'", specifier = "==2.9.1" },
     { name = "tqdm", marker = "extra == 'testing-unit'" },
     { name = "transformers", marker = "extra == 'testing'" },
@@ -1641,7 +1632,7 @@ requires-dist = [
     { name = "typing-extensions", marker = "extra == 'linting'" },
     { name = "z3-solver", marker = "extra == 'testing-minimal'", specifier = "<4.15.4" },
 ]
-provides-extras = ["linting", "testing-minimal", "testing-unit", "testing", "docs", "mesa"]
+provides-extras = ["linting", "testing-minimal", "testing-unit", "testing", "docs"]
 
 [[package]]
 name = "tomli"

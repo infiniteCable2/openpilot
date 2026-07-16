@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import base64
 import hashlib
 import itertools
 import json
@@ -10,6 +11,7 @@ import random
 import select
 import socket
 import sys
+import tempfile
 import threading
 import time
 import gzip
@@ -38,7 +40,7 @@ from openpilot.system.loggerd.xattr_cache import getxattr, setxattr
 from openpilot.common.swaglog import cloudlog
 from openpilot.common.version import get_build_metadata
 from openpilot.common.hardware.hw import Paths
-from openpilot.system.athena.rpc import dispatcher, dumps_call, handle, is_call, is_response, loads
+from openpilot.system.athena.rpc import dispatcher, handle, is_call, is_response, loads
 
 
 ATHENA_HOST = os.getenv('ATHENA_HOST', 'wss://athena.comma.ai')
@@ -622,24 +624,6 @@ def startStream(sdp: str, enabled: bool) -> dict:
     wait_for_webrtcd()
 
   return post_stream_request(StreamRequestBody(sdp, "wideRoad", enabled, bridge_services_in, ["carState", "deviceState"]))
-
-
-@dispatcher.add_method
-def takeSnapshot() -> str | dict[str, str] | None:
-  from openpilot.system.camerad.snapshot import jpeg_write, snapshot
-  ret = snapshot()
-  if ret is not None:
-    def b64jpeg(x):
-      if x is not None:
-        f = io.BytesIO()
-        jpeg_write(f, x)
-        return base64.b64encode(f.getvalue()).decode("utf-8")
-      else:
-        return None
-    return {'jpegBack': b64jpeg(ret[0]),
-            'jpegFront': b64jpeg(ret[1])}
-  else:
-    raise Exception("not available while camerad is started")
 
 
 def get_logs_to_send_sorted(log_attr_name=LOG_ATTR_NAME) -> list[str]:

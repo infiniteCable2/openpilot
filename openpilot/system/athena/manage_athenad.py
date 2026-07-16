@@ -13,7 +13,7 @@ ATHENA_MGR_PID_PARAM = "AthenadPid"
 
 
 def main():
-  manage_athenad("DongleId", ATHENA_MGR_PID_PARAM, 'athenad', 'system.athena.athenad')
+  manage_athenad("DongleId", ATHENA_MGR_PID_PARAM, 'athenad', 'openpilot.system.athena.athenad')
 
 
 def manage_athenad(dongle_id_param, pid_param, process_name, target):
