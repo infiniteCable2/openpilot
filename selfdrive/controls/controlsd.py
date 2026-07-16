@@ -18,6 +18,7 @@ from openpilot.selfdrive.controls.lib.latcontrol_angle import LatControlAngle, S
 from openpilot.selfdrive.controls.lib.latcontrol_curvature import LatControlCurvature
 from openpilot.selfdrive.controls.lib.latcontrol_torque import LatControlTorque
 from openpilot.selfdrive.controls.lib.longcontrol import LongControl
+from openpilot.selfdrive.car.steer_control import is_curvature_steer_control
 from openpilot.selfdrive.modeld.modeld import LAT_SMOOTH_SECONDS
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 
@@ -60,7 +61,7 @@ class Controls(ControlsExt):
     self.LaC: LatControl
     if self.CP.steerControlType == car.CarParams.SteerControlType.angle:
       self.LaC = LatControlAngle(self.CP, self.CP_SP, self.CI, DT_CTRL)
-    elif self.CP.steerControlType == car.CarParams.SteerControlType.curvature:
+    elif is_curvature_steer_control(self.CP.steerControlType):
       self.LaC = LatControlCurvature(self.CP, self.CP_SP, self.CI, DT_CTRL)
     elif self.CP.lateralTuning.which() == 'pid':
       self.LaC = LatControlPID(self.CP, self.CP_SP, self.CI, DT_CTRL)
@@ -150,7 +151,7 @@ class Controls(ControlsExt):
                                                      self.steer_limited_by_safety, self.desired_curvature,
                                                      self.calibrated_pose, curvature_limited, lat_delay)
     actuators.torque = float(steer)
-    if self.CP.steerControlType == car.CarParams.SteerControlType.curvature:
+    if is_curvature_steer_control(self.CP.steerControlType):
       actuators.curvature = float(lateral_output)
     else:
       actuators.steeringAngleDeg = float(lateral_output)
@@ -227,7 +228,7 @@ class Controls(ControlsExt):
     lat_tuning = self.CP.lateralTuning.which()
     if self.CP.steerControlType == car.CarParams.SteerControlType.angle:
       cs.lateralControlState.angleState = lac_log
-    elif self.CP.steerControlType == car.CarParams.SteerControlType.curvature:
+    elif is_curvature_steer_control(self.CP.steerControlType):
       cs.lateralControlState.curvatureState = lac_log
     elif lat_tuning == 'pid':
       cs.lateralControlState.pidState = lac_log

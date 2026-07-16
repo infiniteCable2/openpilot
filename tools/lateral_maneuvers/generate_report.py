@@ -14,6 +14,7 @@ from openpilot.common.utils import tabulate
 from cereal import car
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.selfdrive.controls.lib.latcontrol_torque import LP_FILTER_CUTOFF_HZ
+from openpilot.selfdrive.car.steer_control import is_curvature_steer_control
 from openpilot.tools.lib.logreader import LogReader
 from openpilot.common.hardware.hw import Paths
 from openpilot.common.constants import CV
@@ -152,7 +153,7 @@ def report(platform, route, _description, CP, ID, maneuvers):
       ax[1].grid(linewidth=4)
       if CP.steerControlType == car.CarParams.SteerControlType.angle:
         steer_field, steer_ylabel = 'steeringAngleDeg', 'Steer angle (deg)'
-      elif CP.steerControlType == car.CarParams.SteerControlType.curvature:
+      elif is_curvature_steer_control(CP.steerControlType):
         steer_field, steer_ylabel = 'curvature', 'Curvature (1/m)'
       else:
         steer_field, steer_ylabel = 'torque', 'Steer torque'

@@ -20,6 +20,7 @@ from opendbc.car.values import Platform, PLATFORMS
 from opendbc.safety.tests.libsafety import libsafety_py
 from openpilot.common.basedir import BASEDIR
 from openpilot.selfdrive.pandad import can_capnp_to_list
+from openpilot.selfdrive.car.steer_control import is_curvature_steer_control
 from openpilot.selfdrive.test.helpers import read_segment_list
 from openpilot.common.hardware.hw import DEFAULT_DOWNLOAD_CACHE_ROOT
 from openpilot.tools.lib.logreader import LogReader, LogsUnavailable, openpilotci_source, internal_source, comma_api_source
@@ -192,7 +193,7 @@ class TestCarModelBase(unittest.TestCase):
     # make sure car params are within a valid range
     self.assertGreater(self.CP.mass, 1)
 
-    if self.CP.steerControlType not in (SteerControlType.angle, SteerControlType.curvature):
+    if self.CP.steerControlType != SteerControlType.angle and not is_curvature_steer_control(self.CP.steerControlType):
       tuning = self.CP.lateralTuning.which()
       if tuning == 'pid':
         self.assertTrue(len(self.CP.lateralTuning.pid.kpV))
