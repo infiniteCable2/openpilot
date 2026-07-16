@@ -132,9 +132,6 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     userBookmark @95;
     excessiveActuation @96;
     audioFeedback @97;
-    dashcamModeRadDisEngOn @100;
-    radarDisableFailed @101;
-    steerFaultWarning @102;
 
     soundsUnavailableDEPRECATED @47;
   }
@@ -812,7 +809,6 @@ struct ControlsState @0x97ff69c53601abf1 {
   uiAccelCmd @5 :Float32;
   ufAccelCmd @33 :Float32;
   curvature @37 :Float32;  # path curvature from vehicle model
-  modelDesiredCurvature @67 :Float32;  # raw desired curvature from modelV2 before smoothing/adaptation
   desiredCurvature @61 :Float32;  # lag adjusted curvatures used by lateral controllers
   forceDecel @51 :Bool;
 
@@ -822,21 +818,9 @@ struct ControlsState @0x97ff69c53601abf1 {
     debugState @59 :LateralDebugState;
     torqueState @60 :LateralTorqueState;
 
-    curvatureStateDEPRECATED @65 :LateralCurvatureState;
+    curvatureState @65 :LateralCurvatureState;
     lqrStateDEPRECATED @55 :Deprecated.LateralLQRState;
     indiStateDEPRECATED @52 :Deprecated.LateralINDIState;
-  }
-  
-  struct LateralCurvatureState @0xad9d8095c06f7c61 {
-    active @0 :Bool;
-    actualCurvature @1 :Float32;
-    desiredCurvature @2 :Float32;
-    error @3 :Float32;
-    p @4 :Float32;
-    i @5 :Float32;
-    f @6 :Float32;
-    output @7 :Float32;
-    saturated @8 :Bool;
   }
 
   struct LateralPIDState {
@@ -881,6 +865,18 @@ struct ControlsState @0x97ff69c53601abf1 {
     steeringAngleDeg @1 :Float32;
     output @2 :Float32;
     saturated @3 :Bool;
+  }
+
+  struct LateralCurvatureState @0xad9d8095c06f7c61 {
+    active @0 :Bool;
+    actualCurvature @1 :Float32;
+    desiredCurvature @2 :Float32;
+    error @3 :Float32;
+    p @4 :Float32;
+    i @5 :Float32;
+    f @6 :Float32;
+    output @7 :Float32;
+    saturated @8 :Bool;
   }
 
   deprecated :group {
@@ -1161,7 +1157,6 @@ struct LateralManeuverPlan {
 struct LongitudinalPlan @0xe00b5b3eba12876c {
   modelMonoTime @9 :UInt64;
   hasLead @7 :Bool;
-  leadDistance @40 :Float32;
   fcw @8 :Bool;
   longitudinalPlanSource @15 :LongitudinalPlanSource;
   processingDelay @29 :Float32;
@@ -1171,7 +1166,6 @@ struct LongitudinalPlan @0xe00b5b3eba12876c {
   speeds @33 :List(Float32);
   jerks @34 :List(Float32);
   aTarget @18 :Float32;
-  vTarget @41 :Float32;
   shouldStop @37: Bool;
   allowThrottle @38: Bool;
   allowBrake @39: Bool;
@@ -2265,6 +2259,7 @@ struct LiveDelayData {
   lateralDelayEstimateStd @5 :Float32;
   points @4 :List(Float32);
   calPerc @6 :Int8;
+  version @7 :Int32;
 
   enum Status {
     unestimated @0;
@@ -2585,7 +2580,7 @@ struct Event {
     customReserved16 @142 :Custom.CustomReserved16;
     customReserved17 @143 :Custom.CustomReserved17;
     customReserved18 @144 :Custom.CustomReserved18;
-    liveCurvatureParameters @145 :Custom.LiveCurvatureParameters;
+    customReserved19 @145 :Custom.CustomReserved19;
 
     # *********** legacy + deprecated ***********
     model @9 :Deprecated.ModelData; # TODO: rename modelV2 and mark this as deprecated

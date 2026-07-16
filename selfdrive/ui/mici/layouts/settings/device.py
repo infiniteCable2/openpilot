@@ -1,7 +1,5 @@
 import os
-import threading
 import pyray as rl
-from enum import IntEnum
 from collections.abc import Callable
 
 from openpilot.common.basedir import BASEDIR
@@ -122,12 +120,6 @@ class DeviceInfoLayoutMici(Widget):
     self._serial_number_text_label.render()
 
 
-class UpdaterState(IntEnum):
-  IDLE = 0
-  WAITING_FOR_UPDATER = 1
-  UPDATER_RESPONDING = 2
-
-
 class PairBigButton(BigButton):
   def __init__(self):
     super().__init__("pair", "connect.comma.ai", gui_app.texture("icons_mici/settings/comma_icon.png", 33, 60))
@@ -164,312 +156,6 @@ class PairBigButton(BigButton):
     gui_app.push_widget(dlg)
 
 
-UPDATER_TIMEOUT = 10.0  # seconds to wait for updater to respond
-
-
-def get_ordered_branches() -> list[str]:
-  current_git_branch = ui_state.params.get("GitBranch") or ""
-  branches_str = ui_state.params.get("UpdaterAvailableBranches") or ""
-  branches = [b for b in branches_str.split(",") if b]
-
-  for b in [current_git_branch, "devel-staging", "devel", "nightly", "nightly-dev", "master"]:
-    if b in branches:
-      branches.remove(b)
-      branches.insert(0, b)
-
-  return branches
-
-
-class BranchInfoLayoutMici(Widget):
-  def __init__(self):
-    super().__init__()
-    self.set_rect(rl.Rectangle(0, 0, 360, 180))
-
-    header_color = rl.Color(255, 255, 255, int(255 * 0.9))
-    subheader_color = rl.Color(255, 255, 255, int(255 * 0.9 * 0.65))
-    max_width = int(self._rect.width - 20)
-    self._current_branch_header = UnifiedLabel(tr("current branch"), 48, max_width=max_width, text_color=header_color,
-                                               font_weight=FontWeight.DISPLAY)
-    self._current_branch_text = UnifiedLabel("", 32, max_width=max_width, text_color=subheader_color,
-                                             font_weight=FontWeight.ROMAN, scroll=True)
-    self._target_branch_header = UnifiedLabel(tr("target branch"), 48, max_width=max_width, text_color=header_color,
-                                              font_weight=FontWeight.DISPLAY)
-    self._target_branch_text = UnifiedLabel("", 32, max_width=max_width, text_color=subheader_color,
-                                            font_weight=FontWeight.ROMAN, scroll=True)
-
-  def _update_state(self):
-    super()._update_state()
-    current_branch = ui_state.params.get("GitBranch") or ""
-    target_branch = ui_state.params.get("UpdaterTargetBranch") or current_branch
-    self._current_branch_text.set_text(current_branch)
-    self._target_branch_text.set_text(target_branch)
-
-  def _render(self, _):
-    self._current_branch_header.set_position(self._rect.x + 20, self._rect.y - 10)
-    self._current_branch_header.render()
-
-    self._current_branch_text.set_position(self._rect.x + 20, self._rect.y + 68 - 25)
-    self._current_branch_text.render()
-
-    self._target_branch_header.set_position(self._rect.x + 20, self._rect.y + 114 - 30)
-    self._target_branch_header.render()
-
-    self._target_branch_text.set_position(self._rect.x + 20, self._rect.y + 161 - 25)
-    self._target_branch_text.render()
-
-
-class BranchSelectionLayoutMici(NavScroller):
-  def __init__(self, back_callback: Callable):
-    super().__init__()
-    self.set_back_callback(back_callback)
-    self._branch_info = BranchInfoLayoutMici()
-    self._branch_buttons: list[BigButton] = []
-    self._branch_snapshot: tuple[str, ...] = ()
-    self._scroller.add_widget(self._branch_info)
-    self._rebuild_branch_buttons()
-
-  def _rebuild_branch_buttons(self):
-    branches = get_ordered_branches()
-    snapshot = tuple(branches)
-    if snapshot == self._branch_snapshot:
-      return
-
-    self._branch_snapshot = snapshot
-    items = [self._branch_info]
-    self._branch_buttons = []
-
-    for branch in branches:
-      btn = BigButton(branch, scroll=True)
-      btn.set_click_callback(lambda b=branch: self._select_branch(b))
-      self._branch_buttons.append(btn)
-      items.append(btn)
-
-    self._scroller._items.clear()
-    for item in items:
-      self._scroller.add_widget(item)
-
-  def _select_branch(self, branch: str):
-    ui_state.params.put("UpdaterTargetBranch", branch)
-    os.system("pkill -SIGUSR1 -f system.updated.updated")
-    gui_app.pop_widget()
-
-  def _update_state(self):
-    super()._update_state()
-    self._rebuild_branch_buttons()
-    is_offroad = ui_state.is_offroad()
-    for btn in self._branch_buttons:
-      btn.set_enabled(is_offroad)
-
-
-class TargetBranchBigButton(BigButton):
-  def __init__(self):
-    super().__init__("target branch", "", gui_app.texture("icons_mici/settings/device/update.png", 64, 75), scroll=True)
-    self.set_click_callback(lambda: gui_app.push_widget(BranchSelectionLayoutMici(gui_app.pop_widget)))
-
-  def _update_state(self):
-    super()._update_state()
-    current_branch = ui_state.params.get("UpdaterTargetBranch") or ui_state.params.get("GitBranch") or ""
-    if self.get_value() != current_branch:
-      self.set_value(current_branch)
-
-
-class UpdateOpenpilotBigButton(BigButton):
-  def __init__(self):
-    self._txt_update_icon = gui_app.texture("icons_mici/settings/device/update.png", 64, 75)
-    self._txt_reboot_icon = gui_app.texture("icons_mici/settings/device/reboot.png", 64, 70)
-    self._txt_up_to_date_icon = gui_app.texture("icons_mici/settings/device/up_to_date.png", 64, 64)
-    super().__init__("update sunnypilot", "", self._txt_update_icon)
-
-    self._waiting_for_updater_t: float | None = None
-    self._hide_value_t: float | None = None
-    self._state: UpdaterState = UpdaterState.IDLE
-
-    ui_state.add_offroad_transition_callback(self.offroad_transition)
-
-  def offroad_transition(self):
-    if ui_state.is_offroad():
-      self.set_enabled(True)
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-
-    if not system_time_valid():
-      dlg = BigDialog("", tr("Please connect to Wi-Fi to update."))
-      gui_app.push_widget(dlg)
-      return
-
-    self.set_enabled(False)
-    self._state = UpdaterState.WAITING_FOR_UPDATER
-    self.set_icon(self._txt_update_icon)
-
-    def run():
-      if self.get_value() == "download update":
-        os.system("pkill -SIGHUP -f system.updated.updated")
-      elif self.get_value() == "update now":
-        ui_state.params.put_bool("DoReboot", True, block=True)
-      else:
-        os.system("pkill -SIGUSR1 -f system.updated.updated")
-
-    threading.Thread(target=run, daemon=True).start()
-
-  def set_value(self, value: str):
-    super().set_value(value)
-    if value:
-      self.set_text("")
-    else:
-      self.set_text("update sunnypilot")
-
-  def _update_state(self):
-    super()._update_state()
-
-    if ui_state.started:
-      self.set_enabled(False)
-      return
-
-    updater_state = ui_state.params.get("UpdaterState") or ""
-    failed_count = ui_state.params.get("UpdateFailedCount")
-    failed = False if failed_count is None else int(failed_count) > 0
-
-    if ui_state.params.get_bool("UpdateAvailable"):
-      self.set_rotate_icon(False)
-      self.set_enabled(True)
-      if self.get_value() != "update now":
-        self.set_value("update now")
-        self.set_icon(self._txt_reboot_icon)
-
-    elif self._state == UpdaterState.WAITING_FOR_UPDATER:
-      self.set_rotate_icon(True)
-      if updater_state != "idle":
-        self._state = UpdaterState.UPDATER_RESPONDING
-
-      # Recover from updater not responding (time invalid shortly after boot)
-      if self._waiting_for_updater_t is None:
-        self._waiting_for_updater_t = rl.get_time()
-
-      if self._waiting_for_updater_t is not None and rl.get_time() - self._waiting_for_updater_t > UPDATER_TIMEOUT:
-        self.set_rotate_icon(False)
-        self.set_value("updater failed\nto respond")
-        self._state = UpdaterState.IDLE
-        self._hide_value_t = rl.get_time()
-
-    elif self._state == UpdaterState.UPDATER_RESPONDING:
-      if updater_state == "idle":
-        self.set_rotate_icon(False)
-        self._state = UpdaterState.IDLE
-        self._hide_value_t = rl.get_time()
-      else:
-        if self.get_value() != updater_state:
-          self.set_value(updater_state)
-
-    elif self._state == UpdaterState.IDLE:
-      self.set_rotate_icon(False)
-      if failed:
-        self.set_enabled(True)  # allow retry when failure came from updater param
-        if self.get_value() != "failed to update":
-          self.set_value("failed to update")
-
-      elif ui_state.params.get_bool("UpdaterFetchAvailable"):
-        self.set_enabled(True)
-        if self.get_value() != "download update":
-          self.set_value("download update")
-
-      elif self._hide_value_t is not None:
-        self.set_enabled(True)
-        if self.get_value() == "checking...":
-          self.set_value("up to date")
-          self.set_icon(self._txt_up_to_date_icon)
-
-        # Hide previous text after short amount of time (up to date or failed)
-        if rl.get_time() - self._hide_value_t > 3.0:
-          self._hide_value_t = None
-          self.set_value("")
-          self.set_icon(self._txt_update_icon)
-      else:
-        if self.get_value() != "":
-          self.set_value("")
-
-    if self._state != UpdaterState.WAITING_FOR_UPDATER:
-      self._waiting_for_updater_t = None
-
-
-class ForceDownloadBigButton(BigButton):
-  def __init__(self):
-    self._txt_update_icon = gui_app.texture("icons_mici/settings/device/update.png", 64, 75)
-    super().__init__("force download", "", self._txt_update_icon)
-
-    self._waiting_for_updater_t: float | None = None
-    self._hide_value_t: float | None = None
-    self._state: UpdaterState = UpdaterState.IDLE
-
-    ui_state.add_offroad_transition_callback(self.offroad_transition)
-
-  def offroad_transition(self):
-    if ui_state.is_offroad():
-      self.set_enabled(True)
-
-  def _handle_mouse_release(self, mouse_pos: MousePos):
-    super()._handle_mouse_release(mouse_pos)
-
-    if not system_time_valid():
-      dlg = BigDialog("", tr("Please connect to Wi-Fi to update."))
-      gui_app.push_widget(dlg)
-      return
-
-    self.set_enabled(False)
-    self._state = UpdaterState.WAITING_FOR_UPDATER
-    self.set_icon(self._txt_update_icon)
-
-    def run():
-      os.system("pkill -SIGUSR2 -f system.updated.updated")
-
-    threading.Thread(target=run, daemon=True).start()
-
-  def _update_state(self):
-    super()._update_state()
-
-    if ui_state.started:
-      self.set_enabled(False)
-      return
-
-    updater_state = ui_state.params.get("UpdaterState") or ""
-
-    if self._state == UpdaterState.WAITING_FOR_UPDATER:
-      self.set_rotate_icon(True)
-      if updater_state != "idle":
-        self._state = UpdaterState.UPDATER_RESPONDING
-
-      if self._waiting_for_updater_t is None:
-        self._waiting_for_updater_t = rl.get_time()
-
-      if self._waiting_for_updater_t is not None and rl.get_time() - self._waiting_for_updater_t > UPDATER_TIMEOUT:
-        self.set_rotate_icon(False)
-        self.set_value("updater failed\nto respond")
-        self._state = UpdaterState.IDLE
-        self._hide_value_t = rl.get_time()
-
-    elif self._state == UpdaterState.UPDATER_RESPONDING:
-      if updater_state == "idle":
-        self.set_rotate_icon(False)
-        self._state = UpdaterState.IDLE
-        self._hide_value_t = rl.get_time()
-      elif self.get_value() != updater_state:
-        self.set_value(updater_state)
-
-    elif self._state == UpdaterState.IDLE:
-      self.set_rotate_icon(False)
-      self.set_enabled(True)
-
-      if self._hide_value_t is not None:
-        if rl.get_time() - self._hide_value_t > 3.0:
-          self._hide_value_t = None
-          self.set_value("")
-      elif self.get_value() != "":
-        self.set_value("")
-
-    if self._state != UpdaterState.WAITING_FOR_UPDATER:
-      self._waiting_for_updater_t = None
-
-
 class DeviceLayoutMici(NavScroller):
   def __init__(self):
     super().__init__()
@@ -485,22 +171,14 @@ class DeviceLayoutMici(NavScroller):
     def reset_calibration_callback():
       params = ui_state.params
       params.remove("CalibrationParams")
-      params.remove("LiveCurvatureParameters")
       params.remove("LiveTorqueParameters")
       params.remove("LiveParameters")
       params.remove("LiveParametersV2")
       params.remove("LiveDelay")
       params.put_bool("OnroadCycleRequested", True, block=True)
 
-    def uninstall_openpilot_callback():
-      ui_state.params.put_bool("DoUninstall", True, block=True)
-
     reset_calibration_btn = EngagedConfirmationButton("reset calibration", "reset", gui_app.texture("icons_mici/settings/device/lkas.png", 122, 64),
                                                       reset_calibration_callback)
-
-    uninstall_openpilot_btn = EngagedConfirmationButton("uninstall sunnypilot", "uninstall",
-                                                        gui_app.texture("icons_mici/settings/device/uninstall.png", 64, 64),
-                                                        uninstall_openpilot_callback, exit_on_confirm=False)
 
     reboot_btn = EngagedConfirmationCircleButton("reboot", gui_app.texture("icons_mici/settings/device/reboot.png", 64, 70),
                                                  reboot_callback, exit_on_confirm=False)
@@ -525,16 +203,12 @@ class DeviceLayoutMici(NavScroller):
 
     self._scroller.add_widgets([
       DeviceInfoLayoutMici(),
-      TargetBranchBigButton(),
-      UpdateOpenpilotBigButton(),
-      ForceDownloadBigButton(),
       PairBigButton(),
       review_training_guide_btn,
       driver_cam_btn,
       terms_btn,
       regulatory_btn,
       reset_calibration_btn,
-      uninstall_openpilot_btn,
       reboot_btn,
       self._power_off_btn,
     ])

@@ -11,7 +11,7 @@ from openpilot.selfdrive.locationd.calibrationd import MIN_SPEED_FILTER
 from openpilot.selfdrive.selfdrived.blind_spot import LEFT, RIGHT, warning_direction
 from openpilot.system.micd import SAMPLE_RATE, SAMPLE_BUFFER
 from openpilot.selfdrive.ui.feedback.feedbackd import FEEDBACK_MAX_DURATION
-from openpilot.system.hardware import HARDWARE
+from openpilot.common.hardware import HARDWARE
 
 from openpilot.sunnypilot.selfdrive.selfdrived.events_base import EventsBase, Priority, ET, Alert, \
   NoEntryAlert, SoftDisableAlert, UserSoftDisableAlert, ImmediateDisableAlert, EngagementAlert, NormalPermanentAlert, \

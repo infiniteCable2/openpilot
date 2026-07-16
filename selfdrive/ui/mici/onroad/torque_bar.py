@@ -165,8 +165,7 @@ class TorqueBar(Widget):
       return
 
     # torque line
-    lat_state_type = ui_state.sm['controlsState'].lateralControlState.which()
-    if lat_state_type in ('angleState', 'curvatureStateDEPRECATED'):
+    if ui_state.sm['controlsState'].lateralControlState.which() in ('angleState', 'curvatureState'):
       controls_state = ui_state.sm['controlsState']
       car_state = ui_state.sm['carState']
       live_parameters = ui_state.sm['liveParameters']
