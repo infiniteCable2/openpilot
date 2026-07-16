@@ -694,19 +694,19 @@ struct RadarState @0x9a185389d6fdd05f {
   leadTwo @4 :LeadData;
 
   struct LeadData {
-    dRel @0 :Float32;
-    yRel @1 :Float32;
-    vRel @2 :Float32;
+    dRel @0 :Float32;  # m from the front bumper of the car
+    yRel @1 :Float32;  # m in car frame, left positive
+    vRel @2 :Float32;  # m/s relative longitudinal speed
     aRel @3 :Float32;
-    vLead @4 :Float32;
+    vLead @4 :Float32;  # m/s absolute lead speed
     dPath @6 :Float32;
     vLat @7 :Float32;
     vLeadK @8 :Float32;
     aLeadK @9 :Float32;
     fcw @10 :Bool;
-    status @11 :Bool;
-    aLeadTau @12 :Float32;
-    modelProb @13 :Float32;
+    status @11 :Bool;  # true if a lead is present
+    aLeadTau @12 :Float32;  # lead accel time constant
+    modelProb @13 :Float32;  # vision model lead probability
     radar @14 :Bool;
     radarTrackId @15 :Int32 = -1;
 
