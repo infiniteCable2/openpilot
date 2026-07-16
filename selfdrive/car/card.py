@@ -121,10 +121,6 @@ class Car:
       self.CI, self.CP, self.CP_SP = CI, CI.CP, CI.CP_SP
       self.RI = RI
 
-    # supply a pre init method to set CP by checking data on the can bus
-    # e.g. car is in a state where the radar can not be disabled -> set dashcam mode
-    self.CI.pre_init(self.CP, self.CP_SP, *self.can_callbacks)
-
     self.CP.alternativeExperience = 0
     # mads
     set_alternative_experience(self.CP, self.CP_SP, self.params)
@@ -217,7 +213,7 @@ class Car:
       self.can_log_mono_time = messaging.log_from_bytes(can_strs[0]).logMonoTime
 
     self.v_cruise_helper.update_speed_limit_assist(self.is_metric, self.sm['longitudinalPlanSP'])
-    self.v_cruise_helper.update_v_cruise(CS, self.sm['carControl'].enabled, self.is_metric, self.sm['carControl'].cruiseControl.speedLimit, self.sm['carControl'].cruiseControl.speedLimitPredicative)
+    self.v_cruise_helper.update_v_cruise(CS, self.sm['carControl'].enabled, self.is_metric)
     if self.sm['carControl'].enabled and not self.CC_prev.enabled:
       # Use CarState w/ buttons from the step selfdrived enables on
       self.v_cruise_helper.initialize_v_cruise(self.CS_prev, self.experimental_mode, self.dynamic_experimental_control)

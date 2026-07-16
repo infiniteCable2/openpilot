@@ -46,7 +46,6 @@ LaneChangeDirection = log.LaneChangeDirection
 EventName = log.OnroadEvent.EventName
 ButtonType = car.CarState.ButtonEvent.Type
 SafetyModel = car.CarParams.SafetyModel
-DashcamOnlyReason = car.CarParams.DashcamOnlyReason
 AlertLevel = log.DriverMonitoringState.AlertLevel
 MonitoringPolicy = log.DriverMonitoringState.MonitoringPolicy
 TurnDirection = custom.ModelDataV2SP.TurnDirection
@@ -94,8 +93,6 @@ class SelfdriveD(CruiseHelper):
     self.car_state_sock = messaging.sub_sock('carState', timeout=20)
 
     ignore = self.sensor_packets + self.gps_packets + ['alertDebug', 'lateralManeuverPlan'] + ['modelDataV2SP']
-    if not Params().get_bool("EnableCurvatureD"):
-      ignore += ['liveCurvatureParameters']
     if SIMULATION:
       ignore += ['driverCameraState', 'managerState']
     if REPLAY:
@@ -103,7 +100,7 @@ class SelfdriveD(CruiseHelper):
       ignore += ['roadCameraState', 'wideRoadCameraState']
     self.sm = messaging.SubMaster(['deviceState', 'pandaStates', 'peripheralState', 'modelV2', 'liveCalibration',
                                    'carOutput', 'driverMonitoringState', 'longitudinalPlan', 'livePose', 'liveDelay',
-                                   'managerState', 'liveParameters', 'radarState', 'liveTorqueParameters', 'liveCurvatureParameters',
+                                   'managerState', 'liveParameters', 'radarState', 'liveTorqueParameters',
                                    'controlsState', 'carControl', 'driverAssistance', 'alertDebug', 'userBookmark', 'audioFeedback',
                                    'lateralManeuverPlan', 'modelDataV2SP', 'longitudinalPlanSP'] + \
                                    self.camera_packets + self.sensor_packets + self.gps_packets,
@@ -169,10 +166,7 @@ class SelfdriveD(CruiseHelper):
       self.events.add(EventName.carUnrecognized, static=True)
       set_offroad_alert("Offroad_CarUnrecognized", True)
     elif self.CP.passive:
-      if self.CP.dashcamOnlyReason == DashcamOnlyReason.radarDisableEngineOn:
-        self.events.add(EventName.dashcamModeRadDisEngOn, static=True)
-      else:
-        self.events.add(EventName.dashcamMode, static=True)
+      self.events.add(EventName.dashcamMode, static=True)
 
     self.events_sp = EventsSP()
     self.events_sp_prev = []
@@ -269,9 +263,6 @@ class SelfdriveD(CruiseHelper):
         (CS.brakePressed and (not self.CS_prev.brakePressed or not CS.standstill)) or \
         (CS.regenBraking and (not self.CS_prev.regenBraking or not CS.standstill)):
         self.events.add(EventName.pedalPressed)
-
-      if CS.radarDisableFailed:
-        self.events.add(EventName.radarDisableFailed)
 
     # Create events for temperature, disk space, and memory
     if self.sm['deviceState'].thermalStatus >= ThermalStatus.overheated:

@@ -58,7 +58,6 @@ class SoftwareLayout(Widget):
     self._onroad_label = ListItem(lambda: tr("Updates are only downloaded while the car is off."))
     self._version_item = text_item(lambda: tr("Current Version"), ui_state.params.get("UpdaterCurrentDescription") or "")
     self._download_btn = button_item(lambda: tr("Download"), lambda: tr("CHECK"), callback=self._on_download_update)
-    self._force_download_btn = button_item(lambda: tr("Force Download"), lambda: tr("FORCE"), callback=self._on_force_download)
 
     # Install button is initially hidden
     self._install_btn = button_item(lambda: tr("Install Update"), lambda: tr("INSTALL"), callback=self._on_install_update)
@@ -77,7 +76,6 @@ class SoftwareLayout(Widget):
       self._onroad_label,
       self._version_item,
       self._download_btn,
-      self._force_download_btn,
       self._install_btn,
       self._branch_btn,
       button_item(lambda: tr("Uninstall"), lambda: tr("UNINSTALL"), callback=self._on_uninstall),
@@ -102,7 +100,6 @@ class SoftwareLayout(Widget):
 
     # Update download button visibility and state
     self._download_btn.set_visible(ui_state.is_offroad())
-    self._force_download_btn.set_visible(ui_state.is_offroad())
 
     updater_state = ui_state.params.get("UpdaterState") or "idle"
     failed_count = ui_state.params.get("UpdateFailedCount") or 0
@@ -113,7 +110,6 @@ class SoftwareLayout(Widget):
       # Updater responded
       self._waiting_for_updater = False
       self._download_btn.action_item.set_enabled(False)
-      self._force_download_btn.action_item.set_enabled(False)
       # Use the mapping, with a fallback to the original state string
       display_text = STATE_TO_DISPLAY_TEXT.get(updater_state, updater_state)
       self._download_btn.action_item.set_value(display_text)
@@ -139,7 +135,6 @@ class SoftwareLayout(Widget):
 
       # Only enable if we're not waiting for updater to flip out of idle
       self._download_btn.action_item.set_enabled(not self._waiting_for_updater)
-      self._force_download_btn.action_item.set_enabled(not self._waiting_for_updater)
 
     # Update target branch button value
     current_branch = ui_state.params.get("UpdaterTargetBranch") or ""
@@ -184,12 +179,6 @@ class SoftwareLayout(Widget):
     # Trigger reboot to install update
     self._install_btn.action_item.set_enabled(False)
     ui_state.params.put_bool("DoReboot", True, block=True)
-
-  def _on_force_download(self):
-    self._force_download_btn.action_item.set_enabled(False)
-    self._waiting_for_updater = True
-    self._waiting_start_ts = time.monotonic()
-    os.system("pkill -SIGUSR2 -f system.updated.updated")
 
   def _on_select_branch(self):
     # Get available branches and order

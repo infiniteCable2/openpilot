@@ -14,8 +14,7 @@ from openpilot.sunnypilot.selfdrive.selfdrived.events import EventsSP
 
 GREEN_LIGHT_X_THRESHOLD = 30
 LEAD_DEPART_DIST_THRESHOLD = 1.0
-GREEN_LIGHT_TRIGGER_DELAY = 0.3
-LEAD_DEPART_TRIGGER_DELAY = 1.0
+TRIGGER_TIMER_THRESHOLD = 0.3
 
 
 class E2EStates:
@@ -82,7 +81,7 @@ class E2EAlertsHelper:
       else:
         self.green_light_trigger_timer = 0
 
-      if self.green_light_trigger_timer * DT_MDL >= GREEN_LIGHT_TRIGGER_DELAY:
+      if self.green_light_trigger_timer * DT_MDL > TRIGGER_TIMER_THRESHOLD:
         green_light_trigger = True
     elif self.green_light_state != E2EStates.ARMED:
       self.green_light_trigger_timer = 0
@@ -113,18 +112,13 @@ class E2EAlertsHelper:
       else:
         self.lead_depart_trigger_timer = 0
 
-      if self.lead_depart_trigger_timer * DT_MDL >= LEAD_DEPART_TRIGGER_DELAY:
+      if self.lead_depart_trigger_timer * DT_MDL > TRIGGER_TIMER_THRESHOLD:
         lead_depart_trigger = True
     elif self.lead_depart_state != E2EStates.ARMED:
       self.last_lead_distance = -1
       self.lead_depart_trigger_timer = 0
 
     self.last_allowed = self.allowed
-
-    # A departing lead is the immediate hazard context. Never replace it with a
-    # green-light notification when both model signals arrive together.
-    if lead_depart_trigger:
-      green_light_trigger = False
 
     return green_light_trigger, lead_depart_trigger
 
@@ -156,22 +150,19 @@ class E2EAlertsHelper:
     self.prev_green_light_state = self.green_light_state
     self.prev_lead_depart_state = self.lead_depart_state
 
+    self.green_light_state, self.green_light_alert = self.update_state_machine(
+      self.green_light_state,
+      self.green_light_alert_enabled,
+      self.allowed and not self.has_lead,
+      green_light_trigger
+    )
+
     self.lead_depart_state, self.lead_depart_alert = self.update_state_machine(
       self.lead_depart_state,
       self.lead_depart_alert_enabled,
       self.allowed and self.lead_depart_armed,
       lead_depart_trigger
     )
-
-    self.green_light_state, self.green_light_alert = self.update_state_machine(
-      self.green_light_state,
-      self.green_light_alert_enabled,
-      self.allowed and not self.has_lead and not self.lead_depart_alert,
-      green_light_trigger
-    )
-
-    if self.lead_depart_alert:
-      self.green_light_alert = False
 
     if self.green_light_alert or self.lead_depart_alert:
       events_sp.add(custom.OnroadEventSP.EventName.e2eChime)

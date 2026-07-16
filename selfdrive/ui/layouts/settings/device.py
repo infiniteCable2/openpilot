@@ -104,7 +104,6 @@ class DeviceLayout(Widget):
         return
 
       self._params.remove("CalibrationParams")
-      self._params.remove("LiveCurvatureParameters")
       self._params.remove("LiveTorqueParameters")
       self._params.remove("LiveParameters")
       self._params.remove("LiveParametersV2")

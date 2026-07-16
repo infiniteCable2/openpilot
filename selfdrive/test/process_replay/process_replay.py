@@ -440,7 +440,6 @@ CONFIGS = [
       "carState", "deviceState", "pandaStates", "peripheralState", "liveCalibration", "driverMonitoringState",
       "longitudinalPlan", "livePose", "liveDelay", "liveParameters", "radarState", "modelV2",
       "driverCameraState", "roadCameraState", "wideRoadCameraState", "managerState", "liveTorqueParameters",
-      "liveCurvatureParameters",
       "accelerometer", "gyroscope", "carOutput", "gpsLocationExternal", "gpsLocation", "controlsState",
       "carControl", "driverAssistance", "alertDebug", "audioFeedback",
     ],
@@ -454,7 +453,7 @@ CONFIGS = [
   ),
   ProcessConfig(
     proc_name="controlsd",
-    pubs=["liveParameters", "liveTorqueParameters", "liveCurvatureParameters", "modelV2", "selfdriveState",
+    pubs=["liveParameters", "liveTorqueParameters", "modelV2", "selfdriveState",
           "liveCalibration", "livePose", "longitudinalPlan", "carState", "carOutput",
           "driverMonitoringState", "onroadEvents", "driverAssistance"],
     subs=["carControl", "controlsState"],
@@ -554,15 +553,6 @@ CONFIGS = [
     tolerance=NUMPY_TOLERANCE,
   ),
   ProcessConfig(
-    proc_name="curvatured",
-    pubs=["livePose", "liveCalibration", "liveDelay", "carState", "carControl", "controlsState"],
-    subs=["liveCurvatureParameters"],
-    ignore=["logMonoTime"],
-    init_callback=get_car_params_callback,
-    should_recv_callback=MessageBasedRcvCallback("livePose", True),
-    tolerance=NUMPY_TOLERANCE,
-  ),
-  ProcessConfig(
     proc_name="modeld",
     pubs=["deviceState", "roadCameraState", "wideRoadCameraState", "liveCalibration", "liveDelay", "driverMonitoringState", "carState", "carControl"],
     subs=["modelV2", "drivingModelData", "cameraOdometry"],
@@ -601,15 +591,13 @@ def get_custom_params_from_lr(lr: LogIterable, initial_state: str = "first") -> 
   """
   Use this to get custom params dict based on provided logs.
   Useful when replaying following processes: calibrationd, paramsd, torqued
-  The params may be based on first or last message of given type
-  (carParams, liveCalibration, liveParameters, liveTorqueParameters, liveCurvatureParameters) in the logs.
+  The params may be based on first or last message of given type (carParams, liveCalibration, liveParameters, liveTorqueParameters) in the logs.
   """
 
   car_params = [m for m in lr if m.which() == "carParams"]
   live_calibration = [m for m in lr if m.which() == "liveCalibration"]
   live_parameters = [m for m in lr if m.which() == "liveParameters"]
   live_torque_parameters = [m for m in lr if m.which() == "liveTorqueParameters"]
-  live_curvature_parameters = [m for m in lr if m.which() == "liveCurvatureParameters"]
 
   assert initial_state in ["first", "last"]
   msg_index = 0 if initial_state == "first" else -1
@@ -627,8 +615,6 @@ def get_custom_params_from_lr(lr: LogIterable, initial_state: str = "first") -> 
     custom_params["LiveParametersV2"] = live_parameters[msg_index].as_builder().to_bytes()
   if len(live_torque_parameters) > 0:
     custom_params["LiveTorqueParameters"] = live_torque_parameters[msg_index].as_builder().to_bytes()
-  if len(live_curvature_parameters) > 0:
-    custom_params["LiveCurvatureParameters"] = live_curvature_parameters[msg_index].as_builder().to_bytes()
 
   return custom_params
 

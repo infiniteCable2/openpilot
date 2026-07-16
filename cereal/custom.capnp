@@ -483,21 +483,5 @@ struct CustomReserved17 @0xa30662f84033036c {
 struct CustomReserved18 @0xc86a3d38d13eb3ef {
 }
 
-struct LiveCurvatureParameters @0xa4f1eb3323f5f582 {
-  liveValid @0 :Bool;
-  version @1 :Int32;
-  useParams @2 :Bool;
-  currentCorrection @3 :Float32;
-  currentBias @4 :Float32;
-  currentBucketPoints @5 :UInt16;
-  totalBucketPoints @6 :UInt16;
-  calPerc @7 :Int8;
-  bucketSpeed @8 :Int8;
-  corrections @9 :List(Float32);
-  counts @10 :List(UInt16);
-  biases @11 :List(Float32);
-  bucketCurvature @12 :Int8;
-  fitValid @13 :List(Bool);
-  previewCorrections @14 :List(Float32);
-  previewValid @15 :List(Bool);
+struct CustomReserved19 @0xa4f1eb3323f5f582 {
 }

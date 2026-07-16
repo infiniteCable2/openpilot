@@ -180,7 +180,6 @@ class ModelsLayout(Widget):
     def _callback(response):
       if response == DialogResult.CONFIRM:
         ui_state.params.remove("CalibrationParams")
-        ui_state.params.remove("LiveCurvatureParameters")
         ui_state.params.remove("LiveTorqueParameters")
     msg = tr("Model download has started in the background. We suggest resetting calibration. Would you like to do that now?")
     dialog = ConfirmDialog(msg, tr("Reset Calibration"), callback=_callback)

@@ -11,7 +11,7 @@ from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import LongitudinalMpc, LongitudinalPlanSource
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDXS as T_IDXS_MPC
-from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan, get_speed_from_plan
+from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan
 from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
 from openpilot.common.swaglog import cloudlog
 
@@ -32,15 +32,6 @@ def get_max_accel(v_ego):
 
 def get_coast_accel(pitch):
   return np.sin(pitch) * -5.65 - 0.3  # fitted from data using xx/projects/allow_throttle/compute_coast_accel.py
-  
-
-def get_lead_distance(radarState):
-  if radarState.leadOne.status and (not radarState.leadTwo.status or radarState.leadOne.dRel < radarState.leadTwo.dRel):
-    return radarState.leadOne.dRel
-  if radarState.leadTwo.status:
-    return radarState.leadTwo.dRel
-  return 0
-  
 
 def limit_accel_in_turns(v_ego, angle_steers, a_target, CP):
   """
@@ -70,7 +61,6 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
     self.prev_accel_clip = [ACCEL_MIN, ACCEL_MAX]
     self.output_a_target = 0.0
     self.output_should_stop = False
-    self.output_v_target = 0.0
 
     self.v_desired_trajectory = np.zeros(CONTROL_N)
     self.a_desired_trajectory = np.zeros(CONTROL_N)
@@ -166,8 +156,7 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
 
     action_t =  self.CP.longitudinalActuatorDelay + DT_MDL
     output_a_target_mpc, output_should_stop_mpc = get_accel_from_plan(self.v_desired_trajectory, self.a_desired_trajectory, CONTROL_N_T_IDX,
-                                                                                       action_t=action_t, vEgoStopping=self.CP.vEgoStopping)
-    output_v_target = get_speed_from_plan(self.v_desired_trajectory, CONTROL_N_T_IDX, action_t=action_t)
+                                                                        action_t=action_t, vEgoStopping=self.CP.vEgoStopping)
     output_a_target_e2e = sm['modelV2'].action.desiredAcceleration
     output_should_stop_e2e = sm['modelV2'].action.shouldStop
 
@@ -184,7 +173,6 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
       accel_clip[idx] = np.clip(accel_clip[idx], self.prev_accel_clip[idx] - 0.05, self.prev_accel_clip[idx] + 0.05)
     self.output_a_target = np.clip(output_a_target, accel_clip[0], accel_clip[1])
     self.prev_accel_clip = accel_clip
-    self.output_v_target = output_v_target
 
   def publish(self, sm, pm):
     plan_send = messaging.new_message('longitudinalPlan')
@@ -201,13 +189,11 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
     longitudinalPlan.jerks = self.j_desired_trajectory.tolist()
 
     longitudinalPlan.hasLead = sm['radarState'].leadOne.status
-    longitudinalPlan.leadDistance = get_lead_distance(sm['radarState'])
     longitudinalPlan.longitudinalPlanSource = self.mpc.source
     longitudinalPlan.fcw = self.fcw
 
     longitudinalPlan.aTarget = float(self.output_a_target)
     longitudinalPlan.shouldStop = bool(self.output_should_stop)
-    longitudinalPlan.vTarget = float(self.output_v_target)
     longitudinalPlan.allowBrake = True
     longitudinalPlan.allowThrottle = bool(self.allow_throttle)
 

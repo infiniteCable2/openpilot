@@ -2,6 +2,7 @@
 
 #include <string>
 #include <unordered_map>
+
 #include "cereal/gen/cpp/log.capnp.h"
 
 inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
@@ -135,25 +136,6 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"UsbGpuPresent", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, BOOL}},
     {"UsbGpuCompiled", {CLEAR_ON_MANAGER_START | CLEAR_ON_OFFROAD_TRANSITION, BOOL}},
     {"Version", {PERSISTENT, STRING}},
-	
-	// --- infiniteCable params --- //
-	{"DisableScreenTimer", {PERSISTENT, BOOL}},
-	{"DarkMode", {PERSISTENT, BOOL}},
-	{"EnableCurvatureController", {PERSISTENT, BOOL, "1"}},
-	{"EnableCurvatureD", {PERSISTENT, BOOL, "0"}},
-	{"CurvatureDDebugData", {PERSISTENT, BOOL, "0"}},
-	{"EnableLongComfortMode", {PERSISTENT, BOOL}},
-    {"EnableSmoothSteer", {PERSISTENT, BOOL}},
-    {"EnableSpeedLimitControl", {PERSISTENT, BOOL}},
-    {"EnableSpeedLimitPredicative", {PERSISTENT, BOOL}},
-	{"EnableSLPredReactToSL", {PERSISTENT, BOOL}},
-	{"EnableSLPredReactToCurves", {PERSISTENT, BOOL}},
-	{"BatteryDetails", {PERSISTENT, BOOL}},
-	{"ShowDynamicSteeringLearnerGraph", {PERSISTENT, BOOL}},
-	{"ForceRHDForBSM", {PERSISTENT, BOOL}},
-	{"DisableCarSteerAlerts", {PERSISTENT, BOOL}},
-	{"ShowAccelBar", {PERSISTENT, BOOL}},
-	{"LiveCurvatureParameters", {PERSISTENT | DONT_LOG, BYTES}},
 
     // --- sunnypilot params --- //
     {"ApiCache_DriveStats", {PERSISTENT, JSON}},

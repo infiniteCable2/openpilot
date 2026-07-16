@@ -60,7 +60,6 @@ class UIState(UIStateSP):
         "carOutput",
         "carControl",
         "liveParameters",
-        "liveCurvatureParameters",
         "testJoystick",
         "rawAudioData",
       ] + self.sm_services_ext
@@ -91,13 +90,6 @@ class UIState(UIStateSP):
     self.is_body: bool | None = None
     self.CP: car.CarParams | None = None
     self.light_sensor: float = -1.0
-    
-    self.dark_mode: bool = False
-    self.onroad_screen_timeout: bool = False
-    self.enable_accel_bar: bool = False
-    self.has_alert: bool = False
-    self.has_status_change: bool = False
-    self._status_prev: UIStatus = self.status
 
     self._params_thread: threading.Thread | None = None
 
@@ -182,13 +174,6 @@ class UIState(UIStateSP):
         self.status = UIStatus.OVERRIDE
       else:
         self.status = UIStatus.ENGAGED if ss.enabled else UIStatus.DISENGAGED
-        
-      # detect status change
-      self.has_status_change = True if self.status != self._status_prev else False
-      self._status_prev = self.status
-        
-      # check for alert
-      self.has_alert = True if ss.alertSize != 0 else False
 
       self.status = UIStatus(UIStateSP.update_status(ss, self.sm["selfdriveStateSP"], self.sm["onroadEvents"]))
 
@@ -229,10 +214,6 @@ class UIState(UIStateSP):
     self.usbgpu_compiled = self.params.get_bool("UsbGpuCompiled")
 
     UIStateSP.update_params(self)
-
-    self.dark_mode = self.params.get_bool("DarkMode")
-    self.onroad_screen_timeout = self.params.get_bool("DisableScreenTimer")
-    self.enable_accel_bar = self.params.get_bool("ShowAccelBar")
 
 
 class Device(DeviceSP):
@@ -323,9 +304,6 @@ class Device(DeviceSP):
 
       clipped_brightness = float(np.interp(clipped_brightness, [0, 1], [min_brightness, 100]))
 
-    if ui_state.started and ui_state.dark_mode:
-      clipped_brightness = 1.0
-
     brightness = round(self._brightness_filter.update(clipped_brightness))
 
     if gui_app.sunnypilot_ui():
@@ -342,11 +320,9 @@ class Device(DeviceSP):
   def _update_wakefulness(self):
     # Handle interactive timeout
     ignition_just_turned_off = not ui_state.ignition and self._ignition
-    ignition_just_turned_on = ui_state.ignition and not self._ignition
     self._ignition = ui_state.ignition
 
-    enable_screen_event = ui_state.ignition and (ui_state.has_alert or ui_state.has_status_change)
-    if ignition_just_turned_off or ignition_just_turned_on or enable_screen_event or any(ev.left_down for ev in gui_app.mouse_events):
+    if ignition_just_turned_off or any(ev.left_down for ev in gui_app.mouse_events):
       if gui_app.sunnypilot_ui():
         DeviceSP.wake_from_dimmed_onroad_brightness(ui_state, gui_app.mouse_events)
 
@@ -358,7 +334,7 @@ class Device(DeviceSP):
         callback()
     self._prev_timed_out = interaction_timeout
 
-    self._set_awake((ui_state.ignition and not ui_state.onroad_screen_timeout) or not interaction_timeout or PC)
+    self._set_awake(ui_state.ignition or not interaction_timeout or PC)
 
   def _set_awake(self, on: bool):
     if on != self._awake:

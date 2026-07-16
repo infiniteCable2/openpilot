@@ -12,8 +12,8 @@ from openpilot.sunnypilot.selfdrive.car.cruise_ext import VCruiseHelperSP
 V_CRUISE_MIN = 8
 V_CRUISE_MAX = 145
 V_CRUISE_UNSET = 255
-V_CRUISE_INITIAL = 20
-V_CRUISE_INITIAL_EXPERIMENTAL_MODE = 20
+V_CRUISE_INITIAL = 40
+V_CRUISE_INITIAL_EXPERIMENTAL_MODE = 105
 IMPERIAL_INCREMENT = round(CV.MPH_TO_KPH, 1)  # round here to avoid rounding errors incrementing set speed
 
 ButtonEvent = car.CarState.ButtonEvent
@@ -38,13 +38,12 @@ class VCruiseHelper(VCruiseHelperSP):
     self.v_cruise_kph_last = 0
     self.button_timers = {ButtonType.decelCruise: 0, ButtonType.accelCruise: 0}
     self.button_change_states = {btn: {"standstill": False, "enabled": False} for btn in self.button_timers}
-    self.v_speed_limit_kph = 0
 
   @property
   def v_cruise_initialized(self):
     return self.v_cruise_kph != V_CRUISE_UNSET
 
-  def update_v_cruise(self, CS, enabled, is_metric, speed_limit_control=False, speed_limit_predicative=False):
+  def update_v_cruise(self, CS, enabled, is_metric):
     self.v_cruise_kph_last = self.v_cruise_kph
 
     self.get_minimum_set_speed(is_metric)
@@ -54,7 +53,6 @@ class VCruiseHelper(VCruiseHelperSP):
     if CS.cruiseState.available:
       if not self.CP.pcmCruise or (not self.CP_SP.pcmCruiseSpeed and _enabled):
         # if stock cruise is completely disabled, then we can use our own set speed logic
-        self._update_v_speed_limit(CS, _enabled, speed_limit_control, speed_limit_predicative)
         self._update_v_cruise_non_pcm(CS, _enabled, is_metric)
         self.update_speed_limit_assist_v_cruise_non_pcm()
         self.v_cruise_cluster_kph = self.v_cruise_kph
@@ -73,21 +71,6 @@ class VCruiseHelper(VCruiseHelperSP):
 
     if not self.CP.pcmCruise or not self.CP_SP.pcmCruiseSpeed:
       self.update_button_timers(CS, enabled)
-
-  def _update_v_speed_limit(self, CS, enabled, speed_limit_control, predicative):
-    if not speed_limit_control: # or not enabled # always set speed limit
-      return
-
-    speed_limit_current = CS.cruiseState.speedLimit * CV.MS_TO_KPH
-    speed_limit_predicative = CS.cruiseState.speedLimitPredicative * CV.MS_TO_KPH
-
-    speed_limit = speed_limit_predicative if predicative and speed_limit_predicative != 0 else speed_limit_current
-
-    if speed_limit != self.v_speed_limit_kph:
-      if speed_limit != 0:
-        self.v_cruise_kph = speed_limit
-        self.v_cruise_kph = np.clip(round(self.v_cruise_kph, 1), V_CRUISE_MIN, V_CRUISE_MAX)
-      self.v_speed_limit_kph = speed_limit
 
   def _update_v_cruise_non_pcm(self, CS, enabled, is_metric):
     # handle button presses. TODO: this should be in state_control, but a decelCruise press

@@ -39,12 +39,6 @@ def clip_curvature(v_ego, prev_curvature, new_curvature, roll) -> tuple[float, b
   new_curvature, limited_max_curv = clamp(new_curvature, -MAX_CURVATURE, MAX_CURVATURE)
   return float(new_curvature), limited_accel or limited_max_curv
 
-def get_speed_from_plan(speeds, t_idxs, action_t=DT_MDL):
-  if len(speeds) == len(t_idxs):
-    v_target = np.interp(action_t, t_idxs, speeds)
-  else:
-    v_target = 0.0
-  return v_target
 
 def get_accel_from_plan(speeds, accels, t_idxs, action_t=DT_MDL, vEgoStopping=0.3):
   if len(speeds) == len(t_idxs):
