@@ -132,6 +132,8 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     userBookmark @95;
     excessiveActuation @96;
     audioFeedback @97;
+    dashcamModeRadDisEngOn @100;
+    radarDisableFailed @101;
     steerFaultWarning @102;
 
     soundsUnavailableDEPRECATED @47;
