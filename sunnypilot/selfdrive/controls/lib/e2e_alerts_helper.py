@@ -5,6 +5,9 @@ This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
 
+from collections import deque
+from statistics import median
+
 from cereal import messaging, custom
 
 from openpilot.common.params import Params
@@ -14,7 +17,9 @@ from openpilot.sunnypilot.selfdrive.selfdrived.events import EventsSP
 
 GREEN_LIGHT_X_THRESHOLD = 30
 LEAD_DEPART_DIST_THRESHOLD = 1.0
-TRIGGER_TIMER_THRESHOLD = 0.3
+TRIGGER_TIMER_THRESHOLD = 0.8
+LEAD_DEPART_VREL_THRESHOLD = 0.2
+LEAD_FILTER_FRAMES = 10  # 0.5 s at DT_MDL
 
 
 class E2EStates:
@@ -40,6 +45,8 @@ class E2EAlertsHelper:
     self.green_light_trigger_timer = 0
     self.lead_depart_trigger_timer = 0
     self.last_lead_distance = -1
+    self.lead_distance_history = deque(maxlen=LEAD_FILTER_FRAMES)
+    self.lead_vrel_history = deque(maxlen=LEAD_FILTER_FRAMES)
     self.last_moving_frame = -1
 
     self.allowed = False
@@ -63,6 +70,7 @@ class E2EAlertsHelper:
     max_idx = len(model_x) - 1
     self.has_lead = sm['radarState'].leadOne.status
     lead_dRel = sm['radarState'].leadOne.dRel
+    lead_vRel = sm['radarState'].leadOne.vRel
 
     standstill = CS.standstill
     moving = not standstill and CS.vEgo > 0.1
@@ -88,6 +96,15 @@ class E2EAlertsHelper:
 
     # Lead Departure Alert
     close_lead_valid = self.has_lead and lead_dRel < 8.0
+    if close_lead_valid:
+      self.lead_distance_history.append(lead_dRel)
+      self.lead_vrel_history.append(lead_vRel)
+    else:
+      self.lead_distance_history.clear()
+      self.lead_vrel_history.clear()
+
+    filtered_dRel = median(self.lead_distance_history) if self.lead_distance_history else -1
+    filtered_vRel = median(self.lead_vrel_history) if self.lead_vrel_history else 0
     if self.allowed and not self.last_allowed and close_lead_valid:
       self.lead_depart_confirmed_lead = True
     elif not self.allowed:
@@ -104,10 +121,11 @@ class E2EAlertsHelper:
 
     lead_depart_trigger = False
     if self.lead_depart_state == E2EStates.ARMED:
-      if self.last_lead_distance == -1 or lead_dRel < self.last_lead_distance:
-        self.last_lead_distance = lead_dRel
+      if self.last_lead_distance == -1 or filtered_dRel < self.last_lead_distance:
+        self.last_lead_distance = filtered_dRel
 
-      if self.last_lead_distance != -1 and (lead_dRel - self.last_lead_distance > LEAD_DEPART_DIST_THRESHOLD):
+      if (self.last_lead_distance != -1 and filtered_vRel > LEAD_DEPART_VREL_THRESHOLD and
+          filtered_dRel - self.last_lead_distance > LEAD_DEPART_DIST_THRESHOLD):
         self.lead_depart_trigger_timer += 1
       else:
         self.lead_depart_trigger_timer = 0
@@ -117,6 +135,8 @@ class E2EAlertsHelper:
     elif self.lead_depart_state != E2EStates.ARMED:
       self.last_lead_distance = -1
       self.lead_depart_trigger_timer = 0
+      self.lead_distance_history.clear()
+      self.lead_vrel_history.clear()
 
     self.last_allowed = self.allowed
 
