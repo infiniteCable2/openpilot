@@ -29,6 +29,8 @@ def _make_helper():
   helper.lead_depart_confirmed_lead = False
   helper.lead_depart_arm_timer = 0
   helper.lead_depart_armed = False
+  helper.green_light_state = E2EStates.INACTIVE
+  helper.green_light_trigger_timer = 0
   return helper
 
 
