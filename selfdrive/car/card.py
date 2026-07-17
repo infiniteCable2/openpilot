@@ -43,6 +43,19 @@ def obd_callback(params: Params) -> ObdCallback:
   return set_obd_multiplexing
 
 
+def disable_vw_caddy_openpilot_longitudinal(CP: car.CarParams, CP_SP: structs.CarParamsSP, params: Params) -> None:
+  # The Caddy port relies on the factory ACC for longitudinal control. Keep the
+  # C4 build from enabling any sunnypilot/openpilot longitudinal path (including
+  # ICBM's button-managed set-speed path), since that can fight stock ACC.
+  if CP.brand == "volkswagen" and "CADDY" in CP.carFingerprint.upper():
+    if CP.openpilotLongitudinalControl or not CP_SP.pcmCruiseSpeed:
+      cloudlog.warning("Disabling openpilot longitudinal overrides for Volkswagen Caddy")
+    CP.openpilotLongitudinalControl = False
+    CP.experimentalLongitudinalAvailable = False
+    CP_SP.pcmCruiseSpeed = True
+    params.remove("AlphaLongitudinalEnabled")
+    params.remove("IntelligentCruiseButtonManagement")
+
 def can_comm_callbacks(logcan: messaging.SubSocket, sendcan: messaging.PubSocket) -> tuple[CanRecvCallable, CanSendCallable]:
   def can_recv(wait_for_one: bool = False) -> list[list[CanData]]:
     """
@@ -111,6 +124,7 @@ class Car:
       self.CI = get_car(*self.can_callbacks, obd_callback(self.params), alpha_long_allowed, is_release, cached_params,
                         fixed_fingerprint, init_params_list_sp, is_release_sp)
       sunnypilot_interfaces.setup_interfaces(self.CI, self.params)
+      disable_vw_caddy_openpilot_longitudinal(self.CI.CP, self.CI.CP_SP, self.params)
       self.RI = interfaces[self.CI.CP.carFingerprint].RadarInterface(self.CI.CP, self.CI.CP_SP)
       self.CP = self.CI.CP
       self.CP_SP = self.CI.CP_SP
@@ -125,6 +139,7 @@ class Car:
     # mads
     set_alternative_experience(self.CP, self.CP_SP, self.params)
     set_car_specific_params(self.CP, self.CP_SP, self.params)
+    disable_vw_caddy_openpilot_longitudinal(self.CP, self.CP_SP, self.params)
 
     # Dynamic Experimental Control
     self.dynamic_experimental_control = self.params.get_bool("DynamicExperimentalControl")
