@@ -163,7 +163,7 @@ def get_policy_npy_shapes(input_shapes):
 def make_input_queues(vision_input_shapes, policy_input_shapes, frame_skip, device):
   input_queues, npy = make_warp_input_queues(vision_input_shapes, frame_skip, device)
 
-  fb = policy_input_shapes['features_buffer']  # (1, 24, 512), past features only; the model appends the current frame's feature
+  fb = policy_input_shapes['features_buffer']  # (1, 25, 512)
   dp = policy_input_shapes['desire_pulse']  # (1, 25, 8)
 
   shapes, sizes = get_policy_npy_shapes(policy_input_shapes)
@@ -171,7 +171,7 @@ def make_input_queues(vision_input_shapes, policy_input_shapes, frame_skip, devi
   # views into the packed inputs, to be refilled at runtime
   npy.update({k: v.reshape(s) for (k, s), v in zip(shapes.items(), np.split(packed_npy_inputs, np.cumsum(sizes[:-1])), strict=True)})
   input_queues.update({
-    'feat_q': Tensor(np.zeros((frame_skip * fb[1], fb[0], fb[2]), dtype=np.float32), device=device).contiguous().realize(),
+    'feat_q': Tensor(np.zeros((frame_skip * (fb[1] - 1) + 1, fb[0], fb[2]), dtype=np.float32), device=device).contiguous().realize(),
     'desire_q': Tensor(np.zeros((frame_skip * dp[1], dp[0], dp[2]), dtype=np.float32), device=device).contiguous().realize(),
     'packed_npy_inputs': Tensor(packed_npy_inputs, device='NPY').realize(),
   })
