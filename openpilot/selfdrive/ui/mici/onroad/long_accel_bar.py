@@ -3,7 +3,7 @@ from collections import OrderedDict
 
 import numpy as np
 import pyray as rl
-from openpilot.cereal import car
+from opendbc.car.structs import car
 
 from openpilot.selfdrive.ui.mici.onroad import blend_colors
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus

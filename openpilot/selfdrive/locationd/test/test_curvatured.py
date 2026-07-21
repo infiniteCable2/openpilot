@@ -1,6 +1,6 @@
 import numpy as np
 
-from openpilot.cereal import car
+from opendbc.car.structs import car
 
 from opendbc.car.volkswagen.values import CAR
 from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY

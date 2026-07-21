@@ -4,7 +4,8 @@ from collections import deque
 import numpy as np
 
 import openpilot.cereal.messaging as messaging
-from openpilot.cereal import car, log
+from openpilot.cereal import log
+from opendbc.car.structs import car
 from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
 from openpilot.common.params import Params
 from openpilot.common.realtime import config_realtime_process, DT_MDL
