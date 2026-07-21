@@ -293,6 +293,9 @@ class ForceDownloadButton(BigButton):
       self.set_enabled(False)
       return
 
+    # Hide force download when an update is already downloaded and ready to install
+    self.set_visible(not ui_state.params.get_bool("UpdateAvailable"))
+
     updater_state = ui_state.params.get("UpdaterState") or ""
 
     if self._state == UpdaterState.WAITING_FOR_UPDATER:
