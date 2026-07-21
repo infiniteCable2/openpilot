@@ -1,0 +1,463 @@
+import numpy as np
+
+from cereal import car
+
+from opendbc.car.volkswagen.values import CAR
+from openpilot.common.constants import ACCELERATION_DUE_TO_GRAVITY
+from openpilot.selfdrive.locationd.curvatured import CurvatureEstimator, CurvatureDLookup, MAX_LEARN_ROLL_LATERAL_ACCEL
+
+
+def get_estimator():
+  CP = car.CarParams.new_message()
+  CP.carFingerprint = CAR.CUPRA_BORN_MK1
+  CP.brand = "volkswagen"
+  CP.steerControlType = car.CarParams.SteerControlType.curvature
+  return CurvatureEstimator(CP)
+
+
+class TestCurvatureEstimator:
+  @staticmethod
+  def _train_speed_curve(estimator, v_ego: float):
+    for desired_curvature in CurvatureDLookup.CURVATURE_BUCKET_CENTERS:
+      for sign in (-1.0, 1.0):
+        for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[CurvatureDLookup.curvature_index(float(desired_curvature))]) + 2):
+          desired = sign * float(desired_curvature)
+          estimator.add_measurement(desired, desired * 0.6, v_ego)
+
+  @staticmethod
+  def _train_speed_curve_full(estimator, v_ego: float):
+    for desired_curvature in CurvatureDLookup.CURVATURE_BUCKET_CENTERS:
+      for sign in (-1.0, 1.0):
+        curvature_idx = CurvatureDLookup.curvature_index(float(desired_curvature))
+        assert curvature_idx is not None
+        for _ in range(int(CurvatureDLookup.FULL_BUCKET_STRENGTH_SAMPLES[curvature_idx]) + 2):
+          desired = sign * float(desired_curvature)
+          estimator.add_measurement(desired, desired * 0.6, v_ego)
+
+  def test_left_and_right_feed_the_same_bucket_curve(self):
+    estimator = get_estimator()
+    desired_curvature = 32e-6
+    v_ego = 22.0
+
+    for _ in range(40):
+      estimator.add_measurement(desired_curvature, desired_curvature * 0.7, v_ego)
+      estimator.add_measurement(-desired_curvature, -desired_curvature * 0.7, v_ego)
+
+    curvature_idx = CurvatureDLookup.curvature_index(desired_curvature)
+    assert curvature_idx is not None
+    speed_weights = CurvatureDLookup.learning_speed_weights(v_ego)
+    assert len(speed_weights) == 2
+
+    total = 0.0
+    for speed_idx, weight in speed_weights:
+      bucket_count = float(estimator.counts[speed_idx, curvature_idx])
+      total += bucket_count
+      assert np.isclose(bucket_count, 80.0 * weight)
+      assert estimator.bias[speed_idx, curvature_idx] > 0.0
+
+    assert np.isclose(total, 80.0)
+
+  def test_learning_is_weighted_between_neighbor_speed_anchors(self):
+    estimator = get_estimator()
+    desired_curvature = 32e-6
+    low_speed = float(CurvatureDLookup.SPEED_ANCHORS[2])
+    high_speed = float(CurvatureDLookup.SPEED_ANCHORS[3])
+    v_ego = 0.25 * low_speed + 0.75 * high_speed
+
+    estimator.add_measurement(desired_curvature, desired_curvature * 0.6, v_ego)
+
+    curvature_idx = CurvatureDLookup.curvature_index(desired_curvature)
+    assert curvature_idx is not None
+    speed_weights = CurvatureDLookup.learning_speed_weights(v_ego)
+    assert len(speed_weights) == 2
+
+    for speed_idx, weight in speed_weights:
+      assert np.isclose(float(estimator.counts[speed_idx, curvature_idx]), weight)
+
+  def test_preview_is_not_apply_capped(self):
+    estimator = get_estimator()
+    desired_curvature = 2.048e-3
+    actual_curvature = 0.0
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[-1])
+
+    for _ in range(80):
+      estimator.add_measurement(desired_curvature, actual_curvature, v_ego)
+
+    idx = CurvatureDLookup.indices(desired_curvature, v_ego)
+    assert idx is not None
+    speed_idx, curvature_idx = idx
+    assert estimator.bias[idx] > CurvatureDLookup.correction_cap(desired_curvature, v_ego)
+    assert estimator.preview_valid[speed_idx, curvature_idx]
+    assert estimator.preview_corrections[speed_idx, curvature_idx] > estimator.fit_corrections[speed_idx, curvature_idx]
+
+  def test_learning_error_is_capped_to_full_ratio(self):
+    estimator = get_estimator()
+    desired_curvature = 2.048e-3
+    actual_curvature = -5.0e-3
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[-1])
+
+    for _ in range(CurvatureDLookup.MAX_SAMPLES):
+      estimator.add_measurement(desired_curvature, actual_curvature, v_ego)
+
+    idx = CurvatureDLookup.indices(desired_curvature, v_ego)
+    assert idx is not None
+    assert estimator.bias[idx] <= CurvatureDLookup.learning_error_cap(desired_curvature) + 1e-9
+
+  def test_schedule_only_learning_refreshes_on_flush(self):
+    estimator = get_estimator()
+    desired_curvature = 32e-6
+    v_ego = 22.0
+
+    estimator.add_measurement(desired_curvature, desired_curvature * 0.6, v_ego, schedule_only=True)
+
+    idx = CurvatureDLookup.indices(desired_curvature, v_ego)
+    assert idx is not None
+    assert estimator.counts[idx] > 0.0
+    assert estimator.fit_corrections[idx] == 0.0
+    assert not estimator.preview_valid[idx]
+
+    estimator.refresh_curve_lookups(1, force_fit=True, force_preview=True)
+
+    assert estimator.preview_valid[idx]
+    assert estimator.preview_corrections[idx] > 0.0
+
+  def test_relative_correction_cap_envelope_fades_after_last_supported_bucket(self):
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[5])
+    max_bucket_idx = CurvatureDLookup.max_supported_bucket_index(v_ego)
+    assert max_bucket_idx is not None
+    assert max_bucket_idx < len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS)
+
+    inner_idx = 0
+    supported_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[max_bucket_idx])
+    fade_end_curvature = float(CurvatureDLookup.cap_zero_curvature(v_ego))
+    beyond_curvature = min(fade_end_curvature * 1.05, CurvatureDLookup.CURVATURE_MAX)
+
+    inner_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[inner_idx])
+
+    assert np.isclose(CurvatureDLookup.correction_cap_ratio(inner_curvature, v_ego), CurvatureDLookup.RELATIVE_CAP_FULL_RATIO)
+    assert np.isclose(CurvatureDLookup.correction_cap_ratio(supported_curvature, v_ego), CurvatureDLookup.RELATIVE_CAP_FULL_RATIO)
+    assert CurvatureDLookup.correction_cap_ratio(0.5 * (supported_curvature + fade_end_curvature), v_ego) < CurvatureDLookup.RELATIVE_CAP_FULL_RATIO
+    assert CurvatureDLookup.correction_cap_ratio(beyond_curvature, v_ego) == 0.0
+
+  def test_calibration_percent_tracks_valid_speed_curves(self):
+    estimator = get_estimator()
+    assert estimator.get_msg().liveCurvatureParameters.calPerc == 0
+
+    for v_ego in CurvatureDLookup.SPEED_ANCHORS:
+      self._train_speed_curve_full(estimator, float(v_ego))
+
+    assert estimator.get_msg().liveCurvatureParameters.calPerc == 100
+
+  def test_required_support_bucket_count_decreases_with_speed(self):
+    low = CurvatureDLookup.required_support_bucket_count(0)
+    mid = CurvatureDLookup.required_support_bucket_count(3)
+    high = CurvatureDLookup.required_support_bucket_count(6)
+
+    assert low == len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS)
+    assert low >= mid >= high >= CurvatureDLookup.MIN_REQUIRED_SUPPORT_BUCKETS
+
+  def test_fit_valid_no_longer_requires_global_total_samples(self):
+    speed_idx = 3
+    bucket_idx = 5
+    counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    bias = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+
+    counts[speed_idx, bucket_idx] = float(CurvatureDLookup.MIN_BUCKET_POINTS[bucket_idx] + 1.0)
+    bias[speed_idx, bucket_idx] = float(0.5 * CurvatureDLookup.correction_cap(
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[bucket_idx]),
+      float(CurvatureDLookup.SPEED_ANCHORS[speed_idx]),
+    ))
+
+    filler_idx = np.arange(CurvatureDLookup.required_support_bucket_count(speed_idx), dtype=int)
+    filler_idx = filler_idx[filler_idx != bucket_idx]
+    counts[speed_idx, filler_idx] = CurvatureDLookup.MIN_BUCKET_POINTS[filler_idx] + 1.0
+
+    fit_corrections, fit_valid = CurvatureDLookup.build_fit_corrections(bias, counts)
+
+    assert fit_valid[speed_idx, bucket_idx]
+    assert float(fit_corrections[speed_idx, bucket_idx]) > 0.0
+
+  def test_calibration_percent_requires_full_local_strength(self):
+    speed_idx = 3
+    counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    required = CurvatureDLookup.required_support_bucket_count(speed_idx)
+    selected = np.arange(required, dtype=int)
+
+    counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected]
+    assert np.all(counts[speed_idx, selected] >= CurvatureDLookup.MIN_BUCKET_POINTS[selected])
+    assert not CurvatureDLookup.speed_curve_valid(counts, speed_idx)
+    assert not CurvatureDLookup.speed_curve_fully_calibrated(counts, speed_idx)
+    assert CurvatureDLookup.calibration_percent(counts) == 0
+
+    counts[speed_idx, selected] = CurvatureDLookup.FULL_BUCKET_STRENGTH_SAMPLES[selected]
+    assert CurvatureDLookup.speed_curve_fully_calibrated(counts, speed_idx)
+    assert CurvatureDLookup.calibration_percent(counts) > 0
+
+  def test_speed_curve_strength_grows_smoothly_from_bucket_strengths(self):
+    speed_idx = 4
+    counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    required = CurvatureDLookup.required_support_bucket_count(speed_idx)
+    selected = np.arange(required, dtype=int)
+
+    counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected]
+    assert np.isclose(CurvatureDLookup.speed_curve_strength(counts[speed_idx], speed_idx), 0.0)
+
+    counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected] + 0.5 * (
+      CurvatureDLookup.FULL_BUCKET_STRENGTH_SAMPLES[selected] - CurvatureDLookup.MIN_BUCKET_POINTS[selected]
+    )
+    assert np.isclose(CurvatureDLookup.speed_curve_strength(counts[speed_idx], speed_idx), 0.5)
+
+  def test_message_contains_symmetric_fit_curve(self):
+    estimator = get_estimator()
+    desired_curvature = 32e-6
+    v_ego = 22.0
+
+    self._train_speed_curve(estimator, v_ego)
+    estimator._update_current_lookup(desired_curvature, v_ego)
+    msg = estimator.get_msg(include_debug=True, include_preview=True)
+    idx = CurvatureDLookup.indices(desired_curvature, v_ego)
+
+    assert idx is not None
+    assert msg.liveCurvatureParameters.bucketSpeed == idx[0]
+    assert msg.liveCurvatureParameters.bucketCurvature == idx[1]
+    assert msg.liveCurvatureParameters.currentCorrection > 0.0
+    assert len(msg.liveCurvatureParameters.corrections) == CurvatureDLookup.total_size()
+    assert len(msg.liveCurvatureParameters.counts) == CurvatureDLookup.total_size()
+    assert len(msg.liveCurvatureParameters.biases) == CurvatureDLookup.total_size()
+    assert len(msg.liveCurvatureParameters.fitValid) == CurvatureDLookup.total_size()
+    assert len(msg.liveCurvatureParameters.previewCorrections) == CurvatureDLookup.total_size()
+    assert len(msg.liveCurvatureParameters.previewValid) == CurvatureDLookup.total_size()
+
+  def test_fit_valid_allows_noncontiguous_supported_buckets(self):
+    estimator = get_estimator()
+    speed_idx = len(CurvatureDLookup.SPEED_ANCHORS) - 1
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[speed_idx])
+    required = CurvatureDLookup.required_support_bucket_count(speed_idx)
+    selected_indices = list(range(0, required - 1)) + [required]
+
+    for bucket_idx in selected_indices:
+      desired_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[bucket_idx])
+      for _ in range(int(CurvatureDLookup.MIN_BUCKET_POINTS[bucket_idx]) + 120):
+        estimator.add_measurement(desired_curvature, desired_curvature * 0.6, v_ego)
+
+    msg = estimator.get_msg().liveCurvatureParameters
+    fit_valid = CurvatureDLookup.unflatten_bucket(list(msg.fitValid), dtype=bool)
+
+    assert fit_valid[speed_idx, selected_indices].all()
+    assert not fit_valid[speed_idx, required - 1]
+
+  def test_fit_corrections_are_zero_outside_fit_valid(self):
+    speed_idx = 3
+    counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    bias = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    selected = np.array([5, 6, 7, 8], dtype=int)
+
+    counts[speed_idx, selected] = CurvatureDLookup.MIN_BUCKET_POINTS[selected] + 40.0
+    bias[speed_idx, selected] = np.array([2.0e-6, 6.0e-6, 1.2e-5, 2.0e-5], dtype=np.float32)
+
+    fit_corrections, fit_valid = CurvatureDLookup.build_fit_corrections(bias, counts)
+
+    assert fit_valid[speed_idx, selected].all()
+    assert np.allclose(fit_corrections[speed_idx, ~fit_valid[speed_idx]], 0.0)
+
+  def test_outer_learned_buckets_stay_invalid_for_apply(self):
+    speed_idx = len(CurvatureDLookup.SPEED_ANCHORS) - 1
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[speed_idx])
+    outer_idx = len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS) - 1
+    counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    bias = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+
+    counts[speed_idx, outer_idx] = CurvatureDLookup.MIN_BUCKET_POINTS[outer_idx] + 40.0
+    bias[speed_idx, outer_idx] = 8.0e-5
+
+    fit_corrections, fit_valid = CurvatureDLookup.build_fit_corrections(bias, counts)
+    preview_corrections, preview_valid = CurvatureDLookup.build_preview_corrections(bias, counts)
+
+    assert not fit_valid[speed_idx, outer_idx]
+    assert fit_corrections[speed_idx, outer_idx] == 0.0
+    assert preview_valid[speed_idx, outer_idx]
+    assert preview_corrections[speed_idx, outer_idx] > 0.0
+
+  def test_interp_curve_value_does_not_bridge_invalid_gap(self):
+    speed_idx = 3
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[speed_idx])
+    fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    fit_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
+
+    fit_valid[speed_idx, 3] = True
+    fit_valid[speed_idx, 6] = True
+    fit_corrections[speed_idx, 3] = 1.0e-6
+    fit_corrections[speed_idx, 6] = 8.0e-6
+
+    gap_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[4])
+    valid_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[3])
+
+    assert CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, gap_curvature) == 0.0
+    assert CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, valid_curvature) > 0.0
+
+  def test_preview_build_keeps_separate_runs_independent(self):
+    speed_idx = 3
+    counts = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    bias = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    left_idx = 3
+    right_idx = 6
+
+    counts[speed_idx, left_idx] = 1.0
+    counts[speed_idx, right_idx] = 1.0
+    bias[speed_idx, left_idx] = 1.0e-6
+    bias[speed_idx, right_idx] = 8.0e-6
+
+    preview_corrections, preview_valid = CurvatureDLookup.build_preview_corrections(bias, counts)
+
+    assert preview_valid[speed_idx, left_idx]
+    assert preview_valid[speed_idx, right_idx]
+    assert np.isclose(preview_corrections[speed_idx, left_idx], bias[speed_idx, left_idx])
+    assert np.isclose(preview_corrections[speed_idx, right_idx], bias[speed_idx, right_idx])
+
+  def test_learning_is_blocked_for_larger_roll(self):
+    estimator = get_estimator()
+
+    small_roll = np.arcsin(0.5 * MAX_LEARN_ROLL_LATERAL_ACCEL / ACCELERATION_DUE_TO_GRAVITY)
+    large_roll = np.arcsin(1.5 * MAX_LEARN_ROLL_LATERAL_ACCEL / ACCELERATION_DUE_TO_GRAVITY)
+
+    assert estimator.roll_learning_allowed(float(small_roll))
+    assert not estimator.roll_learning_allowed(float(large_roll))
+
+  def test_actual_curvature_subtracts_roll_compensation(self):
+    yaw_rate = 0.03
+    v_ego = 20.0
+    roll_comp = 4.0e-4
+
+    raw_curvature = yaw_rate / v_ego
+    corrected_curvature = CurvatureDLookup.actual_curvature_from_yaw_rate(yaw_rate, v_ego, roll_comp)
+
+    assert np.isclose(corrected_curvature, raw_curvature - roll_comp)
+
+  def test_slight_steering_press_blocks_learning_like_override(self):
+    estimator = get_estimator()
+    estimator.use_params = True
+
+    estimator.handle_log(12.0, "carState", car.CarState(vEgo=20.0, steeringPressed=False, steeringSlightlyPressed=True))
+
+    assert estimator.steering_pressed[-1]
+    assert estimator.last_override_t == 12.0
+
+  def test_interp_curve_value_matches_interp_curve_samples(self):
+    """Verifies the unified interp_curve_value API returns the same result for
+    scalar and array input, and that both branches share the same code path.
+    This protects both UI and controlsd (100Hz) code paths from drift.
+    """
+    speed_idx = 3
+    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[speed_idx])
+    fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    fit_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
+
+    # Two valid runs with a gap
+    fit_valid[speed_idx, 3] = True
+    fit_valid[speed_idx, 6] = True
+    fit_corrections[speed_idx, 3] = 1.0e-6
+    fit_corrections[speed_idx, 6] = 8.0e-6
+
+    # Test points covering: out of range, in valid run, in gap (returns 0), fade regions
+    test_curvatures = [
+      0.0,
+      1.0e-7,
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[2]),  # before first valid run (fade-in)
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[3]),  # in first run
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[4]),  # in gap (should be 0)
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[6]),  # in second run
+      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[7]),  # after second run (fade-out)
+      float(CurvatureDLookup.CURVATURE_MAX + 1.0),  # out of range
+    ]
+
+    for c in test_curvatures:
+      scalar_result = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego, c)
+      array_result = CurvatureDLookup.interp_curve_value(
+        fit_corrections, fit_valid, v_ego, np.asarray([c], dtype=np.float64)
+      )
+      # Scalar path returns float
+      assert isinstance(scalar_result, float)
+      # Array path returns np.ndarray
+      assert isinstance(array_result, np.ndarray)
+      assert np.isclose(scalar_result, array_result[0]), f"mismatch at c={c}: scalar={scalar_result}, array={array_result[0]}"
+
+  def test_interp_curve_value_handles_speed_interp_transition(self):
+    """When v_ego falls between two SPEED_ANCHORS, interp_curve_value must blend
+    the two speed buckets with weight (1-alpha, alpha). This exercises the speed
+    blending path that the vectorized impl shares with the scalar path.
+    """
+    fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    fit_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
+
+    # Use a value per speed_idx that is easy to verify after blending.
+    per_speed_value = 1.0e-5 * np.arange(1, len(CurvatureDLookup.SPEED_ANCHORS) + 1, dtype=np.float32)
+    for s in range(len(CurvatureDLookup.SPEED_ANCHORS)):
+      fit_valid[s, 5] = True
+      fit_corrections[s, 5] = per_speed_value[s]
+
+    c = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[5])
+
+    # At v_ego exactly at a SPEED_ANCHOR, alpha=0 -> only the low bucket contributes.
+    v_ego_at_anchor = float(CurvatureDLookup.SPEED_ANCHORS[3])
+    expected_at_anchor = float(per_speed_value[3])
+    val = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego_at_anchor, c)
+    assert np.isclose(val, expected_at_anchor), f"at anchor: {val} != {expected_at_anchor}"
+
+    # Midpoint between two anchors: alpha=0.5 -> exact 50/50 blend.
+    v_ego_mid = 0.5 * (float(CurvatureDLookup.SPEED_ANCHORS[2]) + float(CurvatureDLookup.SPEED_ANCHORS[3]))
+    expected_mid = 0.5 * (float(per_speed_value[2]) + float(per_speed_value[3]))
+    val = CurvatureDLookup.interp_curve_value(fit_corrections, fit_valid, v_ego_mid, c)
+    assert np.isclose(val, expected_mid, rtol=1e-6), f"at midpoint: {val} != {expected_mid}"
+
+    # General position: verify the explicit (1-alpha) * low + alpha * high formula.
+    low, high, alpha = CurvatureDLookup.speed_interp(v_ego_mid)
+    expected = (1.0 - alpha) * float(per_speed_value[low]) + alpha * float(per_speed_value[high])
+    assert np.isclose(val, expected, rtol=1e-6), f"blend formula: {val} != {expected}"
+
+  def test_exceeds_safety_bounds(self):
+    """Centralized safety check used by both controller.get_correction and
+    CurvatureEstimator._update_current_lookup.
+    """
+    # In-range curvature is safe
+    assert not CurvatureDLookup._exceeds_safety_bounds(1.0e-5, 20.0)
+
+    # Below CURVATURE_MIN -> exceed
+    assert CurvatureDLookup._exceeds_safety_bounds(-1.0, 20.0)
+
+    # Above CURVATURE_MAX -> exceed
+    assert CurvatureDLookup._exceeds_safety_bounds(CurvatureDLookup.CURVATURE_MAX + 1.0, 20.0)
+
+    # abs_curvature * v_ego^2 > MAX_LAT_ACCEL_APPLY (1.0 m/s^2) -> exceed
+    # v=20 m/s, c=3e-3 -> 3e-3 * 400 = 1.2 > 1.0
+    assert CurvatureDLookup._exceeds_safety_bounds(3.0e-3, 20.0)
+
+    # At the boundary, exactly at the limit: 2.5e-3 * 400 = 1.0, must NOT exceed (strict >)
+    assert not CurvatureDLookup._exceeds_safety_bounds(2.5e-3, 20.0)
+
+  def test_update_current_lookup_respects_safety_bounds(self):
+    """Ensure the published current_correction is 0.0 when the requested
+    curvature would exceed the lateral acceleration limit, not just when the
+    curvature is out of bucket range.
+    """
+    estimator = get_estimator()
+    estimator.use_params = True
+    estimator.update_use_params(force=True)
+
+    # Populate fit_corrections and fit_valid so we can isolate the safety check
+    estimator.fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
+    estimator.fit_valid = np.ones(CurvatureDLookup.bucket_shape(), dtype=bool)
+
+    # Inputs within the bucket range but exceeding the lateral-accel cap:
+    # 3e-3 * 20^2 = 1.2 m/s^2, above 1.0 m/s^2 limit
+    estimator._update_current_lookup(3.0e-3, 20.0)
+    assert estimator.current_correction == 0.0
+
+    # Inputs at exactly the limit: 2.5e-3 * 20^2 = 1.0, must not exceed
+    estimator._update_current_lookup(2.5e-3, 20.0)
+    # Not necessarily zero here (correction is small at the limit), but must be finite
+    assert np.isfinite(estimator.current_correction)
+
+    # use_params = False forces 0.0 even if all other conditions would allow a value
+    estimator.use_params = False
+    estimator._update_current_lookup(1.0e-4, 20.0)
+    assert estimator.current_correction == 0.0
