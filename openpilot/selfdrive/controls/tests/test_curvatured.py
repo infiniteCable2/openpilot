@@ -1,4 +1,4 @@
-import cereal.messaging as messaging
+import openpilot.cereal.messaging as messaging
 
 from openpilot.selfdrive.controls.lib.curvatured import CACHE_CURVATURE_DECIMALS, CACHE_V_EGO_DECIMALS, CurvatureDController
 from openpilot.selfdrive.locationd.curvatured import CurvatureDLookup, VERSION
