@@ -60,22 +60,24 @@ export GIT_LFS_SKIP_SMUDGE=1
 pull_lfs() {
   # The big driving model is not used on these devices yet. Keep its pointer in
   # the worktree, but don't download or copy the 1.8 GB LFS object.
-  LFS_EXCLUDE="openpilot/selfdrive/modeld/models/big_driving_supercombo.onnx"
+  LFS_EXCLUDE="openpilot/selfdrive/modeld/models/big_driving_vision.onnx openpilot/selfdrive/modeld/models/big_driving_on_policy.onnx openpilot/selfdrive/modeld/models/big_driving_off_policy.onnx"
 
   git config --local lfs.fetchexclude "$LFS_EXCLUDE"
   git lfs pull --exclude="$LFS_EXCLUDE"
-  if git cat-file -e "HEAD:$LFS_EXCLUDE"; then
-    rm -f "$LFS_EXCLUDE"
-    git checkout -- "$LFS_EXCLUDE"
+  for f in $LFS_EXCLUDE; do
+    if git cat-file -e "HEAD:$f"; then
+      rm -f "$f"
+      git checkout -- "$f"
 
-    # `git lfs prune` retains objects referenced by HEAD, even when excluded.
-    # Remove this one explicitly so safe checkout doesn't rsync it either.
-    oid=$(git show "HEAD:$LFS_EXCLUDE" | sed -n 's/^oid sha256://p')
-    lfs_objects=$(git lfs env | sed -n 's/^LocalMediaDir=//p')
-    if [[ "$oid" =~ ^[0-9a-f]{64}$ && -n "$lfs_objects" ]]; then
-      rm -f "$lfs_objects/${oid:0:2}/${oid:2:2}/$oid"
+      # `git lfs prune` retains objects referenced by HEAD, even when excluded.
+      # Remove this one explicitly so safe checkout doesn't rsync it either.
+      oid=$(git show "HEAD:$f" | sed -n 's/^oid sha256://p')
+      lfs_objects=$(git lfs env | sed -n 's/^LocalMediaDir=//p')
+      if [[ "$oid" =~ ^[0-9a-f]{64}$ && -n "$lfs_objects" ]]; then
+        rm -f "$lfs_objects/${oid:0:2}/${oid:2:2}/$oid"
+      fi
     fi
-  fi
+  done
 }
 
 safe_checkout() {
