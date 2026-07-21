@@ -186,7 +186,7 @@ class UIStateSP:
 
       # Angle steering: no torque-based lateral controls
       if (CP.steerControlType == car.CarParams.SteerControlType.angle or
-          CP.steerControlType == car.CarParams.SteerControlType.curvatureDEPRECATED):
+          CP.steerControlType == car.CarParams.SteerControlType.curvature):
         self.params.remove("EnforceTorqueControl")
         self.params.remove("NeuralNetworkLateralControl")
 
