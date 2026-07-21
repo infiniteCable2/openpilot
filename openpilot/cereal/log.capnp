@@ -867,18 +867,6 @@ struct ControlsState @0x97ff69c53601abf1 {
     indiStateDEPRECATED @52 :Deprecated.LateralINDIState;
   }
   
-  struct LateralCurvatureState @0xad9d8095c06f7c61 {
-    active @0 :Bool;
-    actualCurvature @1 :Float32;
-    desiredCurvature @2 :Float32;
-    error @3 :Float32;
-    p @4 :Float32;
-    i @5 :Float32;
-    f @6 :Float32;
-    output @7 :Float32;
-    saturated @8 :Bool;
-  }
-
   struct LateralPIDState {
     active @0 :Bool;
     steeringAngleDeg @1 :Float32;
