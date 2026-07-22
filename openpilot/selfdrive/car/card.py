@@ -18,7 +18,6 @@ from opendbc.car.carlog import carlog
 from opendbc.car.fw_versions import ObdCallback
 from opendbc.car.car_helpers import get_car, interfaces
 from opendbc.car.interfaces import CarInterfaceBase, RadarInterfaceBase
-from opendbc.car.structs import CarParamsIC
 from openpilot.selfdrive.pandad import can_capnp_to_list, can_list_to_can_capnp
 from openpilot.selfdrive.car.cruise import VCruiseHelper
 from openpilot.selfdrive.car.helpers import convert_carControlSP, convert_carControlIC, convert_to_capnp
@@ -68,7 +67,7 @@ class Car:
   RI: RadarInterfaceBase
   CP: car.CarParams
   CP_SP: structs.CarParamsSP
-  CP_IC: CarParamsIC
+  CP_IC: structs.CarParamsIC
   CP_SP_capnp: custom.CarParamsSP
   CP_IC_capnp: custom.CarParamsIC
 
