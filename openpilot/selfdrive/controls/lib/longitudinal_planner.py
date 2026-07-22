@@ -182,16 +182,21 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
     longitudinalPlan.jerks = self.j_desired_trajectory.tolist()
 
     longitudinalPlan.hasLead = sm['radarState'].leadOne.present
-    longitudinalPlan.leadDistance = get_lead_distance(sm['radarState'])
     longitudinalPlan.longitudinalPlanSource = self.mpc.source
     longitudinalPlan.fcw = self.fcw
 
     longitudinalPlan.aTarget = float(self.output_a_target)
     longitudinalPlan.shouldStop = bool(self.output_should_stop)
-    longitudinalPlan.vTarget = float(self.output_v_target)
     longitudinalPlan.allowBrake = True
     longitudinalPlan.allowThrottle = bool(self.allow_throttle)
 
     pm.send('longitudinalPlan', plan_send)
+
+    # infiniteCable longitudinal plan extension
+    plan_ic_send = messaging.new_message('longitudinalPlanIC')
+    plan_ic_send.valid = sm.all_checks()
+    plan_ic_send.longitudinalPlanIC.leadDistance = get_lead_distance(sm['radarState'])
+    plan_ic_send.longitudinalPlanIC.vTarget = float(self.output_v_target)
+    pm.send('longitudinalPlanIC', plan_ic_send)
 
     self.publish_longitudinal_plan_sp(sm, pm)

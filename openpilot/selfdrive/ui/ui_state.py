@@ -62,6 +62,12 @@ class UIState(UIStateSP):
         "carControl",
         "liveParameters",
         "liveCurvatureParameters",
+        "controlsStateIC",
+        "carStateSP",
+        "carStateIC",
+        "carControlIC",
+        "carParamsIC",
+        "longitudinalPlanIC",
         "testJoystick",
         "rawAudioData",
       ] + self.sm_services_ext

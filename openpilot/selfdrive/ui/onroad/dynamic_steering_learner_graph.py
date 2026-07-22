@@ -165,7 +165,8 @@ class DynamicSteeringLearnerGraph(Widget):
     _, _, min_y, max_y = self._draw_plot(
       plot_rect, preview_curve, corrections, min_y, max_y, transport_valid and payload_valid
     )
-    self._draw_overlay_info(graph_rect, lcp, float(car_state.vEgo), float(controls_state.modelDesiredCurvature),
+    cs_ic = sm["controlsStateIC"]
+    self._draw_overlay_info(graph_rect, lcp, float(car_state.vEgo), float(cs_ic.modelDesiredCurvature),
                             fit_corrections, fit_valid, min_y, max_y, transport_valid, payload_valid)
 
   def _build_graph_rect(self, rect: rl.Rectangle) -> rl.Rectangle:

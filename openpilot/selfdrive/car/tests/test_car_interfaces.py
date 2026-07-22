@@ -10,7 +10,7 @@ from opendbc.car.structs import CarParams
 from opendbc.car.tests.test_car_interfaces import get_fuzzy_car_interface
 from opendbc.car.mock.values import CAR as MOCK
 from opendbc.car.values import PLATFORMS
-from openpilot.selfdrive.car.helpers import convert_carControlSP
+from openpilot.selfdrive.car.helpers import convert_carControlSP, convert_carControlIC
 from openpilot.selfdrive.controls.lib.latcontrol_angle import LatControlAngle
 from openpilot.selfdrive.controls.lib.latcontrol_pid import LatControlPID
 from openpilot.selfdrive.controls.lib.latcontrol_torque import LatControlTorque
@@ -37,15 +37,18 @@ class TestCarInterfaces:
 
     cc_msg = FuzzyGenerator.get_random_msg(data.draw, car.CarControl, real_floats=True)
     cc_sp_msg = FuzzyGenerator.get_random_msg(data.draw, custom.CarControlSP, real_floats=True)
+    cc_ic_msg = FuzzyGenerator.get_random_msg(data.draw, custom.CarControlIC, real_floats=True)
     # Run car interface
     now_nanos = 0
     CC = car.CarControl.new_message(**cc_msg)
     CC = CC.as_reader()
     CC_SP = custom.CarControlSP.new_message(**cc_sp_msg)
     CC_SP = convert_carControlSP(CC_SP.as_reader())
+    CC_IC = custom.CarControlIC.new_message(**cc_ic_msg)
+    CC_IC = convert_carControlIC(CC_IC.as_reader())
     for _ in range(10):
       car_interface.update([])
-      car_interface.apply(CC, CC_SP, now_nanos)
+      car_interface.apply(CC, CC_SP, CC_IC, now_nanos)
       now_nanos += DT_CTRL * 1e9  # 10 ms
 
     CC = car.CarControl.new_message(**cc_msg)
@@ -55,7 +58,7 @@ class TestCarInterfaces:
     CC = CC.as_reader()
     for _ in range(10):
       car_interface.update([])
-      car_interface.apply(CC, CC_SP, now_nanos)
+      car_interface.apply(CC, CC_SP, CC_IC, now_nanos)
       now_nanos += DT_CTRL * 1e9  # 10ms
 
     # Test controller initialization

@@ -2,7 +2,7 @@
 import math
 from numbers import Number
 
-from openpilot.cereal import log
+from openpilot.cereal import log, custom
 from opendbc.car.structs import car
 import openpilot.cereal.messaging as messaging
 from openpilot.common.constants import CV
@@ -47,13 +47,17 @@ class Controls(ControlsExt):
     # Initialize sunnypilot controlsd extension and base model state
     ControlsExt.__init__(self, self.CP, self.params)
 
-    self.CI = interfaces[self.CP.carFingerprint](self.CP, self.CP_SP)
+    cloudlog.info("controlsd is waiting for CarParamsIC")
+    self.CP_IC = messaging.log_from_bytes(self.params.get("CarParamsIC", block=True), custom.CarParamsIC)
+    cloudlog.info("controlsd got CarParamsIC")
+
+    self.CI = interfaces[self.CP.carFingerprint](self.CP, self.CP_SP, self.CP_IC)
 
     self.sm = messaging.SubMaster(['liveDelay', 'liveParameters', 'liveTorqueParameters', 'liveCurvatureParameters', 'modelV2', 'selfdriveState',
-                                   'liveCalibration', 'livePose', 'longitudinalPlan', 'lateralManeuverPlan', 'carState', 'carOutput',
+                                   'liveCalibration', 'livePose', 'longitudinalPlan', 'longitudinalPlanIC', 'lateralManeuverPlan', 'carState', 'carStateIC', 'carOutput',
                                    'driverMonitoringState', 'onroadEvents', 'driverAssistance'] + self.sm_services_ext,
                                   poll='selfdriveState')
-    self.pm = messaging.PubMaster(['carControl', 'controlsState'] + self.pm_services_ext)
+    self.pm = messaging.PubMaster(['carControl', 'controlsState', 'carControlIC', 'controlsStateIC'] + self.pm_services_ext)
 
     self.steer_limited_by_safety = False
     self.curvature = 0.0
@@ -181,7 +185,7 @@ class Controls(ControlsExt):
     # accel PID loop
     pid_accel_limits = self.CI.get_pid_accel_limits(self.CP, self.CP_SP, CS.vEgo, CS.vCruise * CV.KPH_TO_MS)
     actuators.accel = float(self.LoC.update(CC.longActive, CS, long_plan.aTarget, long_plan.shouldStop, pid_accel_limits))
-    actuators.speed = float(long_plan.vTarget)
+    actuators.speed = float(self.sm['longitudinalPlanIC'].vTarget)
 
     # Steering PID loop and lateral MPC
     # Reset desired curvature to current to avoid violating the limits on engage
@@ -222,17 +226,22 @@ class Controls(ControlsExt):
   def publish(self, CC, lac_log):
     CS = self.sm['carState']
 
-    CC.curvatureControllerActive = self.enable_curvature_controller # for car controller curvature correction activation
-    CC.steerLimited = self.steer_limited_by_safety
-    CC.forceRHDForBSM = self.force_rhd_for_bsm
-    CC.longComfortMode = self.enable_long_comfort_mode
-    CC.disableCarSteerAlerts = self.disable_car_steer_alerts
+    CC_IC = custom.CarControlIC.new_message()
+    CC_IC.curvatureControllerActive = self.enable_curvature_controller
+    CC_IC.steerLimited = self.steer_limited_by_safety
+    CC_IC.forceRHDForBSM = self.force_rhd_for_bsm
+    CC_IC.longComfortMode = self.enable_long_comfort_mode
+    CC_IC.disableCarSteerAlerts = self.disable_car_steer_alerts
+    CC_IC.cruiseSpeedLimit = self.enable_speed_limit_control
+    CC_IC.cruiseSpeedLimitPredicative = self.enable_speed_limit_predicative
+    CC_IC.cruiseSpeedLimitPredReactToSL = self.enable_pred_react_to_speed_limits
+    CC_IC.cruiseSpeedLimitPredReactToCurves = self.enable_pred_react_to_curves
 
     # Orientation and angle rates can be useful for carcontroller
     # Only calibrated (car) frame is relevant for the carcontroller
     CC.currentCurvature = self.curvature
-    CC.rollCompensation = self.roll_compensation
-    
+    CC_IC.rollCompensation = self.roll_compensation
+
     if self.calibrated_pose is not None:
       CC.orientationNED = self.calibrated_pose.orientation.xyz.tolist()
       CC.angularVelocity = self.calibrated_pose.angular_velocity.xyz.tolist()
@@ -240,19 +249,15 @@ class Controls(ControlsExt):
     CC.cruiseControl.override = CC.enabled and not CC.longActive and (self.CP.openpilotLongitudinalControl or not self.CP_SP.pcmCruiseSpeed)
     CC.cruiseControl.cancel = CS.cruiseState.enabled and (not CC.enabled or not self.CP.pcmCruise)
     CC.cruiseControl.resume = CC.enabled and CS.cruiseState.standstill and not self.sm['longitudinalPlan'].shouldStop
-    CC.cruiseControl.speedLimit = self.enable_speed_limit_control
-    CC.cruiseControl.speedLimitPredicative = self.enable_speed_limit_predicative
-    CC.cruiseControl.speedLimitPredReactToSL = self.enable_pred_react_to_speed_limits
-    CC.cruiseControl.speedLimitPredReactToCurves = self.enable_pred_react_to_curves
 
     hudControl = CC.hudControl
     hudControl.setSpeed = float(CS.vCruiseCluster * CV.KPH_TO_MS)
     hudControl.speedVisible = CC.enabled
     hudControl.lanesVisible = CC.enabled
     hudControl.leadVisible = self.sm['longitudinalPlan'].hasLead
-    hudControl.leadDistance = self.sm['longitudinalPlan'].leadDistance
+    CC_IC.hudLeadDistance = self.sm['longitudinalPlanIC'].leadDistance
     hudControl.leadDistanceBars = self.sm['selfdriveState'].personality.raw + 1
-    hudControl.leadFollowTime = get_T_FOLLOW(hudControl.leadDistanceBars - 1)
+    CC_IC.hudLeadFollowTime = get_T_FOLLOW(hudControl.leadDistanceBars - 1)
     hudControl.visualAlert = self.sm['selfdriveState'].alertHudVisual
 
     hudControl.rightLaneVisible = True
@@ -280,7 +285,6 @@ class Controls(ControlsExt):
     cs.curvature = self.curvature
     cs.longitudinalPlanMonoTime = self.sm.logMonoTime['longitudinalPlan']
     cs.lateralPlanMonoTime = self.sm.logMonoTime['modelV2']
-    cs.modelDesiredCurvature = self.model_desired_curvature
     cs.desiredCurvature = self.desired_curvature
     cs.longControlState = self.LoC.long_control_state
     cs.upAccelCmd = float(self.LoC.pid.p)
@@ -303,6 +307,18 @@ class Controls(ControlsExt):
       cs.lateralControlState.torqueState = lac_log
 
     self.pm.send('controlsState', dat)
+
+    # carControlIC
+    cc_ic_send = messaging.new_message('carControlIC')
+    cc_ic_send.valid = CS.canValid
+    cc_ic_send.carControlIC = CC_IC
+    self.pm.send('carControlIC', cc_ic_send)
+
+    # controlsStateIC
+    cs_ic_send = messaging.new_message('controlsStateIC')
+    cs_ic_send.valid = CS.canValid
+    cs_ic_send.controlsStateIC.modelDesiredCurvature = self.model_desired_curvature
+    self.pm.send('controlsStateIC', cs_ic_send)
 
     # carControl
     cc_send = messaging.new_message('carControl')

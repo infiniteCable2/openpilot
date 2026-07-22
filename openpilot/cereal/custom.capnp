@@ -468,19 +468,58 @@ struct CustomReserved12 @0x9ccdc8676701b412 {
 struct CustomReserved13 @0xcd96dafb67a082d0 {
 }
 
-struct CustomReserved14 @0xb057204d7deadf3f {
+struct ControlsStateIC @0xb057204d7deadf3f {
+  modelDesiredCurvature @0 :Float32;
 }
 
-struct CustomReserved15 @0xbd443b539493bc68 {
+struct LongitudinalPlanIC @0xbd443b539493bc68 {
+  leadDistance @0 :Float32;
+  vTarget @1 :Float32;
 }
 
-struct CustomReserved16 @0xfc6241ed8877b611 {
+struct CarStateIC @0xfc6241ed8877b611 {
+  steeringCurvature @0 :Float32;
+  steeringSlightlyPressed @1 :Bool;
+  steerFaultWarning @2 :Bool;
+  radarDisableFailed @3 :Bool;
+  batteryDetails @4 :BatteryDetails;
+  cruiseSpeedLimit @5 :Float32;
+  cruiseSpeedLimitPredicative @6 :Float32;
+
+  struct BatteryDetails {
+    capacity @0 :Float32;
+    charge @1 :Float32;
+    soc @2 :Float32;
+    temperature @3 :Float32;
+    heaterActive @4 :Bool;
+    voltage @5 :Float32;
+    current @6 :Float32;
+    power @7 :Float32;
+  }
 }
 
-struct CustomReserved17 @0xa30662f84033036c {
+struct CarControlIC @0xa30662f84033036c {
+  curvatureControllerActive @0 :Bool;
+  rollCompensation @1 :Float32;
+  steerLimited @2 :Bool;
+  forceRHDForBSM @3 :Bool;
+  longComfortMode @4 :Bool;
+  disableCarSteerAlerts @5 :Bool;
+  cruiseSpeedLimit @6 :Bool;
+  cruiseSpeedLimitPredicative @7 :Bool;
+  cruiseSpeedLimitPredReactToSL @8 :Bool;
+  cruiseSpeedLimitPredReactToCurves @9 :Bool;
+  hudLeadFollowTime @10 :Float32;
+  hudLeadDistance @11 :Float32;
 }
 
-struct CustomReserved18 @0xc86a3d38d13eb3ef {
+struct CarParamsIC @0xc86a3d38d13eb3ef {
+  dashcamOnlyReason @0 :DashcamOnlyReason;
+
+  enum DashcamOnlyReason {
+    unknown @0;
+    radarDisableEngineOn @1;
+  }
 }
 
 struct LiveCurvatureParameters @0xa4f1eb3323f5f582 {
