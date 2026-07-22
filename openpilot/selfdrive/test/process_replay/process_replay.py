@@ -357,6 +357,7 @@ def get_car_params_callback(rc, pm, msgs, fingerprint):
     CarInterface = interfaces[fingerprint]
     CP = CarInterface.get_non_essential_params(fingerprint)
     CP_SP = CarInterface.get_non_essential_params_sp(CP, fingerprint)
+    CP_IC = CarInterface.get_non_essential_params_ic(CP, fingerprint)
   else:
     can_msgs = ([CanData(can.address, can.dat, can.src) for can in m.can] for m in msgs if m.which() == "can")
     cached_params_raw = params.get("CarParamsCache")
@@ -373,10 +374,11 @@ def get_car_params_callback(rc, pm, msgs, fingerprint):
         cached_params = _cached_params
 
     _CI = get_car(can_recv, lambda _msgs: None, lambda obd: None, params.get_bool("AlphaLongitudinalEnabled"), False, cached_params=cached_params)
-    CP, CP_SP = _CI.CP, _CI.CP_SP
+    CP, CP_SP, CP_IC = _CI.CP, _CI.CP_SP, _CI.CP_IC
 
   params.put("CarParams", CP.to_bytes(), block=True)
   params.put("CarParamsSP", convert_to_capnp(CP_SP).to_bytes(), block=True)
+  params.put("CarParamsIC", convert_to_capnp(CP_IC).to_bytes(), block=True)
 
 
 def card_rcv_callback(msg, cfg, frame):
