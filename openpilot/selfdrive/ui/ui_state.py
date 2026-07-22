@@ -39,6 +39,14 @@ class UIState(UIStateSP):
   def _initialize(self):
     UIStateSP.__init__(self)
     self.params = Params()
+    ic_services = [
+      "liveCurvatureParameters",
+      "controlsStateIC",
+      "carStateIC",
+      "carControlIC",
+      "carParamsIC",
+      "longitudinalPlanIC",
+    ]
     self.sm = messaging.SubMaster(
       [
         "modelV2",
@@ -61,16 +69,9 @@ class UIState(UIStateSP):
         "carOutput",
         "carControl",
         "liveParameters",
-        "liveCurvatureParameters",
-        "controlsStateIC",
-        "carStateSP",
-        "carStateIC",
-        "carControlIC",
-        "carParamsIC",
-        "longitudinalPlanIC",
         "testJoystick",
         "rawAudioData",
-      ] + self.sm_services_ext
+      ] + ic_services + self.sm_services_ext
     )
 
     self.prime_state = PrimeState()
