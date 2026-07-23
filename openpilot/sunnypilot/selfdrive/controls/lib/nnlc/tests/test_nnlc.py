@@ -52,7 +52,8 @@ class TestNeuralNetworkLateralControl:
     CarInterface = interfaces[car_name]
     CP = CarInterface.get_non_essential_params(car_name)
     CP_SP = CarInterface.get_non_essential_params_sp(CP, car_name)
-    CI = CarInterface(CP, CP_SP)
+    CP_IC = CarInterface.get_non_essential_params_ic(CP, car_name)
+    CI = CarInterface(CP, CP_SP, CP_IC)
 
     sunnypilot_interfaces.setup_interfaces(CI, params)
 

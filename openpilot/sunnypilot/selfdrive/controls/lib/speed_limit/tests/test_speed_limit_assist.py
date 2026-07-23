@@ -69,7 +69,8 @@ class TestSpeedLimitAssist:
     CarInterface = interfaces[car_name]
     CP = CarInterface.get_non_essential_params(car_name)
     CP_SP = CarInterface.get_non_essential_params_sp(CP, car_name)
-    CI = CarInterface(CP, CP_SP)
+    CP_IC = CarInterface.get_non_essential_params_ic(CP, car_name)
+    CI = CarInterface(CP, CP_SP, CP_IC)
     CI.CP.openpilotLongitudinalControl = True  # always assume it's openpilot longitudinal
     sunnypilot_interfaces.setup_interfaces(CI, self.params)
     return CI

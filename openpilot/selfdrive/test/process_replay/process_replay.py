@@ -357,6 +357,7 @@ def get_car_params_callback(rc, pm, msgs, fingerprint):
     CarInterface = interfaces[fingerprint]
     CP = CarInterface.get_non_essential_params(fingerprint)
     CP_SP = CarInterface.get_non_essential_params_sp(CP, fingerprint)
+    CP_IC = CarInterface.get_non_essential_params_ic(CP, fingerprint)
   else:
     can_msgs = ([CanData(can.address, can.dat, can.src) for can in m.can] for m in msgs if m.which() == "can")
     cached_params_raw = params.get("CarParamsCache")
@@ -373,10 +374,11 @@ def get_car_params_callback(rc, pm, msgs, fingerprint):
         cached_params = _cached_params
 
     _CI = get_car(can_recv, lambda _msgs: None, lambda obd: None, params.get_bool("AlphaLongitudinalEnabled"), False, cached_params=cached_params)
-    CP, CP_SP = _CI.CP, _CI.CP_SP
+    CP, CP_SP, CP_IC = _CI.CP, _CI.CP_SP, _CI.CP_IC
 
   params.put("CarParams", CP.to_bytes(), block=True)
   params.put("CarParamsSP", convert_to_capnp(CP_SP).to_bytes(), block=True)
+  params.put("CarParamsIC", convert_to_capnp(CP_IC).to_bytes(), block=True)
 
 
 def card_rcv_callback(msg, cfg, frame):
@@ -442,7 +444,7 @@ CONFIGS = [
       "driverCameraState", "roadCameraState", "wideRoadCameraState", "managerState", "liveTorqueParameters",
       "liveCurvatureParameters",
       "accelerometer", "gyroscope", "carOutput", "gpsLocationExternal", "gpsLocation", "controlsState",
-      "carControl", "driverAssistance", "alertDebug", "audioFeedback",
+      "carControl", "carStateIC", "driverAssistance", "alertDebug", "audioFeedback",
     ],
     subs=["selfdriveState", "onroadEvents"],
     ignore=["logMonoTime"],
@@ -455,9 +457,9 @@ CONFIGS = [
   ProcessConfig(
     proc_name="controlsd",
     pubs=["liveParameters", "liveTorqueParameters", "liveCurvatureParameters", "modelV2", "selfdriveState",
-          "liveCalibration", "livePose", "longitudinalPlan", "carState", "carOutput",
+          "liveCalibration", "livePose", "longitudinalPlan", "longitudinalPlanIC", "carState", "carOutput",
           "driverMonitoringState", "onroadEvents", "driverAssistance"],
-    subs=["carControl", "controlsState"],
+    subs=["carControl", "carControlIC", "controlsState", "controlsStateIC"],
     ignore=["logMonoTime", ],
     init_callback=get_car_params_callback,
     should_recv_callback=MessageBasedRcvCallback("selfdriveState"),
@@ -465,8 +467,8 @@ CONFIGS = [
   ),
   ProcessConfig(
     proc_name="card",
-    pubs=["pandaStates", "carControl", "onroadEvents", "can"],
-    subs=["sendcan", "carState", "carParams", "carOutput", "liveTracks"],
+    pubs=["pandaStates", "carControl", "carControlIC", "onroadEvents", "can"],
+    subs=["sendcan", "carState", "carStateIC", "carParams", "carParamsIC", "carOutput", "liveTracks"],
     ignore=["logMonoTime", "carState.cumLagMs"],
     init_callback=card_fingerprint_callback,
     should_recv_callback=card_rcv_callback,
@@ -486,7 +488,7 @@ CONFIGS = [
   ProcessConfig(
     proc_name="plannerd",
     pubs=["modelV2", "carControl", "carState", "controlsState", "liveParameters", "radarState", "selfdriveState"],
-    subs=["longitudinalPlan", "driverAssistance"],
+    subs=["longitudinalPlan", "longitudinalPlanIC", "driverAssistance"],
     ignore=["logMonoTime", "longitudinalPlan.processingDelay", "longitudinalPlan.solverExecutionTime"],
     init_callback=get_car_params_callback,
     should_recv_callback=MessageBasedRcvCallback("modelV2"),
@@ -555,7 +557,7 @@ CONFIGS = [
   ),
   ProcessConfig(
     proc_name="curvatured",
-    pubs=["livePose", "liveCalibration", "liveDelay", "carState", "carControl", "controlsState"],
+    pubs=["livePose", "liveCalibration", "liveDelay", "carState", "carStateIC", "carControl", "carControlIC", "controlsState", "controlsStateIC"],
     subs=["liveCurvatureParameters"],
     ignore=["logMonoTime"],
     init_callback=get_car_params_callback,

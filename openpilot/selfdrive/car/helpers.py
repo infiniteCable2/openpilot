@@ -3,6 +3,7 @@ from typing import Any
 
 from openpilot.cereal import custom
 from opendbc.car import structs
+from opendbc.car.structs import CarStateIC, CarControlIC, CarParamsIC
 
 _FIELDS = '__dataclass_fields__'  # copy of dataclasses._FIELDS
 
@@ -35,13 +36,17 @@ def asdictref(obj) -> dict[str, Any]:
   return _asdictref_inner(obj)
 
 
-def convert_to_capnp(struct: structs.CarParamsSP | structs.CarStateSP) -> capnp.lib.capnp._DynamicStructBuilder:
+def convert_to_capnp(struct: structs.CarParamsSP | structs.CarStateSP | CarParamsIC | CarStateIC) -> capnp.lib.capnp._DynamicStructBuilder:
   struct_dict = asdictref(struct)
 
   if isinstance(struct, structs.CarParamsSP):
     struct_capnp = custom.CarParamsSP.new_message(**struct_dict)
   elif isinstance(struct, structs.CarStateSP):
     struct_capnp = custom.CarStateSP.new_message(**struct_dict)
+  elif isinstance(struct, CarParamsIC):
+    struct_capnp = custom.CarParamsIC.new_message(**struct_dict)
+  elif isinstance(struct, CarStateIC):
+    struct_capnp = custom.CarStateIC.new_message(**struct_dict)
   else:
     raise ValueError(f"Unsupported struct type: {type(struct)}")
 
@@ -63,5 +68,16 @@ def convert_carControlSP(struct: capnp.lib.capnp._DynamicStructReader) -> struct
   struct_dataclass.intelligentCruiseButtonManagement = structs.IntelligentCruiseButtonManagement(
     **remove_deprecated(struct_dict.get('intelligentCruiseButtonManagement', {}))
   )
+
+  return struct_dataclass
+
+
+def convert_carControlIC(struct: capnp.lib.capnp._DynamicStructReader) -> CarControlIC:
+  # TODO: recursively handle any car struct as needed
+  def remove_deprecated(s: dict) -> dict:
+    return {k: v for k, v in s.items() if not k.endswith('DEPRECATED')}
+
+  struct_dict = struct.to_dict()
+  struct_dataclass = CarControlIC(**remove_deprecated({k: v for k, v in struct_dict.items() if not isinstance(k, dict)}))
 
   return struct_dataclass

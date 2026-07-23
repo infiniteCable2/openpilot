@@ -30,24 +30,24 @@ class TestCustomAccIncrements(TestVCruiseHelper):
     """Simulate a short button press (press + release)"""
     CS = car.CarState(cruiseState={"available": True})
     CS.buttonEvents = [ButtonEvent(type=button_type, pressed=True)]
-    self.v_cruise_helper.update_v_cruise(CS, enabled=True, is_metric=True)
+    self.v_cruise_helper.update_v_cruise(CS, self.CS_IC, enabled=True, is_metric=True)
 
     CS.buttonEvents = [ButtonEvent(type=button_type, pressed=False)]
-    self.v_cruise_helper.update_v_cruise(CS, enabled=True, is_metric=True)
+    self.v_cruise_helper.update_v_cruise(CS, self.CS_IC, enabled=True, is_metric=True)
 
   def press_button_long(self, button_type: car.CarState.ButtonEvent.Type) -> None:
     """Simulate a long button press (50+ frames)"""
     CS = car.CarState(cruiseState={"available": True})
     CS.buttonEvents = [ButtonEvent(type=button_type, pressed=True)]
-    self.v_cruise_helper.update_v_cruise(CS, enabled=True, is_metric=True)
+    self.v_cruise_helper.update_v_cruise(CS, self.CS_IC, enabled=True, is_metric=True)
 
     # Hold for 50 frames to trigger long press
     CS.buttonEvents = []
     for _ in range(50):
-      self.v_cruise_helper.update_v_cruise(CS, enabled=True, is_metric=True)
+      self.v_cruise_helper.update_v_cruise(CS, self.CS_IC, enabled=True, is_metric=True)
 
     CS.buttonEvents = [ButtonEvent(type=button_type, pressed=False)]
-    self.v_cruise_helper.update_v_cruise(CS, enabled=True, is_metric=True)
+    self.v_cruise_helper.update_v_cruise(CS, self.CS_IC, enabled=True, is_metric=True)
 
   def set_custom_increments(self, enabled: bool, short_inc: int, long_inc: int) -> None:
     """Set custom ACC increment parameters"""

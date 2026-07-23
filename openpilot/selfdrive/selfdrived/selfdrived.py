@@ -46,7 +46,7 @@ LaneChangeDirection = log.LaneChangeDirection
 EventName = log.OnroadEvent.EventName
 ButtonType = car.CarState.ButtonEvent.Type
 SafetyModel = car.CarParams.SafetyModel
-DashcamOnlyReason = car.CarParams.DashcamOnlyReason
+
 AlertLevel = log.DriverMonitoringState.AlertLevel
 MonitoringPolicy = log.DriverMonitoringState.MonitoringPolicy
 TurnDirection = custom.ModelDataV2SP.TurnDirection
@@ -55,7 +55,7 @@ IGNORED_SAFETY_MODES = (SafetyModel.silent, SafetyModel.noOutput)
 
 
 class SelfdriveD(CruiseHelper):
-  def __init__(self, CP=None, CP_SP=None):
+  def __init__(self, CP=None, CP_SP=None, CP_IC=None):
     self.params = Params()
 
     # Ensure the current branch is cached, otherwise the first cycle lags
@@ -74,6 +74,13 @@ class SelfdriveD(CruiseHelper):
       cloudlog.info("selfdrived got CarParamsSP")
     else:
       self.CP_SP = CP_SP
+
+    if CP_IC is None:
+      cloudlog.info("selfdrived is waiting for CarParamsIC")
+      self.CP_IC = messaging.log_from_bytes(self.params.get("CarParamsIC", block=True), custom.CarParamsIC)
+      cloudlog.info("selfdrived got CarParamsIC")
+    else:
+      self.CP_IC = CP_IC
 
     self.car_events = CarSpecificEvents(self.CP)
 
@@ -105,7 +112,7 @@ class SelfdriveD(CruiseHelper):
                                    'carOutput', 'driverMonitoringState', 'longitudinalPlan', 'livePose', 'liveDelay',
                                    'managerState', 'liveParameters', 'radarState', 'liveTorqueParameters', 'liveCurvatureParameters',
                                    'controlsState', 'carControl', 'driverAssistance', 'alertDebug', 'userBookmark', 'audioFeedback',
-                                   'lateralManeuverPlan', 'modelDataV2SP', 'longitudinalPlanSP'] + \
+                                    'lateralManeuverPlan', 'modelDataV2SP', 'longitudinalPlanSP', 'carStateIC'] + \
                                    self.camera_packets + self.sensor_packets + self.gps_packets,
                                   ignore_alive=ignore, ignore_avg_freq=ignore,
                                   ignore_valid=ignore, frequency=int(1/DT_CTRL))
@@ -169,7 +176,8 @@ class SelfdriveD(CruiseHelper):
       self.events.add(EventName.carUnrecognized, static=True)
       set_offroad_alert("Offroad_CarUnrecognized", True)
     elif self.CP.passive:
-      if self.CP.dashcamOnlyReason == DashcamOnlyReason.radarDisableEngineOn:
+      dashcam_reason = self.CP_IC.dashcamOnlyReason
+      if dashcam_reason == custom.CarParamsIC.DashcamOnlyReason.radarDisableEngineOn:
         self.events.add(EventName.dashcamModeRadDisEngOn, static=True)
       else:
         self.events.add(EventName.dashcamMode, static=True)
@@ -255,7 +263,7 @@ class SelfdriveD(CruiseHelper):
 
     # Add car events, ignore if CAN isn't valid
     if CS.canValid:
-      car_events = self.car_events.update(CS, self.CS_prev, self.sm['carControl']).to_msg()
+      car_events = self.car_events.update(CS, self.CS_prev, self.sm['carControl'], self.sm['carStateIC']).to_msg()
       self.events.add_from_msg(car_events)
 
       car_events_sp = self.car_events_sp.update(CS, self.events).to_msg()
@@ -273,7 +281,8 @@ class SelfdriveD(CruiseHelper):
         (CS.regenBraking and (not self.CS_prev.regenBraking or not CS.standstill)):
         self.events.add(EventName.pedalPressed)
 
-      if CS.radarDisableFailed:
+      cs_ic = self.sm['carStateIC']
+      if cs_ic.radarDisableFailed:
         self.events.add(EventName.radarDisableFailed)
 
     # Create events for temperature, disk space, and memory

@@ -337,7 +337,8 @@ class TestCurvatureEstimator:
     estimator = get_estimator()
     estimator.use_params = True
 
-    estimator.handle_log(12.0, "carState", car.CarState(vEgo=20.0, steeringPressed=False, steeringSlightlyPressed=True))
+    estimator.handle_log(12.0, "carState", car.CarState(vEgo=20.0, steeringPressed=False))
+    estimator.handle_log(12.0, "carStateIC", custom.CarStateIC(steeringSlightlyPressed=True))
 
     assert estimator.steering_pressed[-1]
     assert estimator.last_override_t == 12.0

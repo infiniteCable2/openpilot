@@ -152,13 +152,14 @@ class DynamicSteeringLearnerGraphMici(Widget):
       lcp_frame, preview_corrections, preview_valid, fit_corrections, fit_valid, float(car_state.vEgo)
     )
 
+    cs_ic = sm["controlsStateIC"]
     self._draw_plot(
       plot_rect,
       preview_curve,
       corrections,
       min_y,
       max_y,
-      float(controls_state.modelDesiredCurvature),
+      float(cs_ic.modelDesiredCurvature),
       payload_valid,
     )
 

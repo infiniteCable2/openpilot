@@ -22,11 +22,11 @@ class CarSpecificEvents:
     self.no_steer_warning = False
     self.silent_steer_warning = True
 
-  def update(self, CS: car.CarState, CS_prev: car.CarState, CC: car.CarControl):
+  def update(self, CS: car.CarState, CS_prev: car.CarState, CC: car.CarControl, CS_IC: structs.CarStateIC):
     if self.CP.brand in ('body', 'mock'):
       return Events()
 
-    events = self.create_common_events(CS, CS_prev)
+    events = self.create_common_events(CS, CS_prev, CS_IC)
 
     if self.CP.brand == 'chrysler':
       # Low speed steer alert hysteresis logic
@@ -93,7 +93,7 @@ class CarSpecificEvents:
 
     return events
 
-  def create_common_events(self, CS: structs.CarState, CS_prev: car.CarState):
+  def create_common_events(self, CS: structs.CarState, CS_prev: car.CarState, CS_IC: structs.CarStateIC):
     events = Events()
 
     CI = interfaces[self.CP.carFingerprint]
@@ -174,7 +174,7 @@ class CarSpecificEvents:
     else:
       self.no_steer_warning = False
       self.silent_steer_warning = False
-    if CS.steerFaultWarning:
+    if CS_IC.steerFaultWarning:
       events.add(EventName.steerFaultWarning)
     if CS.steerFaultPermanent:
       events.add(EventName.steerUnavailable)

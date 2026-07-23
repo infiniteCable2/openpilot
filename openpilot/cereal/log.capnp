@@ -852,7 +852,6 @@ struct ControlsState @0x97ff69c53601abf1 {
   uiAccelCmd @5 :Float32;
   ufAccelCmd @33 :Float32;
   curvature @37 :Float32;  # path curvature from vehicle model
-  modelDesiredCurvature @67 :Float32;  # raw desired curvature from modelV2 before smoothing/adaptation
   desiredCurvature @61 :Float32;  # lag adjusted curvatures used by lateral controllers
   forceDecel @51 :Bool;
 
@@ -866,7 +865,7 @@ struct ControlsState @0x97ff69c53601abf1 {
     lqrStateDEPRECATED @55 :Deprecated.LateralLQRState;
     indiStateDEPRECATED @52 :Deprecated.LateralINDIState;
   }
-  
+
   struct LateralPIDState {
     active @0 :Bool;
     steeringAngleDeg @1 :Float32;
@@ -1201,7 +1200,6 @@ struct LateralManeuverPlan {
 struct LongitudinalPlan @0xe00b5b3eba12876c {
   modelMonoTime @9 :UInt64;
   hasLead @7 :Bool;
-  leadDistance @40 :Float32;
   fcw @8 :Bool;
   longitudinalPlanSource @15 :LongitudinalPlanSource;
   processingDelay @29 :Float32;
@@ -1211,7 +1209,6 @@ struct LongitudinalPlan @0xe00b5b3eba12876c {
   speeds @33 :List(Float32);
   jerks @34 :List(Float32);
   aTarget @18 :Float32;
-  vTarget @41 :Float32;
   shouldStop @37: Bool;
   allowThrottle @38: Bool;
   allowBrake @39: Bool;
@@ -2628,11 +2625,11 @@ struct Event {
     customReserved11 @137 :Custom.CustomReserved11;
     customReserved12 @138 :Custom.CustomReserved12;
     customReserved13 @139 :Custom.CustomReserved13;
-    customReserved14 @140 :Custom.CustomReserved14;
-    customReserved15 @141 :Custom.CustomReserved15;
-    customReserved16 @142 :Custom.CustomReserved16;
-    customReserved17 @143 :Custom.CustomReserved17;
-    customReserved18 @144 :Custom.CustomReserved18;
+    controlsStateIC @140 :Custom.ControlsStateIC;
+    longitudinalPlanIC @141 :Custom.LongitudinalPlanIC;
+    carStateIC @142 :Custom.CarStateIC;
+    carControlIC @143 :Custom.CarControlIC;
+    carParamsIC @144 :Custom.CarParamsIC;
     liveCurvatureParameters @145 :Custom.LiveCurvatureParameters;
 
     # *********** legacy + deprecated ***********
