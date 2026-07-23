@@ -855,6 +855,8 @@ class CurvatureEstimator(CurvatureDLookup):
       if msg.steeringPressed:
         self.last_override_t = t
     elif which == "carStateIC":
+      if self.steering_pressed:
+        self.steering_pressed[-1] |= bool(msg.steeringSlightlyPressed)
       if msg.steeringSlightlyPressed:
         self.last_override_t = t
     elif which == "controlsStateIC":
@@ -955,7 +957,8 @@ def main():
   config_realtime_process([0, 1, 2, 3], 5)
 
   pm = messaging.PubMaster(['liveCurvatureParameters'])
-  sm = messaging.SubMaster(['carControlIC', 'carControl', 'carState', 'carStateIC', 'liveCalibration', 'livePose', 'liveDelay', 'controlsState', 'controlsStateIC'], poll='livePose')
+  sm = messaging.SubMaster(['carControlIC', 'carControl', 'carState', 'carStateIC', 'liveCalibration', 'livePose',
+                            'liveDelay', 'controlsState', 'controlsStateIC'], poll='livePose')
 
   params = Params()
   CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
@@ -997,4 +1000,3 @@ def main():
 
 if __name__ == "__main__":
   main()
-

@@ -340,6 +340,7 @@ class TestCurvatureEstimator:
     estimator.handle_log(12.0, "carState", car.CarState(vEgo=20.0, steeringPressed=False))
     estimator.handle_log(12.0, "carStateIC", custom.CarStateIC(steeringSlightlyPressed=True))
 
+    assert estimator.steering_pressed[-1]
     assert estimator.last_override_t == 12.0
 
   def test_interp_curve_value_matches_interp_curve_samples(self):

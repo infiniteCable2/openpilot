@@ -53,7 +53,7 @@ class Controls(ControlsExt):
 
     self.CI = interfaces[self.CP.carFingerprint](self.CP, self.CP_SP, self.CP_IC)
 
-    ic_sm_services = ['liveCurvatureParameters', 'longitudinalPlanIC', 'carStateIC']
+    ic_sm_services = ['liveCurvatureParameters', 'longitudinalPlanIC']
     ic_pm_services = ['carControlIC', 'controlsStateIC']
     self.sm = messaging.SubMaster(['liveDelay', 'liveParameters', 'liveTorqueParameters', 'modelV2', 'selfdriveState',
                                    'liveCalibration', 'livePose', 'longitudinalPlan', 'lateralManeuverPlan', 'carState', 'carOutput',
