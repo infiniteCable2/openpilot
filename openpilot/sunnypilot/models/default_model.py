@@ -11,8 +11,18 @@ MODEL_HASH_PATH = os.path.join(BASEDIR, "openpilot", "sunnypilot", "models", "te
 SUPERCOMBO_ONNX_PATH = os.path.join(BASEDIR, "openpilot", "selfdrive", "modeld", "models", "driving_supercombo.onnx")
 
 
+def get_model_hash(path: str) -> str:
+  with open(path, "rb") as f:
+    header = f.read(200).decode("ascii", errors="ignore")
+  if header.startswith("version https://git-lfs.github.com/spec/v1"):
+    for line in header.splitlines():
+      if line.startswith("oid sha256:"):
+        return line.removeprefix("oid sha256:")
+  return get_file_hash(path)
+
+
 def update_model_hash():
-  supercombo_hash = get_file_hash(SUPERCOMBO_ONNX_PATH)
+  supercombo_hash = get_model_hash(SUPERCOMBO_ONNX_PATH)
 
   combined_hash = hashlib.sha256(supercombo_hash.encode()).hexdigest()
 

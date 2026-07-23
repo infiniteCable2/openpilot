@@ -1,1 +1,1 @@
-DEFAULT_MODEL = "CD210"
+DEFAULT_MODEL = "Rebel Legion"
