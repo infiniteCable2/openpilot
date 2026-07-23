@@ -84,6 +84,20 @@ compile_modeld_script = [
 model_w, model_h = MEDMODEL_INPUT_SIZE
 frame_skip = ModelConstants.MODEL_RUN_FREQ // ModelConstants.MODEL_CONTEXT_FREQ
 
+default_driving_onnx = File("models/driving_supercombo.onnx").abspath
+with open(default_driving_onnx, "rb") as f:
+  default_model_is_lfs_pointer = f.read(200).startswith(b"version https://git-lfs.github.com/spec/v1")
+
+if default_model_is_lfs_pointer:
+  default_model_relpath = os.path.relpath(default_driving_onnx, env.Dir("#").abspath).replace(os.sep, "/")
+  subprocess.run([
+    "git", "-c", "lfs.url=https://gitlab.com/commaai/openpilot-lfs.git/info/lfs",
+    "lfs", "pull", f"--include={default_model_relpath}", "--exclude=",
+  ], cwd=env.Dir("#").abspath, check=True)
+  with open(default_driving_onnx, "rb") as f:
+    if f.read(200).startswith(b"version https://git-lfs.github.com/spec/v1"):
+      raise RuntimeError("Failed to download the default driving model from comma LFS")
+
 for usbgpu in [False, True] if USBGPU else [False]:
   target_pkl_path = File(modeld_pkl_path(usbgpu)).abspath
   # BIG_INTO_SMALL=1 builds the default target from the big model, e.g. to test it without a USB GPU

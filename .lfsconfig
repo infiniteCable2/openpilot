@@ -2,3 +2,4 @@
 	url = https://gitlab.com/sunnypilot/public/sunnypilot-new-lfs.git/info/lfs
 	pushurl = ssh://git@gitlab.com/sunnypilot/public/sunnypilot-new-lfs.git
 	locksverify = false
+	fetchexclude = openpilot/selfdrive/modeld/models/driving_supercombo.onnx
