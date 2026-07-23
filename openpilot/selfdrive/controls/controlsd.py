@@ -53,11 +53,13 @@ class Controls(ControlsExt):
 
     self.CI = interfaces[self.CP.carFingerprint](self.CP, self.CP_SP, self.CP_IC)
 
-    self.sm = messaging.SubMaster(['liveDelay', 'liveParameters', 'liveTorqueParameters', 'liveCurvatureParameters', 'modelV2', 'selfdriveState',
-                                   'liveCalibration', 'livePose', 'longitudinalPlan', 'longitudinalPlanIC', 'lateralManeuverPlan', 'carState', 'carStateIC', 'carOutput',
-                                   'driverMonitoringState', 'onroadEvents', 'driverAssistance'] + self.sm_services_ext,
+    ic_sm_services = ['liveCurvatureParameters', 'longitudinalPlanIC', 'carStateIC']
+    ic_pm_services = ['carControlIC', 'controlsStateIC']
+    self.sm = messaging.SubMaster(['liveDelay', 'liveParameters', 'liveTorqueParameters', 'modelV2', 'selfdriveState',
+                                   'liveCalibration', 'livePose', 'longitudinalPlan', 'lateralManeuverPlan', 'carState', 'carOutput',
+                                   'driverMonitoringState', 'onroadEvents', 'driverAssistance'] + ic_sm_services + self.sm_services_ext,
                                   poll='selfdriveState')
-    self.pm = messaging.PubMaster(['carControl', 'controlsState', 'carControlIC', 'controlsStateIC'] + self.pm_services_ext)
+    self.pm = messaging.PubMaster(['carControl', 'controlsState'] + ic_pm_services + self.pm_services_ext)
 
     self.steer_limited_by_safety = False
     self.curvature = 0.0
