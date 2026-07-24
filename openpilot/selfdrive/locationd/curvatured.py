@@ -39,6 +39,8 @@ PREVIEW_REFRESH_EVERY_N_UPDATES = 20
 #
 # Safety / scope:
 # - Learning is gated by valid upstream pose/calibration, low roll, low yaw uncertainty, and no steering override.
+# - TODO: Track 10 s override-free data quality and use it to weight sample counts/EMA updates after the hard override gate.
+# - TODO: Latch override events/durations so brief overrides cannot be missed by conflated messaging.
 # - Corrections are bounded by a relative cap envelope over the speed-available buckets:
 #   - up to 50% of local curvature through the last still-supported bucket
 #   - from there, the cap fades toward 0 at the next outer bucket center
