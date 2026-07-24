@@ -337,11 +337,28 @@ class TestCurvatureEstimator:
     estimator = get_estimator()
     estimator.use_params = True
 
+    estimator.handle_log(11.0, "carState", car.CarState(vEgo=20.0, steeringPressed=False))
+    estimator.handle_log(11.0, "carStateIC", custom.CarStateIC(steeringSlightlyPressed=False))
     estimator.handle_log(12.0, "carState", car.CarState(vEgo=20.0, steeringPressed=False))
     estimator.handle_log(12.0, "carStateIC", custom.CarStateIC(steeringSlightlyPressed=True))
 
-    assert estimator.steering_pressed[-1]
+    assert not estimator.steering_pressed[-1]
+    assert estimator.steering_slightly_pressed[-1]
+    assert not estimator._steering_override_at(11.99)
+    assert estimator._steering_override_at(12.0)
     assert estimator.last_override_t == 12.0
+
+  def test_ic_values_keep_their_own_timestamps(self):
+    estimator = get_estimator()
+    estimator.use_params = True
+
+    estimator.handle_log(10.0, "carControl", car.CarControl(latActive=True))
+    estimator.handle_log(10.01, "carControlIC", custom.CarControlIC(rollCompensation=4.0e-4))
+
+    assert estimator.car_control_t[-1] == 10.0
+    assert estimator.car_control_ic_t[-1] == 10.01
+    assert estimator._sample_at_or_before(10.0, estimator.car_control_ic_t, estimator.roll_compensation) is None
+    assert np.isclose(estimator._sample_at_or_before(10.01, estimator.car_control_ic_t, estimator.roll_compensation), 4.0e-4)
 
   def test_interp_curve_value_matches_interp_curve_samples(self):
     """Verifies the unified interp_curve_value API returns the same result for
