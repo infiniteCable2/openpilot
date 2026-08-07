@@ -76,7 +76,7 @@ class ManualSelectPage(NavScroller):
       self._scroller._items.remove(w)
 
     for name in names:
-      btn = BigButton(name, scroll=True)
+      btn = BigButton(name)
       btn.set_click_callback(lambda n=name: self._select_platform(n))
       self._scroller.add_widget(btn)
 
