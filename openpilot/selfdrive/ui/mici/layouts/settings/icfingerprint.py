@@ -1,12 +1,15 @@
 import json
 import os
 
+import pyray as rl
+
 from openpilot.common.basedir import BASEDIR
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationDialog, BigInputDialog
 from openpilot.selfdrive.ui.ui_state import ui_state
-from openpilot.system.ui.lib.application import gui_app
+from openpilot.system.ui.lib.application import FontWeight, gui_app
 from openpilot.system.ui.lib.multilang import tr
+from openpilot.system.ui.widgets.label import UnifiedLabel
 from openpilot.system.ui.widgets.scroller import NavScroller
 
 CAR_LIST_JSON_OUT = os.path.join(BASEDIR, "openpilot", "sunnypilot", "selfdrive", "car", "car_list.json")
@@ -91,6 +94,10 @@ class FingerprintLayoutMici(NavScroller):
     self._car_list = _load_car_list()
 
     self._platform_info = BigButton(tr("current fingerprint"))
+    self._platform_info._sub_label = UnifiedLabel(
+      "", font_size=36, font_weight=FontWeight.ROMAN,
+      text_color=rl.Color(0xAA, 0xAA, 0xAA, 255), scroll=True,
+    )
     self._platform_info.set_value(_get_current_platform_name() or tr("unrecognized vehicle"))
     self._platform_info.set_enabled(False)
 
