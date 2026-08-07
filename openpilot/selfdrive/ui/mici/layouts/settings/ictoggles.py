@@ -1,7 +1,9 @@
 from openpilot.system.ui.widgets.scroller import NavScroller
-from openpilot.selfdrive.ui.mici.widgets.button import BigParamControl
+from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigParamControl
+from openpilot.selfdrive.ui.mici.layouts.settings.icfingerprint import FingerprintLayoutMici
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.system.ui.lib.multilang import tr
 
 
 class ICTogglesLayoutMici(NavScroller):
@@ -23,7 +25,11 @@ class ICTogglesLayoutMici(NavScroller):
     enable_curvatured           = BigParamControl("Enable Dynamic Steering Learner", "EnableCurvatureD")
     show_curvatured_graph       = BigParamControl("Show Dynamic Steering Learner Graph", "ShowDynamicSteeringLearnerGraph")
 
+    fingerprint_btn = BigButton(tr("fingerprint"))
+    fingerprint_btn.set_click_callback(lambda: gui_app.push_widget(FingerprintLayoutMici()))
+
     self._scroller.add_widgets([
+      fingerprint_btn,
       enable_curvature_correction,
       enable_long_comfort_mode,
       enable_sl_control,
