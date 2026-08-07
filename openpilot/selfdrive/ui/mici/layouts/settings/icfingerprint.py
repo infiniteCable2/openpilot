@@ -2,7 +2,7 @@ import json
 import os
 
 from openpilot.common.basedir import BASEDIR
-from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigMultiToggle
+from openpilot.selfdrive.ui.mici.widgets.button import BigButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationDialog, BigInputDialog
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.lib.application import gui_app
@@ -90,38 +90,21 @@ class FingerprintLayoutMici(NavScroller):
     super().__init__()
     self._car_list = _load_car_list()
 
-    self._mode_toggle = BigMultiToggle(
-      tr("fingerprint mode"),
-      options=[tr("auto"), tr("manual")],
-      select_callback=self._on_mode_changed,
-    )
-    self._mode_toggle.set_value(tr("manual") if _is_manual() else tr("auto"))
-
     self._platform_info = BigButton(tr("current fingerprint"))
     self._platform_info.set_value(_get_current_platform_name() or tr("unrecognized vehicle"))
-    self._platform_info.set_enabled(False)
+    self._platform_info.set_click_callback(self._show_manual_select)
 
     self._select_btn = BigButton(tr("select"))
     self._select_btn.set_click_callback(self._show_manual_select)
-    self._select_btn.set_visible(_is_manual())
 
     self._reset_btn = BigButton(tr("reset to auto"))
     self._reset_btn.set_click_callback(self._confirm_reset)
-    self._reset_btn.set_visible(_is_manual())
 
     self._scroller.add_widgets([
-      self._mode_toggle,
       self._platform_info,
       self._select_btn,
       self._reset_btn,
     ])
-
-  def _on_mode_changed(self, value: str):
-    if value == tr("manual"):
-      self._show_manual_select()
-    else:
-      _reset_to_auto()
-      self._refresh_state()
 
   def _show_manual_select(self):
     page = ManualSelectPage(self._car_list, self._on_platform_selected)
@@ -142,10 +125,9 @@ class FingerprintLayoutMici(NavScroller):
 
   def _refresh_state(self):
     manual = _is_manual()
-    self._mode_toggle.set_value(tr("manual") if manual else tr("auto"))
     self._platform_info.set_value(_get_current_platform_name() or tr("unrecognized vehicle"))
-    self._select_btn.set_visible(manual)
-    self._reset_btn.set_visible(manual)
+    self._select_btn.set_enabled(manual)
+    self._reset_btn.set_enabled(manual)
 
   def show_event(self):
     super().show_event()
