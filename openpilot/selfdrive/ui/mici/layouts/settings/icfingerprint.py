@@ -92,7 +92,7 @@ class FingerprintLayoutMici(NavScroller):
 
     self._platform_info = BigButton(tr("current fingerprint"))
     self._platform_info.set_value(_get_current_platform_name() or tr("unrecognized vehicle"))
-    self._platform_info.set_click_callback(self._show_manual_select)
+    self._platform_info.set_enabled(False)
 
     self._select_btn = BigButton(tr("select"))
     self._select_btn.set_click_callback(self._show_manual_select)
@@ -126,7 +126,6 @@ class FingerprintLayoutMici(NavScroller):
   def _refresh_state(self):
     manual = _is_manual()
     self._platform_info.set_value(_get_current_platform_name() or tr("unrecognized vehicle"))
-    self._select_btn.set_enabled(manual)
     self._reset_btn.set_enabled(manual)
 
   def show_event(self):
