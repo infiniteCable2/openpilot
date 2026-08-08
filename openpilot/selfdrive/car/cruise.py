@@ -19,6 +19,8 @@ IMPERIAL_INCREMENT = round(CV.MPH_TO_KPH, 1)  # round here to avoid rounding err
 ButtonEvent = car.CarState.ButtonEvent
 ButtonType = car.CarState.ButtonEvent.Type
 CRUISE_LONG_PRESS = 50
+PREDICTIVE_TYPE_SPEED_LIMIT = 1
+PREDICTIVE_TYPE_CURVE = 2
 CRUISE_NEAREST_FUNC = {
   ButtonType.accelCruise: math.ceil,
   ButtonType.decelCruise: math.floor,
@@ -39,6 +41,9 @@ class VCruiseHelper(VCruiseHelperSP):
     self.button_timers = {ButtonType.decelCruise: 0, ButtonType.accelCruise: 0}
     self.button_change_states = {btn: {"standstill": False, "enabled": False} for btn in self.button_timers}
     self.v_speed_limit_kph = 0
+    self.curve_speed_cap_active = False
+    self.curve_speed_cap_baseline_kph = V_CRUISE_UNSET
+    self.curve_speed_cap_kph = V_CRUISE_UNSET
 
   @property
   def v_cruise_initialized(self):
@@ -57,8 +62,10 @@ class VCruiseHelper(VCruiseHelperSP):
         self._update_v_speed_limit(CS, CS_IC, _enabled, speed_limit_control, speed_limit_predicative)
         self._update_v_cruise_non_pcm(CS, _enabled, is_metric)
         self.update_speed_limit_assist_v_cruise_non_pcm()
+        self._apply_curve_speed_cap()
         self.v_cruise_cluster_kph = self.v_cruise_kph
       else:
+        self._clear_curve_speed_cap()
         self.v_cruise_kph = CS.cruiseState.speed * CV.MS_TO_KPH
         self.v_cruise_cluster_kph = CS.cruiseState.speedCluster * CV.MS_TO_KPH
         if CS.cruiseState.speed == 0:
@@ -68,6 +75,7 @@ class VCruiseHelper(VCruiseHelperSP):
           self.v_cruise_kph = -1
           self.v_cruise_cluster_kph = -1
     else:
+      self._clear_curve_speed_cap()
       self.v_cruise_kph = V_CRUISE_UNSET
       self.v_cruise_cluster_kph = V_CRUISE_UNSET
 
@@ -76,18 +84,68 @@ class VCruiseHelper(VCruiseHelperSP):
 
   def _update_v_speed_limit(self, CS, CS_IC: CarStateIC, enabled, speed_limit_control, predicative):
     if not speed_limit_control: # or not enabled # always set speed limit
+      self._clear_curve_speed_cap()
       return
 
     speed_limit_current = CS_IC.cruiseSpeedLimit * CV.MS_TO_KPH
     speed_limit_predicative = CS_IC.cruiseSpeedLimitPredicative * CV.MS_TO_KPH
+    predicative_type = CS_IC.cruiseSpeedLimitPredicativeType
+    # Only an explicitly typed speed-limit event may use setpoint semantics.
+    # Unknown/mismatched interface versions fail safe as a cap.
+    curve_cap = (predicative and speed_limit_predicative != 0 and
+                 predicative_type != PREDICTIVE_TYPE_SPEED_LIMIT)
+
+    if curve_cap:
+      previous_cap = self.curve_speed_cap_kph
+      if not self.curve_speed_cap_active:
+        self.curve_speed_cap_baseline_kph = self.v_cruise_kph
+      cap_candidates = [speed_limit_predicative]
+      if speed_limit_current != 0:
+        cap_candidates.append(speed_limit_current)
+      if self.curve_speed_cap_baseline_kph != V_CRUISE_UNSET:
+        cap_candidates.append(self.curve_speed_cap_baseline_kph)
+      self.curve_speed_cap_kph = np.clip(round(min(cap_candidates), 1), V_CRUISE_MIN, V_CRUISE_MAX)
+      if (not self.curve_speed_cap_active or previous_cap == V_CRUISE_UNSET or
+          math.isclose(self.v_cruise_kph, previous_cap, abs_tol=0.1)):
+        # Follow an opening curve corridor only when cruise still equals the
+        # previously applied cap. A lower driver/SLA choice becomes the new
+        # ceiling and is never raised by the curve controller.
+        self.v_cruise_kph = self.curve_speed_cap_kph
+      else:
+        self.v_cruise_kph = min(self.v_cruise_kph, self.curve_speed_cap_kph)
+      self.v_speed_limit_kph = speed_limit_predicative
+      self.curve_speed_cap_active = True
+      return
+
+    curve_baseline = self.curve_speed_cap_baseline_kph
+    leaving_curve_cap = self.curve_speed_cap_active
+    self._clear_curve_speed_cap()
 
     speed_limit = speed_limit_predicative if predicative and speed_limit_predicative != 0 else speed_limit_current
+    if (leaving_curve_cap and speed_limit_predicative == 0 and curve_baseline != V_CRUISE_UNSET and
+        speed_limit != 0):
+      # Restore at most the pre-curve setpoint. A curve is a temporary cap and
+      # must never raise cruise to a higher current legal limit on release.
+      speed_limit = min(speed_limit, curve_baseline)
 
-    if speed_limit != self.v_speed_limit_kph:
+    if leaving_curve_cap or speed_limit != self.v_speed_limit_kph:
       if speed_limit != 0:
         self.v_cruise_kph = speed_limit
         self.v_cruise_kph = np.clip(round(self.v_cruise_kph, 1), V_CRUISE_MIN, V_CRUISE_MAX)
       self.v_speed_limit_kph = speed_limit
+
+  def _apply_curve_speed_cap(self):
+    if not self.curve_speed_cap_active or self.curve_speed_cap_kph == V_CRUISE_UNSET:
+      return
+    if self.v_cruise_kph < self.curve_speed_cap_kph:
+      self.curve_speed_cap_baseline_kph = min(self.curve_speed_cap_baseline_kph, self.v_cruise_kph)
+      self.curve_speed_cap_kph = min(self.curve_speed_cap_kph, self.curve_speed_cap_baseline_kph)
+    self.v_cruise_kph = min(self.v_cruise_kph, self.curve_speed_cap_kph)
+
+  def _clear_curve_speed_cap(self):
+    self.curve_speed_cap_active = False
+    self.curve_speed_cap_baseline_kph = V_CRUISE_UNSET
+    self.curve_speed_cap_kph = V_CRUISE_UNSET
 
   def _update_v_cruise_non_pcm(self, CS, enabled, is_metric):
     # handle button presses. TODO: this should be in state_control, but a decelCruise press
