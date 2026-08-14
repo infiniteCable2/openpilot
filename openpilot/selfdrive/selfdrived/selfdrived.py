@@ -101,7 +101,7 @@ class SelfdriveD(CruiseHelper):
     # TODO: de-couple selfdrived with card/conflate on carState without introducing controls mismatches
     self.car_state_sock = messaging.sub_sock('carState', timeout=20)
 
-    ignore = self.sensor_packets + self.gps_packets + ['alertDebug', 'lateralManeuverPlan'] + ['modelDataV2SP']
+    ignore = self.sensor_packets + self.gps_packets + ['alertDebug', 'lateralManeuverPlan'] + ['modelDataV2SP', 'longitudinalPlanSP']
     if not Params().get_bool("EnableCurvatureD"):
       ignore += ['liveCurvatureParameters']
     if SIMULATION:
@@ -345,9 +345,16 @@ class SelfdriveD(CruiseHelper):
     # Handle lane change
     if self.sm['modelV2'].meta.laneChangeState == LaneChangeState.preLaneChange:
       direction = self.sm['modelV2'].meta.laneChangeDirection
+      mdv2sp = self.sm['modelDataV2SP']
+
       if (CS.leftBlindspot and direction == LaneChangeDirection.left) or \
          (CS.rightBlindspot and direction == LaneChangeDirection.right):
         self.events.add(EventName.laneChangeBlocked)
+
+      elif (mdv2sp.leftLaneChangeEdgeBlock and direction == LaneChangeDirection.left) or \
+           (mdv2sp.rightLaneChangeEdgeBlock and direction == LaneChangeDirection.right):
+        self.events_sp.add(custom.OnroadEventSP.EventName.laneChangeRoadEdge)
+
       else:
         if direction == LaneChangeDirection.left:
           self.events.add(EventName.preLaneChangeLeft)
