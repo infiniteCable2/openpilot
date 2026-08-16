@@ -88,7 +88,7 @@ class DynamicSteeringLearnerGraphMici(Widget):
                          v_ego: float) -> tuple[np.ndarray, np.ndarray, float, float]:
     if lcp_frame != self._cached_lcp_frame:
       abs_curvatures = np.abs(self._plot_x).astype(np.float64)
-      # Recomputes only when liveCurvatureParameters changes (4Hz); cached across UI frames.
+      # Recomputes only when lateralCurvatureParameters changes (4Hz); cached across UI frames.
       self._cached_fit_curve = CurvatureDLookup.interp_curve_value(
         fit_corrections, fit_valid, v_ego, abs_curvatures
       )
@@ -121,8 +121,8 @@ class DynamicSteeringLearnerGraphMici(Widget):
       CONFIG.height,
     )
 
-    lcp = sm["liveCurvatureParameters"]
-    lcp_frame = sm.recv_frame["liveCurvatureParameters"]
+    lcp = sm["lateralCurvatureParameters"]
+    lcp_frame = sm.recv_frame["lateralCurvatureParameters"]
     car_state = sm["carState"]
 
     fit_corrections = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)

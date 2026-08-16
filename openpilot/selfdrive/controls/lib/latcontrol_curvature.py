@@ -71,4 +71,4 @@ class LatControlCurvature(LatControl):
     lat_accel_error = error * CS.vEgo ** 2
     curvature_log.saturated = bool(self._check_saturation(abs(lat_accel_error) > LAT_ACCEL_SATURATION_THRESHOLD, CS,
                                                           False, curvature_limited))
-    return 0.0, 0.0, float(output_curvature), curvature_log
+    return 0.0, float(output_curvature), curvature_log

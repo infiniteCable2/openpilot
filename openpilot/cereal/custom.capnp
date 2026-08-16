@@ -535,7 +535,7 @@ struct CarParamsIC @0xc86a3d38d13eb3ef {
   }
 }
 
-struct LiveCurvatureParameters @0xa4f1eb3323f5f582 {
+struct LateralCurvatureParameters @0xa4f1eb3323f5f582 {
   liveValid @0 :Bool;
   version @1 :Int32;
   useParams @2 :Bool;

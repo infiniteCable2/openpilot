@@ -402,7 +402,7 @@ class ModeldCameraSyncRcvCallback:
 
   def __call__(self, msg, cfg, frame):
     self.is_dual_camera = len(cfg.vision_pubs) == 2
-    if msg.which() == "roadCameraState":
+    if msg.which() == "narrowRoadCameraState":
       self.road_present = True
     elif msg.which() == "wideRoadCameraState":
       self.wide_road_present = True
@@ -438,12 +438,12 @@ CONFIGS = [
   ProcessConfig(
     proc_name="selfdrived",
     pubs=[
-      "carState", "deviceState", "pandaStates", "peripheralState", "liveCalibration", "driverMonitoringState",
-      "longitudinalPlan", "livePose", "liveDelay", "liveParameters", "radarState", "modelV2",
-      "driverCameraState", "roadCameraState", "wideRoadCameraState", "managerState", "liveTorqueParameters",
-      "liveCurvatureParameters",
+      "carState", "deviceState", "pandaStates", "peripheralState", "extrinsicsCalibration", "driverMonitoringState",
+      "longitudinalPlan", "deviceMotion", "lateralDelay", "vehicleParameters", "radarState", "modelV2",
+      "cabinCameraState", "narrowRoadCameraState", "wideRoadCameraState", "managerState", "lateralTorqueParameters",
+      "lateralCurvatureParameters",
       "accelerometer", "gyroscope", "carOutput", "gpsLocationExternal", "gpsLocation", "controlsState",
-      "carControl", "carStateIC", "driverAssistance", "alertDebug", "audioFeedback",
+      "carControl", "carStateIC", "driverAssistance", "alertDebug",
     ],
     subs=["selfdriveState", "onroadEvents"],
     ignore=["logMonoTime"],
@@ -455,8 +455,8 @@ CONFIGS = [
   ),
   ProcessConfig(
     proc_name="controlsd",
-    pubs=["liveParameters", "liveTorqueParameters", "liveCurvatureParameters", "modelV2", "selfdriveState",
-          "liveCalibration", "livePose", "longitudinalPlan", "longitudinalPlanIC", "carState", "carOutput",
+    pubs=["vehicleParameters", "lateralTorqueParameters", "lateralCurvatureParameters", "modelV2", "selfdriveState",
+          "extrinsicsCalibration", "deviceMotion", "longitudinalPlan", "longitudinalPlanIC", "carState", "carOutput",
           "driverMonitoringState", "onroadEvents", "driverAssistance"],
     subs=["carControl", "carControlIC", "controlsState", "controlsStateIC"],
     ignore=["logMonoTime", ],
@@ -467,7 +467,7 @@ CONFIGS = [
   ProcessConfig(
     proc_name="card",
     pubs=["pandaStates", "carControl", "carControlIC", "onroadEvents", "can"],
-    subs=["sendcan", "carState", "carStateIC", "carParams", "carParamsIC", "carOutput", "liveTracks"],
+    subs=["sendcan", "carState", "carStateIC", "carParams", "carParamsIC", "carOutput", "radarTracks"],
     ignore=["logMonoTime", "carState.cumLagMs"],
     init_callback=card_fingerprint_callback,
     should_recv_callback=card_rcv_callback,
@@ -478,7 +478,7 @@ CONFIGS = [
   ),
   ProcessConfig(
     proc_name="radard",
-    pubs=["liveTracks", "carState", "modelV2"],
+    pubs=["radarTracks", "carState", "modelV2"],
     subs=["radarState"],
     ignore=["logMonoTime"],
     init_callback=get_car_params_callback,
@@ -486,7 +486,7 @@ CONFIGS = [
   ),
   ProcessConfig(
     proc_name="plannerd",
-    pubs=["modelV2", "carControl", "carState", "controlsState", "liveParameters", "radarState", "selfdriveState"],
+    pubs=["modelV2", "carControl", "carState", "controlsState", "vehicleParameters", "radarState", "selfdriveState"],
     subs=["longitudinalPlan", "longitudinalPlanIC", "driverAssistance"],
     ignore=["logMonoTime", "longitudinalPlan.processingDelay", "longitudinalPlan.solverExecutionTime"],
     init_callback=get_car_params_callback,
@@ -496,14 +496,14 @@ CONFIGS = [
   ProcessConfig(
     proc_name="calibrationd",
     pubs=["carState", "cameraOdometry"],
-    subs=["liveCalibration"],
+    subs=["extrinsicsCalibration"],
     ignore=["logMonoTime"],
     init_callback=get_car_params_callback,
     should_recv_callback=MessageBasedRcvCallback("cameraOdometry", True),
   ),
   ProcessConfig(
     proc_name="dmonitoringd",
-    pubs=["driverStateV2", "liveCalibration", "carState", "modelV2", "selfdriveState", "carControl"],
+    pubs=["driverStateV2", "extrinsicsCalibration", "carState", "modelV2", "selfdriveState", "carControl"],
     subs=["driverMonitoringState"],
     ignore=["logMonoTime"],
     should_recv_callback=MessageBasedRcvCallback("driverStateV2"),
@@ -512,9 +512,9 @@ CONFIGS = [
   ProcessConfig(
     proc_name="locationd",
     pubs=[
-      "cameraOdometry", "accelerometer", "gyroscope", "liveCalibration", "carState"
+      "cameraOdometry", "accelerometer", "gyroscope", "extrinsicsCalibration", "carState"
     ],
-    subs=["livePose"],
+    subs=["deviceMotion"],
     ignore=["logMonoTime"],
     should_recv_callback=MessageBasedRcvCallback("cameraOdometry"),
     tolerance=NUMPY_TOLERANCE,
@@ -522,21 +522,21 @@ CONFIGS = [
   ),
   ProcessConfig(
     proc_name="paramsd",
-    pubs=["livePose", "liveCalibration", "carState"],
-    subs=["liveParameters"],
+    pubs=["deviceMotion", "extrinsicsCalibration", "carState"],
+    subs=["vehicleParameters"],
     ignore=["logMonoTime"],
     init_callback=get_car_params_callback,
-    should_recv_callback=MessageBasedRcvCallback("livePose"),
+    should_recv_callback=MessageBasedRcvCallback("deviceMotion"),
     tolerance=NUMPY_TOLERANCE,
     processing_time=0.004,
   ),
   ProcessConfig(
     proc_name="lagd",
-    pubs=["livePose", "liveCalibration", "carState", "carControl", "controlsState"],
-    subs=["liveDelay"],
+    pubs=["deviceMotion", "extrinsicsCalibration", "carState", "carControl", "controlsState"],
+    subs=["lateralDelay"],
     ignore=["logMonoTime"],
     init_callback=get_car_params_callback,
-    should_recv_callback=MessageBasedRcvCallback("livePose"),
+    should_recv_callback=MessageBasedRcvCallback("deviceMotion"),
     tolerance=NUMPY_TOLERANCE,
   ),
   ProcessConfig(
@@ -547,46 +547,47 @@ CONFIGS = [
   ),
   ProcessConfig(
     proc_name="torqued",
-    pubs=["livePose", "liveCalibration", "liveDelay", "carState", "carControl", "carOutput"],
-    subs=["liveTorqueParameters"],
+    pubs=["deviceMotion", "extrinsicsCalibration", "lateralDelay", "carState", "carControl", "carOutput"],
+    subs=["lateralTorqueParameters"],
     ignore=["logMonoTime"],
     init_callback=get_car_params_callback,
-    should_recv_callback=MessageBasedRcvCallback("livePose", True),
+    should_recv_callback=MessageBasedRcvCallback("deviceMotion", True),
     tolerance=NUMPY_TOLERANCE,
   ),
   ProcessConfig(
     proc_name="curvatured",
-    pubs=["livePose", "liveCalibration", "liveDelay", "carState", "carStateIC", "carControl", "carControlIC", "controlsStateIC"],
-    subs=["liveCurvatureParameters"],
+    pubs=["deviceMotion", "extrinsicsCalibration", "lateralDelay", "carState", "carStateIC", "carControl", "carControlIC", "controlsStateIC"],
+    subs=["lateralCurvatureParameters"],
     ignore=["logMonoTime"],
     init_callback=get_car_params_callback,
-    should_recv_callback=MessageBasedRcvCallback("livePose", True),
+    should_recv_callback=MessageBasedRcvCallback("deviceMotion", True),
     tolerance=NUMPY_TOLERANCE,
   ),
   ProcessConfig(
     proc_name="modeld",
-    pubs=["deviceState", "roadCameraState", "wideRoadCameraState", "liveCalibration", "liveDelay", "driverMonitoringState", "carState", "carControl"],
+    pubs=["deviceState", "narrowRoadCameraState", "wideRoadCameraState", "extrinsicsCalibration", "lateralDelay",
+          "driverMonitoringState", "carState", "carControl"],
     subs=["modelV2", "drivingModelData", "cameraOdometry"],
     ignore=["logMonoTime", "modelV2.frameDropPerc", "modelV2.modelExecutionTime", "drivingModelData.frameDropPerc", "drivingModelData.modelExecutionTime"],
     should_recv_callback=ModeldCameraSyncRcvCallback(),
     tolerance=NUMPY_TOLERANCE,
     processing_time=0.020,
-    main_pub=vipc_get_endpoint_name("camerad", meta_from_camera_state("roadCameraState").stream),
-    vision_pubs=["roadCameraState", "wideRoadCameraState"],
+    main_pub=vipc_get_endpoint_name("camerad", meta_from_camera_state("narrowRoadCameraState").stream),
+    vision_pubs=["narrowRoadCameraState", "wideRoadCameraState"],
     ignore_alive_pubs=["wideRoadCameraState"],
     init_callback=get_car_params_callback,
   ),
   ProcessConfig(
     proc_name="dmonitoringmodeld",
-    pubs=["liveCalibration", "driverCameraState"],
+    pubs=["extrinsicsCalibration", "cabinCameraState"],
     subs=["driverStateV2"],
     ignore=["logMonoTime", "driverStateV2.modelExecutionTime", "driverStateV2.gpuExecutionTime"],
-    should_recv_callback=MessageBasedRcvCallback("driverCameraState"),
+    should_recv_callback=MessageBasedRcvCallback("cabinCameraState"),
     tolerance=NUMPY_TOLERANCE,
     processing_time=0.020,
-    main_pub=vipc_get_endpoint_name("camerad", meta_from_camera_state("driverCameraState").stream),
-    vision_pubs=["driverCameraState"],
-    ignore_alive_pubs=["driverCameraState"],
+    main_pub=vipc_get_endpoint_name("camerad", meta_from_camera_state("cabinCameraState").stream),
+    vision_pubs=["cabinCameraState"],
+    ignore_alive_pubs=["cabinCameraState"],
   ),
 ]
 
@@ -601,35 +602,35 @@ def get_process_config(name: str) -> ProcessConfig:
 def get_custom_params_from_lr(lr: LogIterable, initial_state: str = "first") -> dict[str, Any]:
   """
   Use this to get custom params dict based on provided logs.
-  Useful when replaying following processes: calibrationd, paramsd, torqued
+  Useful when replaying following processes: calibrationd, paramsd, torqued, curvatured
   The params may be based on first or last message of given type
-  (carParams, liveCalibration, liveParameters, liveTorqueParameters, liveCurvatureParameters) in the logs.
+  (carParams, extrinsicsCalibration, vehicleParameters, lateralTorqueParameters, lateralCurvatureParameters) in the logs.
   """
 
   car_params = [m for m in lr if m.which() == "carParams"]
-  live_calibration = [m for m in lr if m.which() == "liveCalibration"]
-  live_parameters = [m for m in lr if m.which() == "liveParameters"]
-  live_torque_parameters = [m for m in lr if m.which() == "liveTorqueParameters"]
-  live_curvature_parameters = [m for m in lr if m.which() == "liveCurvatureParameters"]
+  extrinsics_calibration = [m for m in lr if m.which() == "extrinsicsCalibration"]
+  vehicle_parameters = [m for m in lr if m.which() == "vehicleParameters"]
+  torque_parameters = [m for m in lr if m.which() == "lateralTorqueParameters"]
+  curvature_parameters = [m for m in lr if m.which() == "lateralCurvatureParameters"]
 
   assert initial_state in ["first", "last"]
   msg_index = 0 if initial_state == "first" else -1
 
-  assert len(car_params) > 0, "carParams required for initial state of liveParameters and CarParamsPrevRoute"
+  assert len(car_params) > 0, "carParams required for initial state of vehicleParameters and CarParamsPrevRoute"
   CP = car_params[msg_index].carParams
 
   custom_params = {
     "CarParamsPrevRoute": CP.as_builder().to_bytes()
   }
 
-  if len(live_calibration) > 0:
-    custom_params["CalibrationParams"] = live_calibration[msg_index].as_builder().to_bytes()
-  if len(live_parameters) > 0:
-    custom_params["LiveParametersV2"] = live_parameters[msg_index].as_builder().to_bytes()
-  if len(live_torque_parameters) > 0:
-    custom_params["LiveTorqueParameters"] = live_torque_parameters[msg_index].as_builder().to_bytes()
-  if len(live_curvature_parameters) > 0:
-    custom_params["LiveCurvatureParameters"] = live_curvature_parameters[msg_index].as_builder().to_bytes()
+  if len(extrinsics_calibration) > 0:
+    custom_params["CalibrationParams"] = extrinsics_calibration[msg_index].as_builder().to_bytes()
+  if len(vehicle_parameters) > 0:
+    custom_params["LiveParametersV2"] = vehicle_parameters[msg_index].as_builder().to_bytes()
+  if len(torque_parameters) > 0:
+    custom_params["LiveTorqueParameters"] = torque_parameters[msg_index].as_builder().to_bytes()
+  if len(curvature_parameters) > 0:
+    custom_params["LiveCurvatureParameters"] = curvature_parameters[msg_index].as_builder().to_bytes()
 
   return custom_params
 

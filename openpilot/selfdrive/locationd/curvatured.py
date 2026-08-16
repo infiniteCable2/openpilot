@@ -565,7 +565,7 @@ class CurvatureEstimator(CurvatureDLookup):
 
     try:
       with log.Event.from_bytes(curvature_cache) as log_evt:
-        cache_lcp = log_evt.liveCurvatureParameters
+        cache_lcp = log_evt.lateralCurvatureParameters
       with car.CarParams.from_bytes(params_cache) as msg:
         cache_CP = msg
 
@@ -846,9 +846,9 @@ class CurvatureEstimator(CurvatureDLookup):
 
   def handle_log(self, t: float, which: str, msg) -> None:
     if not self.use_params:
-      if which == "liveCalibration":
-        self.calibrator.feed_live_calib(msg)
-      elif which == "liveDelay":
+      if which == "extrinsicsCalibration":
+        self.calibrator.feed_extrinsics_calibration(msg)
+      elif which == "lateralDelay":
         self.lag = get_lat_delay(self.params, msg.lateralDelay)
       return
 
@@ -877,11 +877,11 @@ class CurvatureEstimator(CurvatureDLookup):
       v_ego = self._sample_at_or_before(t, self.car_state_t, self.vego)
       if v_ego is not None:
         self._update_current_lookup(self.model_desired_curvature[-1], v_ego)
-    elif which == "liveCalibration":
-      self.calibrator.feed_live_calib(msg)
-    elif which == "liveDelay":
+    elif which == "extrinsicsCalibration":
+      self.calibrator.feed_extrinsics_calibration(msg)
+    elif which == "lateralDelay":
       self.lag = get_lat_delay(self.params, msg.lateralDelay)
-    elif which == "livePose" and self.use_params:
+    elif which == "deviceMotion" and self.use_params:
       self.live_pose_update_index += 1
       if not self._history_ready():
         return
@@ -904,7 +904,7 @@ class CurvatureEstimator(CurvatureDLookup):
       if not bool(lat_active) or bool(steering_override) or float(v_ego) < self.MIN_SPEED:
         return
 
-      device_pose = Pose.from_live_pose(msg)
+      device_pose = Pose.from_device_motion(msg)
       if not self.roll_learning_allowed(device_pose.orientation.roll):
         return
       calibrated_pose = self.calibrator.build_calibrated_pose(device_pose)
@@ -922,10 +922,10 @@ class CurvatureEstimator(CurvatureDLookup):
 
   def get_msg(self, valid: bool = True, live_valid: bool = True,
               include_debug: bool = False, include_preview: bool = False):
-    msg = messaging.new_message('liveCurvatureParameters')
+    msg = messaging.new_message('lateralCurvatureParameters')
     msg.valid = valid
 
-    curvature_params = msg.liveCurvatureParameters
+    curvature_params = msg.lateralCurvatureParameters
     curvature_params.liveValid = bool(live_valid) and bool(np.isfinite(self.bias).all()) and bool(np.isfinite(self.fit_corrections).all())
     curvature_params.version = VERSION
     curvature_params.useParams = self.use_params
@@ -970,9 +970,9 @@ class CurvatureEstimator(CurvatureDLookup):
 def main():
   config_realtime_process([0, 1, 2, 3], 5)
 
-  pm = messaging.PubMaster(['liveCurvatureParameters'])
-  sm = messaging.SubMaster(['carControlIC', 'carControl', 'carState', 'carStateIC', 'liveCalibration', 'livePose',
-                            'liveDelay', 'controlsStateIC'], poll='livePose')
+  pm = messaging.PubMaster(['lateralCurvatureParameters'])
+  sm = messaging.SubMaster(['carControlIC', 'carControl', 'carState', 'carStateIC', 'extrinsicsCalibration', 'deviceMotion',
+                            'lateralDelay', 'controlsStateIC'], poll='deviceMotion')
 
   params = Params()
   CP = messaging.log_from_bytes(params.get("CarParams", block=True), car.CarParams)
@@ -992,11 +992,11 @@ def main():
 
     curvature_estimator.update_use_params()
 
-    # 4Hz driven by livePose
+    # 4Hz driven by deviceMotion
     if sm.frame % 5 == 0:
       live_valid = sm.all_checks() and curvature_estimator.use_params
       curvature_estimator.maybe_log_status(time.monotonic(), sm)
-      pm.send('liveCurvatureParameters',
+      pm.send('lateralCurvatureParameters',
               curvature_estimator.get_msg(valid=sm.all_checks(),
                                           live_valid=live_valid,
                                           include_debug=curvature_estimator.publish_debug_data,

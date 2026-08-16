@@ -52,7 +52,7 @@ def decode_cached_param(init_data):
 
     try:
       with log.Event.from_bytes(raw_value) as evt:
-        result["decoded"] = evt.liveCurvatureParameters
+        result["decoded"] = evt.lateralCurvatureParameters
     except Exception as e:
       result["error"] = repr(e)
 
@@ -62,7 +62,7 @@ def decode_cached_param(init_data):
 
 
 def message_summary(msg) -> dict:
-  payload = msg.liveCurvatureParameters
+  payload = msg.lateralCurvatureParameters
   return {
     "valid": bool(msg.valid),
     "live_valid": bool(payload.liveValid),
@@ -88,11 +88,11 @@ def print_bucket_details(counts: np.ndarray, biases: np.ndarray, corrections: np
     bucket_bias = float(biases[speed_idx, curvature_idx])
     bucket_corr = float(corrections[speed_idx, curvature_idx])
     bucket_valid = bool(fit_valid[speed_idx, curvature_idx])
-    print(
-      f"    {marker} idx={curvature_idx} range={bucket_range} "
-      f"points={bucket_points} fitValid={bucket_valid} "
-      f"bias={bucket_bias:.8f} corr={bucket_corr:.8f}"
-    )
+    print("".join((
+      f"    {marker} idx={curvature_idx} range={bucket_range} ",
+      f"points={bucket_points} fitValid={bucket_valid} ",
+      f"bias={bucket_bias:.8f} corr={bucket_corr:.8f}",
+    )))
 
 
 def print_message_summary(title: str, payload) -> None:
@@ -118,7 +118,8 @@ def print_message_summary(title: str, payload) -> None:
   for speed_idx in range(len(CurvatureDLookup.SPEED_ANCHORS)):
     speed_counts = counts[speed_idx]
     speed_valid = CurvatureDLookup.speed_curve_valid(counts, speed_idx) if has_debug_arrays else bool(np.any(fit_valid[speed_idx]))
-    valid_bucket_count = int(np.count_nonzero(speed_counts >= CurvatureDLookup.MIN_BUCKET_POINTS)) if has_debug_arrays else int(np.count_nonzero(fit_valid[speed_idx]))
+    valid_bucket_count = (int(np.count_nonzero(speed_counts >= CurvatureDLookup.MIN_BUCKET_POINTS))
+                          if has_debug_arrays else int(np.count_nonzero(fit_valid[speed_idx])))
     total_points = int(round(float(speed_counts.sum()))) if has_debug_arrays else int(np.count_nonzero(fit_valid[speed_idx]))
     if total_points == 0 and not speed_valid:
       continue
@@ -132,12 +133,13 @@ def print_message_summary(title: str, payload) -> None:
     focus_idx = best_idx
     if int(payload.bucketSpeed) == speed_idx and int(payload.bucketCurvature) >= 0:
       focus_idx = int(payload.bucketCurvature)
-    speed_entries.append((speed_idx, focus_idx,
-      f"  {speed_label(speed_idx)}: valid={speed_valid} total={total_points} "
-      f"validBuckets={valid_bucket_count} fitPoints={fit_points} "
-      f"topBucket={best_idx} ({best_bucket}) points={best_points} "
-      f"bias={best_bias:.8f} corr={best_corr:.8f}")
-    )
+    line = "".join((
+      f"  {speed_label(speed_idx)}: valid={speed_valid} total={total_points} ",
+      f"validBuckets={valid_bucket_count} fitPoints={fit_points} ",
+      f"topBucket={best_idx} ({best_bucket}) points={best_points} ",
+      f"bias={best_bias:.8f} corr={best_corr:.8f}",
+    ))
+    speed_entries.append((speed_idx, focus_idx, line))
 
   if speed_entries:
     print("  speed anchors:")
@@ -149,7 +151,7 @@ def print_message_summary(title: str, payload) -> None:
 
 def main() -> None:
   parser = argparse.ArgumentParser(
-    description="Dump liveCurvatureParameters from a route, segment, local log file, or URL using the local schema."
+    description="Dump lateralCurvatureParameters from a route, segment, local log file, or URL using the local schema."
   )
   parser.add_argument(
     "route_or_segment_name",
@@ -165,7 +167,7 @@ def main() -> None:
     default=ReadMode.AUTO.value,
     help="LogReader mode: r=rlog, q=qlog, a=auto, i=auto interactive",
   )
-  parser.add_argument("--limit", type=int, default=5, help="How many liveCurvatureParameters events to sample")
+  parser.add_argument("--limit", type=int, default=5, help="How many lateralCurvatureParameters events to sample")
   args = parser.parse_args()
 
   target = args.route_or_segment_name.strip()
@@ -186,12 +188,12 @@ def main() -> None:
     which = msg.which()
     if which == "initData" and init_data is None:
       init_data = msg.initData
-    elif which == "liveCurvatureParameters":
+    elif which == "lateralCurvatureParameters":
       curvature_msgs.append(msg)
       valid_count += int(bool(msg.valid))
-      live_valid_count += int(bool(msg.liveCurvatureParameters.liveValid))
+      live_valid_count += int(bool(msg.lateralCurvatureParameters.liveValid))
 
-  print(f"liveCurvatureParameters events: {len(curvature_msgs)}")
+  print(f"lateralCurvatureParameters events: {len(curvature_msgs)}")
   if curvature_msgs:
     print(f"transport valid count: {valid_count}")
     print(f"payload liveValid count: {live_valid_count}")
@@ -212,9 +214,9 @@ def main() -> None:
       if idx in printed:
         continue
       printed.add(idx)
-      print_message_summary(f"sample event #{idx}", curvature_msgs[idx].liveCurvatureParameters)
+      print_message_summary(f"sample event #{idx}", curvature_msgs[idx].lateralCurvatureParameters)
   else:
-    print("No liveCurvatureParameters events found.")
+    print("No lateralCurvatureParameters events found.")
 
   if init_data is None:
     print("No initData found.")
