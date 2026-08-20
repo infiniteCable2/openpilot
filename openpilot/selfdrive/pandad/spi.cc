@@ -29,13 +29,6 @@ enum SpiError {
 
 const unsigned int SPI_ACK_TIMEOUT = 500; // milliseconds
 const std::string SPI_DEVICE = "/dev/spidev0.0";
-// TODO: fix SPI turnaround synchronization at the protocol level.
-static uint64_t spi_last_bus_activity_ns = 0;  // protected by hw_lock
-
-static void wait_for_spi_turnaround(uint64_t start_ns) {
-  while ((nanos_since_boot() - start_ns) < 400000) {}
-}
-
 class LockEx {
 public:
   LockEx(int fd_, std::recursive_mutex &m_) : fd(fd_), m(m_) {
@@ -321,11 +314,9 @@ int PandaSpiHandle::spi_transfer(uint8_t endpoint, uint8_t *tx_data, uint16_t tx
   uint16_t rx_data_len;
   LockEx lock(spi_fd, hw_lock);
 
-  // needs to be less, since we need to have space for the checksum
-  assert(tx_len < SPI_BUF_SIZE);
-  assert(max_rx_len < SPI_BUF_SIZE);
-
-  wait_for_spi_turnaround(spi_last_bus_activity_ns);
+  // Protocol v3 reserves room for checksums and the pipelined next header.
+  assert(tx_len <= (SPI_BUF_SIZE - 0x40));
+  assert(max_rx_len <= (SPI_BUF_SIZE - 0x40));
 
   xfer_count++;
   header = {
@@ -355,8 +346,6 @@ int PandaSpiHandle::spi_transfer(uint8_t endpoint, uint8_t *tx_data, uint16_t tx
   if (ret < 0) {
     goto fail;
   }
-  wait_for_spi_turnaround(nanos_since_boot());
-
   // Send data
   if (tx_data != NULL) {
     memcpy(tx_buf, tx_data, tx_len);
@@ -370,25 +359,30 @@ int PandaSpiHandle::spi_transfer(uint8_t endpoint, uint8_t *tx_data, uint16_t tx
   }
 
   // Wait for (N)ACK
-  ret = wait_for_ack(SPI_DACK, 0x13, timeout, 3);
+  // Probe readiness with one byte. Once DACK is observed, the remaining
+  // response window is already owned by the active full-duplex DMA phase.
+  ret = wait_for_ack(SPI_DACK, 0x13, timeout, 1);
   if (ret < 0) {
     goto fail;
   }
 
-  // Read data
-  rx_data_len = *(uint16_t *)(rx_buf+1);
-  if (rx_data_len >= SPI_BUF_SIZE) {
-    SPILOG(LOGE, "SPI: RX data len larger than buf size %d", rx_data_len);
-    goto fail;
-  }
-
-  transfer.len = rx_data_len + 1;
-  transfer.rx_buf = (uint64_t)(rx_buf + 2 + 1);
+  transfer.len = max_rx_len + 3;
+  transfer.rx_buf = (uint64_t)(rx_buf + 1);
   ret = lltransfer(transfer);
   if (ret < 0) {
     SPILOG(LOGE, "SPI: failed to read rx data");
     goto fail;
   }
+
+  // Read data
+  rx_data_len = *(uint16_t *)(rx_buf+1);
+  if ((rx_data_len >= SPI_BUF_SIZE) || (rx_data_len > max_rx_len)) {
+    SPILOG(LOGE, "SPI: RX data len larger than advertised max %d", rx_data_len);
+    goto fail;
+  }
+
+  // Protocol v3 clocked the complete advertised response window above. The
+  // panda now captures the next header in that same RX DMA.
   if (!check_checksum(rx_buf, rx_data_len + 4)) {
     SPILOG(LOGE, "SPI: bad checksum");
     goto fail;
@@ -398,22 +392,32 @@ int PandaSpiHandle::spi_transfer(uint8_t endpoint, uint8_t *tx_data, uint16_t tx
     memcpy(rx_data, rx_buf + 3, rx_data_len);
   }
 
-  spi_last_bus_activity_ns = nanos_since_boot();
   return rx_data_len;
 
 fail:
-  // ensure slave is in a consistent state
-  // and ready for the next transfer
-  int nack_cnt = 0;
-  while (nack_cnt < 3) {
-    if (wait_for_ack(SPI_NACK, 0x14, 1, SPI_BUF_SIZE/2) == 0) {
-      nack_cnt += 1;
-    } else {
-      nack_cnt = 0;
+  // An explicit v3 NACK already arms the following retry header. For an
+  // interrupted phase, clock enough bytes to complete it and scan the whole
+  // window since NACK is not required to land at byte zero.
+  if (ret != SpiError::NACK) {
+    spi_ioc_transfer recovery_transfer = {
+      .tx_buf = (uint64_t)tx_buf,
+      .rx_buf = (uint64_t)rx_buf,
+      .len = SPI_BUF_SIZE / 2,
+    };
+    memset(tx_buf, 0x14, recovery_transfer.len);
+    for (int attempt = 0; attempt < 5; attempt++) {
+      int nack_count = 0;
+      if (lltransfer(recovery_transfer) >= 0) {
+        for (uint32_t i = 0; i < recovery_transfer.len; i++) {
+          nack_count += rx_buf[i] == SPI_NACK;
+        }
+      }
+      if (nack_count >= 3) {
+        break;
+      }
     }
   }
 
-  spi_last_bus_activity_ns = nanos_since_boot();
   if (ret >= 0) ret = -1;
   return ret;
 }

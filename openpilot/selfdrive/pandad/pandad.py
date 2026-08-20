@@ -20,7 +20,9 @@ def get_expected_signature() -> bytes:
   return Panda.get_signature_from_firmware(fn)
 
 def flash_panda(panda_serial: str):
-  panda = Panda(panda_serial)
+  # The updater may use the deployed v1/v2 SPI transport long enough to flash
+  # the current firmware. Runtime pandad remains strict about protocol version.
+  panda = Panda(panda_serial, allow_legacy_spi=True)
 
   # skip flashing if the detected panda is not supported
   if panda.get_type() not in Panda.SUPPORTED_DEVICES:
@@ -37,7 +39,15 @@ def flash_panda(panda_serial: str):
 
   if panda.bootstub or panda_signature != fw_signature:
     cloudlog.info("Panda firmware out of date, update required")
-    panda.flash()
+    # A protocol-changing app flash can leave the internal SPI peripheral in
+    # the old session until STM_RST_N is asserted. Avoid reconnecting through
+    # that stale session and make the C3X post-flash reset deterministic.
+    panda.flash(reconnect=(not internal_panda))
+    if internal_panda:
+      panda.close()
+      HARDWARE.reset_internal_panda()
+      time.sleep(0.5)
+      panda = Panda(panda_serial, allow_legacy_spi=True)
     cloudlog.info("Done flashing")
 
   if panda.bootstub:
@@ -51,6 +61,12 @@ def flash_panda(panda_serial: str):
   if panda.bootstub:
     cloudlog.info("Panda still not booting, exiting")
     raise AssertionError
+
+  if panda.is_connected_spi():
+    spi_protocol_version = panda.get_spi_protocol_version()
+    if spi_protocol_version != Panda.SPI_PROTOCOL_VERSION:
+      cloudlog.info(f"SPI protocol mismatch after flashing: expected {Panda.SPI_PROTOCOL_VERSION}, got {spi_protocol_version}")
+      raise AssertionError
 
   panda_signature = panda.get_signature()
   if panda_signature != fw_signature:
@@ -76,6 +92,16 @@ def check_panda_support(panda_serials: list[str]) -> list[str]:
   return []
 
 
+def prepare_internal_panda(update_attempt: int) -> None:
+  if (update_attempt % 2) == 0:
+    HARDWARE.reset_internal_panda()
+  else:
+    # ROM DFU is independent of the panda SPI protocol. Besides recovering a
+    # corrupt app, this is the downgrade path when the installed protocol is
+    # newer than the updater and a normal connection is impossible.
+    HARDWARE.recover_internal_panda()
+
+
 def main() -> None:
   # signal pandad to close the relay and exit
   def signal_handler(signum, frame):
@@ -92,7 +118,7 @@ def main() -> None:
   # check health for lost heartbeat
   try:
     for s in Panda.list():
-      with Panda(s) as p:
+      with Panda(s, allow_legacy_spi=True) as p:
         health = p.health()
         if p.is_internal() and health["heartbeat_lost"]:
           Params().put_bool("PandaHeartbeatLost", True, block=True)
@@ -104,10 +130,7 @@ def main() -> None:
   while not do_exit:
     try:
       cloudlog.event("pandad.flash_and_connect", count=count)
-      if (count % 2) == 0:
-        HARDWARE.reset_internal_panda()
-      else:
-        HARDWARE.recover_internal_panda()
+      prepare_internal_panda(count)
       count += 1
 
       # Flash all Pandas in DFU mode
