@@ -4,7 +4,10 @@ import numpy as np
 from openpilot.common.test import OpenpilotTestCase
 from openpilot.common.parameterized import parameterized_class
 from openpilot.cereal import log
-from openpilot.selfdrive.car.cruise import VCruiseHelper, V_CRUISE_MIN, V_CRUISE_MAX, V_CRUISE_INITIAL, IMPERIAL_INCREMENT
+from openpilot.selfdrive.car.cruise import (
+  IMPERIAL_INCREMENT, PREDICTIVE_TYPE_CURVE, PREDICTIVE_TYPE_SPEED_LIMIT, VCruiseHelper,
+  V_CRUISE_INITIAL, V_CRUISE_MAX, V_CRUISE_MIN,
+)
 from openpilot.cereal import custom
 from opendbc.car.structs import car, CarStateIC
 from openpilot.common.constants import CV
@@ -153,3 +156,59 @@ class TestVCruiseHelper(OpenpilotTestCase):
           self.enable(float(v_ego), experimental_mode, dynamic_experimental_control)
           assert V_CRUISE_INITIAL <= self.v_cruise_helper.v_cruise_kph <= V_CRUISE_MAX
           assert self.v_cruise_helper.v_cruise_initialized
+
+  def test_curve_prediction_is_a_cap_not_a_setpoint(self):
+    self.v_cruise_helper.v_cruise_kph = 70
+    self.CS_IC.cruiseSpeedLimit = 130 * CV.KPH_TO_MS
+    self.CS_IC.cruiseSpeedLimitPredicative = 80 * CV.KPH_TO_MS
+    self.CS_IC.cruiseSpeedLimitPredicativeType = PREDICTIVE_TYPE_CURVE
+
+    self.v_cruise_helper._update_v_speed_limit(None, self.CS_IC, True, True, True)
+    assert self.v_cruise_helper.v_cruise_kph == 70
+
+    # An interface mismatch with a missing type must fail safe as a cap.
+    self.v_cruise_helper._clear_curve_speed_cap()
+    self.CS_IC.cruiseSpeedLimitPredicativeType = 0
+    self.v_cruise_helper._update_v_speed_limit(None, self.CS_IC, True, True, True)
+    assert self.v_cruise_helper.v_cruise_kph == 70
+
+  def test_curve_cap_opens_only_to_pre_curve_setpoint(self):
+    self.v_cruise_helper.v_cruise_kph = 100
+    self.CS_IC.cruiseSpeedLimit = 130 * CV.KPH_TO_MS
+    self.CS_IC.cruiseSpeedLimitPredicativeType = PREDICTIVE_TYPE_CURVE
+
+    self.CS_IC.cruiseSpeedLimitPredicative = 80 * CV.KPH_TO_MS
+    self.v_cruise_helper._update_v_speed_limit(None, self.CS_IC, True, True, True)
+    assert self.v_cruise_helper.v_cruise_kph == 80
+
+    self.CS_IC.cruiseSpeedLimitPredicative = 90 * CV.KPH_TO_MS
+    self.v_cruise_helper._update_v_speed_limit(None, self.CS_IC, True, True, True)
+    assert self.v_cruise_helper.v_cruise_kph == 90
+
+    self.CS_IC.cruiseSpeedLimitPredicative = 0
+    self.CS_IC.cruiseSpeedLimitPredicativeType = 0
+    self.v_cruise_helper._update_v_speed_limit(None, self.CS_IC, True, True, True)
+    assert self.v_cruise_helper.v_cruise_kph == 100
+
+  def test_predicative_speed_limit_keeps_setpoint_semantics(self):
+    self.v_cruise_helper.v_cruise_kph = 70
+    self.CS_IC.cruiseSpeedLimit = 130 * CV.KPH_TO_MS
+    self.CS_IC.cruiseSpeedLimitPredicative = 80 * CV.KPH_TO_MS
+    self.CS_IC.cruiseSpeedLimitPredicativeType = PREDICTIVE_TYPE_SPEED_LIMIT
+
+    self.v_cruise_helper._update_v_speed_limit(None, self.CS_IC, True, True, True)
+    assert self.v_cruise_helper.v_cruise_kph == 80
+
+  def test_equal_value_speed_limit_replaces_curve_cap_semantics(self):
+    self.v_cruise_helper.v_cruise_kph = 70
+    self.CS_IC.cruiseSpeedLimit = 130 * CV.KPH_TO_MS
+    self.CS_IC.cruiseSpeedLimitPredicative = 80 * CV.KPH_TO_MS
+    self.CS_IC.cruiseSpeedLimitPredicativeType = PREDICTIVE_TYPE_CURVE
+    self.v_cruise_helper._update_v_speed_limit(None, self.CS_IC, True, True, True)
+    assert self.v_cruise_helper.v_cruise_kph == 70
+
+    # The numeric target is unchanged, but the source is now a speed limit and
+    # must recover normal setpoint semantics.
+    self.CS_IC.cruiseSpeedLimitPredicativeType = PREDICTIVE_TYPE_SPEED_LIMIT
+    self.v_cruise_helper._update_v_speed_limit(None, self.CS_IC, True, True, True)
+    assert self.v_cruise_helper.v_cruise_kph == 80
