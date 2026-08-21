@@ -64,8 +64,11 @@ def flash_panda(panda_serial: str):
 
   if panda.is_connected_spi():
     spi_protocol_version = panda.get_spi_protocol_version()
-    if spi_protocol_version != Panda.SPI_PROTOCOL_VERSION:
-      cloudlog.info(f"SPI protocol mismatch after flashing: expected {Panda.SPI_PROTOCOL_VERSION}, got {spi_protocol_version}")
+    spi_protocol_namespace = panda.get_spi_protocol_namespace()
+    if (spi_protocol_version != Panda.SPI_PROTOCOL_VERSION) or (spi_protocol_namespace != Panda.SPI_PROTOCOL_NAMESPACE):
+      expected_protocol = f"{Panda.SPI_PROTOCOL_NAMESPACE!r}/{Panda.SPI_PROTOCOL_VERSION}"
+      detected_protocol = f"{spi_protocol_namespace!r}/{spi_protocol_version}"
+      cloudlog.info(f"SPI protocol mismatch after flashing: expected {expected_protocol}, got {detected_protocol}")
       raise AssertionError
 
   panda_signature = panda.get_signature()

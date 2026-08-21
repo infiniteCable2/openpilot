@@ -34,9 +34,10 @@ SERIAL = "00112233445566778899aabb"
 EXPECTED_SIGNATURE = b"expected firmware signature"
 
 
-def configure_panda(panda_cls, spi_protocol_version=3):
+def configure_panda(panda_cls, spi_protocol_version=0x83, spi_protocol_namespace=b"ICSP"):
   panda_cls.SUPPORTED_DEVICES = (b"\x09",)
-  panda_cls.SPI_PROTOCOL_VERSION = 3
+  panda_cls.SPI_PROTOCOL_VERSION = 0x83
+  panda_cls.SPI_PROTOCOL_NAMESPACE = b"ICSP"
 
   old_panda = MagicMock()
   old_panda.get_type.return_value = b"\x09"
@@ -50,6 +51,7 @@ def configure_panda(panda_cls, spi_protocol_version=3):
   new_panda.get_signature.return_value = EXPECTED_SIGNATURE
   new_panda.is_connected_spi.return_value = True
   new_panda.get_spi_protocol_version.return_value = spi_protocol_version
+  new_panda.get_spi_protocol_namespace.return_value = spi_protocol_namespace
 
   panda_cls.side_effect = (old_panda, new_panda)
   return old_panda, new_panda
@@ -57,7 +59,7 @@ def configure_panda(panda_cls, spi_protocol_version=3):
 
 @patch(f"{MODULE_NAME}.get_expected_signature", return_value=EXPECTED_SIGNATURE)
 @patch(f"{MODULE_NAME}.Panda")
-def test_flash_uses_migration_transport_and_verifies_v3(panda_cls, _expected_signature):
+def test_flash_uses_migration_transport_and_verifies_private_protocol(panda_cls, _expected_signature):
   pandad.HARDWARE.reset_mock()
   old_panda, new_panda = configure_panda(panda_cls)
 
@@ -68,6 +70,7 @@ def test_flash_uses_migration_transport_and_verifies_v3(panda_cls, _expected_sig
   old_panda.close.assert_called_once_with()
   pandad.HARDWARE.reset_internal_panda.assert_called_once_with()
   new_panda.get_spi_protocol_version.assert_called_once_with()
+  new_panda.get_spi_protocol_namespace.assert_called_once_with()
   new_panda.close.assert_called_once_with()
 
 
@@ -88,10 +91,27 @@ def test_flash_rejects_legacy_protocol_after_update(panda_cls, _expected_signatu
 
 @patch(f"{MODULE_NAME}.get_expected_signature", return_value=EXPECTED_SIGNATURE)
 @patch(f"{MODULE_NAME}.Panda")
+def test_flash_rejects_wrong_namespace_after_update(panda_cls, _expected_signature):
+  pandad.HARDWARE.reset_mock()
+  old_panda, new_panda = configure_panda(panda_cls, spi_protocol_namespace=b"UPST")
+
+  with pytest.raises(AssertionError):
+    flash_panda(SERIAL)
+
+  old_panda.flash.assert_called_once_with(reconnect=False)
+  new_panda.get_spi_protocol_version.assert_called_once_with()
+  new_panda.get_spi_protocol_namespace.assert_called_once_with()
+  new_panda.get_signature.assert_not_called()
+  pandad.HARDWARE.reset_internal_panda.assert_called_once_with()
+
+
+@patch(f"{MODULE_NAME}.get_expected_signature", return_value=EXPECTED_SIGNATURE)
+@patch(f"{MODULE_NAME}.Panda")
 def test_external_panda_keeps_transport_reconnect(panda_cls, _expected_signature):
   pandad.HARDWARE.reset_mock()
   panda_cls.SUPPORTED_DEVICES = (b"\x09",)
-  panda_cls.SPI_PROTOCOL_VERSION = 3
+  panda_cls.SPI_PROTOCOL_VERSION = 0x83
+  panda_cls.SPI_PROTOCOL_NAMESPACE = b"ICSP"
   panda = panda_cls.return_value
   panda.get_type.return_value = b"\x09"
   panda.is_internal.return_value = False
