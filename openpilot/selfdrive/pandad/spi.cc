@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 #include <iomanip>
+#include <random>
 #include <sstream>
 
 #include "common/util.h"
@@ -60,6 +61,8 @@ PandaSpiHandle::PandaSpiHandle(std::string serial) {
 
   uint32_t spi_mode = SPI_MODE_0;
   uint8_t spi_bits_per_word = 8;
+  std::random_device random_device;
+  next_transaction_id = (static_cast<uint64_t>(random_device()) << 32) | random_device();
 
   // 50MHz is the max of the 845. note that some older
   // revs of the comma three may not support this speed
@@ -207,9 +210,11 @@ int PandaSpiHandle::spi_transfer_retry(uint8_t endpoint, uint8_t *tx_data, uint1
   int timeout_count = 0;
   bool timed_out = false;
   double start_time = millis_since_boot();
+  LockEx lock(spi_fd, hw_lock);
+  const uint64_t transaction_id = next_transaction_id++;
 
   do {
-    ret = spi_transfer(endpoint, tx_data, tx_len, rx_data, max_rx_len, timeout);
+    ret = spi_transfer(transaction_id, endpoint, tx_data, tx_len, rx_data, max_rx_len, timeout);
 
     if (ret < 0) {
       timed_out = (timeout != 0) && (timeout_count > 5);
@@ -309,12 +314,12 @@ int PandaSpiHandle::lltransfer(spi_ioc_transfer &t) {
   return ret;
 }
 
-int PandaSpiHandle::spi_transfer(uint8_t endpoint, uint8_t *tx_data, uint16_t tx_len, uint8_t *rx_data, uint16_t max_rx_len, unsigned int timeout) {
+int PandaSpiHandle::spi_transfer(uint64_t transaction_id, uint8_t endpoint, uint8_t *tx_data, uint16_t tx_len,
+                                uint8_t *rx_data, uint16_t max_rx_len, unsigned int timeout) {
   int ret;
   uint16_t rx_data_len;
-  LockEx lock(spi_fd, hw_lock);
 
-  // Protocol v3 reserves room for checksums and the pipelined next header.
+  // ICSP reserves room for checksums and the pipelined next header.
   assert(tx_len <= (SPI_BUF_SIZE - 0x40));
   assert(max_rx_len <= (SPI_BUF_SIZE - 0x40));
 
@@ -347,11 +352,14 @@ int PandaSpiHandle::spi_transfer(uint8_t endpoint, uint8_t *tx_data, uint16_t tx
     goto fail;
   }
   // Send data
-  if (tx_data != NULL) {
-    memcpy(tx_buf, tx_data, tx_len);
+  for (size_t i = 0; i < sizeof(transaction_id); i++) {
+    tx_buf[i] = static_cast<uint8_t>(transaction_id >> (8U * i));
   }
-  add_checksum(tx_buf, tx_len);
-  transfer.len = tx_len + 1;
+  if (tx_data != NULL) {
+    memcpy(tx_buf + sizeof(transaction_id), tx_data, tx_len);
+  }
+  add_checksum(tx_buf, tx_len + sizeof(transaction_id));
+  transfer.len = tx_len + sizeof(transaction_id) + 1;
   ret = lltransfer(transfer);
   if (ret < 0) {
     SPILOG(LOGE, "SPI: failed to send data");
@@ -381,7 +389,7 @@ int PandaSpiHandle::spi_transfer(uint8_t endpoint, uint8_t *tx_data, uint16_t tx
     goto fail;
   }
 
-  // Protocol v3 clocked the complete advertised response window above. The
+  // ICSP clocked the complete advertised response window above. The
   // panda now captures the next header in that same RX DMA.
   if (!check_checksum(rx_buf, rx_data_len + 4)) {
     SPILOG(LOGE, "SPI: bad checksum");
@@ -395,7 +403,7 @@ int PandaSpiHandle::spi_transfer(uint8_t endpoint, uint8_t *tx_data, uint16_t tx
   return rx_data_len;
 
 fail:
-  // An explicit v3 NACK already arms the following retry header. For an
+  // An explicit ICSP NACK already arms the following retry header. For an
   // interrupted phase, clock enough bytes to complete it and scan the whole
   // window since NACK is not required to land at byte zero.
   if (ret != SpiError::NACK) {

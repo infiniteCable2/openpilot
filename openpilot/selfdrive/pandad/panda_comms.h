@@ -43,10 +43,12 @@ private:
 
   int wait_for_ack(uint8_t ack, uint8_t tx, unsigned int timeout, unsigned int length);
   int bulk_transfer(uint8_t endpoint, uint8_t *tx_data, uint16_t tx_len, uint8_t *rx_data, uint16_t rx_len, unsigned int timeout);
-  int spi_transfer(uint8_t endpoint, uint8_t *tx_data, uint16_t tx_len, uint8_t *rx_data, uint16_t max_rx_len, unsigned int timeout);
+  int spi_transfer(uint64_t transaction_id, uint8_t endpoint, uint8_t *tx_data, uint16_t tx_len,
+                   uint8_t *rx_data, uint16_t max_rx_len, unsigned int timeout);
   int spi_transfer_retry(uint8_t endpoint, uint8_t *tx_data, uint16_t tx_len, uint8_t *rx_data, uint16_t max_rx_len, unsigned int timeout);
   int lltransfer(struct spi_ioc_transfer &t);
 
   spi_header header;
   uint32_t xfer_count = 0;
+  uint64_t next_transaction_id;
 };
