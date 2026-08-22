@@ -32,12 +32,14 @@ prepare_internal_panda = pandad.prepare_internal_panda
 
 SERIAL = "00112233445566778899aabb"
 EXPECTED_SIGNATURE = b"expected firmware signature"
+SPI_PROTOCOL_VERSION = pandad.Panda.SPI_PROTOCOL_VERSION
+SPI_PROTOCOL_NAMESPACE = pandad.Panda.SPI_PROTOCOL_NAMESPACE
 
 
-def configure_panda(panda_cls, spi_protocol_version=0x83, spi_protocol_namespace=b"ICSP"):
+def configure_panda(panda_cls, spi_protocol_version=SPI_PROTOCOL_VERSION, spi_protocol_namespace=SPI_PROTOCOL_NAMESPACE):
   panda_cls.SUPPORTED_DEVICES = (b"\x09",)
-  panda_cls.SPI_PROTOCOL_VERSION = 0x83
-  panda_cls.SPI_PROTOCOL_NAMESPACE = b"ICSP"
+  panda_cls.SPI_PROTOCOL_VERSION = SPI_PROTOCOL_VERSION
+  panda_cls.SPI_PROTOCOL_NAMESPACE = SPI_PROTOCOL_NAMESPACE
 
   old_panda = MagicMock()
   old_panda.get_type.return_value = b"\x09"
@@ -110,8 +112,8 @@ def test_flash_rejects_wrong_namespace_after_update(panda_cls, _expected_signatu
 def test_external_panda_keeps_transport_reconnect(panda_cls, _expected_signature):
   pandad.HARDWARE.reset_mock()
   panda_cls.SUPPORTED_DEVICES = (b"\x09",)
-  panda_cls.SPI_PROTOCOL_VERSION = 0x83
-  panda_cls.SPI_PROTOCOL_NAMESPACE = b"ICSP"
+  panda_cls.SPI_PROTOCOL_VERSION = SPI_PROTOCOL_VERSION
+  panda_cls.SPI_PROTOCOL_NAMESPACE = SPI_PROTOCOL_NAMESPACE
   panda = panda_cls.return_value
   panda.get_type.return_value = b"\x09"
   panda.is_internal.return_value = False
