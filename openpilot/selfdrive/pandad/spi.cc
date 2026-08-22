@@ -149,7 +149,7 @@ int PandaSpiHandle::bulk_read(unsigned char endpoint, unsigned char* data, int l
 }
 
 int PandaSpiHandle::bulk_transfer(uint8_t endpoint, uint8_t *tx_data, uint16_t tx_len, uint8_t *rx_data, uint16_t rx_len, unsigned int timeout) {
-  const int xfer_size = SPI_BUF_SIZE - 0x40;
+  const int xfer_size = SPI_MAX_DATA_SIZE;
 
   int ret = 0;
   uint16_t length = (tx_data != NULL) ? tx_len : rx_len;
@@ -320,8 +320,8 @@ int PandaSpiHandle::spi_transfer(uint64_t transaction_id, uint8_t endpoint, uint
   uint16_t rx_data_len;
 
   // ICSP reserves room for checksums and the pipelined next header.
-  assert(tx_len <= (SPI_BUF_SIZE - 0x40));
-  assert(max_rx_len <= (SPI_BUF_SIZE - 0x40));
+  assert(tx_len <= SPI_MAX_DATA_SIZE);
+  assert(max_rx_len <= SPI_MAX_DATA_SIZE);
 
   xfer_count++;
   header = {
@@ -410,7 +410,7 @@ fail:
     spi_ioc_transfer recovery_transfer = {
       .tx_buf = (uint64_t)tx_buf,
       .rx_buf = (uint64_t)rx_buf,
-      .len = SPI_BUF_SIZE / 2,
+      .len = SPI_RECOVERY_TRANSFER_SIZE,
     };
     memset(tx_buf, 0x14, recovery_transfer.len);
     for (int attempt = 0; attempt < 5; attempt++) {
