@@ -1,6 +1,7 @@
 import pyray as rl
 
-from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.selfdrive.ui.mici.onroad.dynamic_steering_learner_graph import CONFIG as STEERING_GRAPH_CONFIG
+from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
 from openpilot.system.ui.lib.application import FontWeight, gui_app
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.widgets import Widget
@@ -9,9 +10,9 @@ from openpilot.system.ui.widgets import Widget
 class EgpuTemperatureOverlay(Widget):
   PANEL_WIDTH = 145
   PANEL_HEIGHT = 86
-  LEFT_OFFSET = 104
-  BOTTOM_MARGIN = 32
+  GAP_TO_STEERING_GRAPH = 8
   HORIZONTAL_PADDING = 12
+  BACKGROUND_ALPHA = 108
 
   TITLE_FONT_SIZE = 20
   ROW_FONT_SIZE = 18
@@ -25,14 +26,26 @@ class EgpuTemperatureOverlay(Widget):
     self._core_temp: float | None = None
     self._vram_temp: float | None = None
     self._available = False
+    self._shown_this_drive = False
+    self._started_frame = -1
 
   def _update_state(self) -> None:
     sm = ui_state.sm
-    self._available = sm.seen["chestnutState"] and sm.alive["chestnutState"] and sm.valid["chestnutState"]
+    if ui_state.started_frame != self._started_frame:
+      self._started_frame = ui_state.started_frame
+      self._shown_this_drive = False
+      self._core_temp = None
+      self._vram_temp = None
 
-    if self._available and sm.updated["chestnutState"]:
+    self._available = (sm.seen["chestnutState"] and sm.alive["chestnutState"] and sm.valid["chestnutState"] and
+                       sm.recv_frame["chestnutState"] >= ui_state.started_frame)
+
+    if self._available and (sm.updated["chestnutState"] or self._core_temp is None or self._vram_temp is None):
       self._core_temp = float(sm["chestnutState"].tempC)
       self._vram_temp = float(sm["chestnutState"].memoryTempC)
+
+    if self._available and ui_state.status != UIStatus.DISENGAGED:
+      self._shown_this_drive = True
 
   @staticmethod
   def _format_temperature(temperature: float | None) -> str:
@@ -48,17 +61,18 @@ class EgpuTemperatureOverlay(Widget):
     rl.draw_text_ex(self._font_value, value, value_pos, self.ROW_FONT_SIZE, 0, value_color)
 
   def _render(self, rect: rl.Rectangle) -> None:
-    if not ui_state.ic_show_egpu_temperatures or not ui_state.usbgpu:
+    if not ui_state.ic_show_egpu_temperatures or not ui_state.usbgpu or not self._shown_this_drive:
       return
 
+    graph_top = rect.y + rect.height * STEERING_GRAPH_CONFIG.zero_line_screen_y_frac - STEERING_GRAPH_CONFIG.height * 0.5
     panel = rl.Rectangle(
-      rect.x + self.LEFT_OFFSET,
-      rect.y + rect.height - self.BOTTOM_MARGIN - self.PANEL_HEIGHT,
+      rect.x + rect.width - STEERING_GRAPH_CONFIG.right_margin - self.PANEL_WIDTH,
+      graph_top - self.GAP_TO_STEERING_GRAPH - self.PANEL_HEIGHT,
       self.PANEL_WIDTH,
       self.PANEL_HEIGHT,
     )
 
-    rl.draw_rectangle_rounded(panel, 0.18, 10, rl.Color(0, 0, 0, 155))
+    rl.draw_rectangle_rounded(panel, 0.18, 10, rl.Color(0, 0, 0, self.BACKGROUND_ALPHA))
     rl.draw_rectangle_rounded_lines_ex(panel, 0.18, 10, 1, rl.Color(255, 255, 255, 45))
 
     title_pos = rl.Vector2(panel.x + self.HORIZONTAL_PADDING, panel.y + 7)
