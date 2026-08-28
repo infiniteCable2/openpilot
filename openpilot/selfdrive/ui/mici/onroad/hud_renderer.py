@@ -3,6 +3,7 @@ import pyray as rl
 from dataclasses import dataclass
 from openpilot.common.constants import CV
 from openpilot.selfdrive.ui.mici.onroad.dynamic_steering_learner_graph import DynamicSteeringLearnerGraphMici
+from openpilot.selfdrive.ui.mici.onroad.egpu_temperature_overlay import EgpuTemperatureOverlay
 from openpilot.selfdrive.ui.mici.onroad.torque_bar import TorqueBar
 from openpilot.selfdrive.ui.mici.onroad.long_accel_bar import LongitudinalAccelBar
 from openpilot.selfdrive.ui.ui_state import ui_state, UIStatus
@@ -124,6 +125,7 @@ class HudRenderer(Widget):
     self._torque_bar = TorqueBar()
     self._long_accel_bar = LongitudinalAccelBar()
     self._dynamic_steering_learner_graph = DynamicSteeringLearnerGraphMici()
+    self._egpu_temperature_overlay = EgpuTemperatureOverlay()
 
     self._txt_wheel: rl.Texture = gui_app.texture('icons_mici/wheel.png', 50, 50)
     self._txt_wheel_critical: rl.Texture = gui_app.texture('icons_mici/wheel_critical.png', 50, 50)
@@ -203,6 +205,10 @@ class HudRenderer(Widget):
       self._draw_model_source(rect)
 
     self._draw_steering_wheel(rect)
+
+    bsm_detected = self._has_blind_spot_detected() if gui_app.sunnypilot_ui() else False
+    if self._can_draw_top_icons and not bsm_detected:
+      self._egpu_temperature_overlay.render(rect)
 
   def _draw_model_source(self, rect: rl.Rectangle) -> None:
     if ui_state.sm.recv_frame['selfdriveState'] < ui_state.started_frame:

@@ -151,6 +151,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
 	{"ForceRHDForBSM", {PERSISTENT, BOOL}},
 	{"DisableCarSteerAlerts", {PERSISTENT, BOOL}},
 	{"ShowAccelBar", {PERSISTENT, BOOL}},
+	{"ICShowEgpuTemperatures", {PERSISTENT, BOOL}},
 	{"LiveCurvatureParameters", {PERSISTENT | DONT_LOG, BYTES}},
 
     // --- sunnypilot params --- //

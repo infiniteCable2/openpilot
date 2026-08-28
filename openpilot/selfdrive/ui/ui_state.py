@@ -70,9 +70,10 @@ class UIState(UIStateSP):
         "carOutput",
         "carControl",
         "vehicleParameters",
-        "testJoystick",
-        "rawAudioData",
-      ] + ic_services + self.sm_services_ext
+         "testJoystick",
+         "rawAudioData",
+         "chestnutState",
+       ] + ic_services + self.sm_services_ext
     )
 
     self.prime_state = PrimeState()
@@ -107,6 +108,7 @@ class UIState(UIStateSP):
     self.dark_mode: bool = False
     self.onroad_screen_timeout: bool = False
     self.enable_accel_bar: bool = False
+    self.ic_show_egpu_temperatures: bool = False
     self.has_alert: bool = False
     self.has_status_change: bool = False
     self._status_prev: UIStatus = self.status
@@ -259,6 +261,7 @@ class UIState(UIStateSP):
     self.dark_mode = self.params.get_bool("DarkMode")
     self.onroad_screen_timeout = self.params.get_bool("DisableScreenTimer")
     self.enable_accel_bar = self.params.get_bool("ShowAccelBar")
+    self.ic_show_egpu_temperatures = self.params.get_bool("ICShowEgpuTemperatures")
 
 
 class Device(DeviceSP):
