@@ -12,6 +12,7 @@ from openpilot.common.utils import atomic_write
 from openpilot.common.params import Params, ParamKeyFlag
 from openpilot.common.text_window import TextWindow
 from openpilot.common.hardware import HARDWARE, PC
+from openpilot.system.hardware.chestnut.flash import set_pcie_power
 from openpilot.system.manager.helpers import unblock_stdout, save_bootlog
 from openpilot.system.manager.process import ensure_running
 from openpilot.system.manager.process_config import managed_processes
@@ -136,6 +137,8 @@ def manager_thread() -> None:
 
   started_prev = False
   ignition_prev = False
+  chestnut_powered: bool | None = None
+  chestnut_power_attempt = 0.
 
   while True:
     sm.update(1000)
@@ -150,6 +153,29 @@ def manager_thread() -> None:
     ignition = any(ps.ignitionLine or ps.ignitionCan for ps in sm['pandaStates'] if ps.pandaType != log.PandaState.PandaType.unknown)
     if ignition and not ignition_prev:
       params.clear_all(ParamKeyFlag.CLEAR_ON_IGNITION_ON)
+
+    # Chestnut's PCIe/GPU rails draw power and spin fans even while idle, so keep
+    # them powered only while onroad. modeld owns the GPU, and it is gated on
+    # `started`, so track power against `started` to avoid restarting modeld
+    # against a rail we just cut (e.g. during the ignition->offroad lag).
+    chestnut_present = sm['deviceState'].chestnutPresent
+    if not chestnut_present:
+      chestnut_powered = None
+    elif chestnut_powered != started and (started or time.monotonic() - chestnut_power_attempt >= 5.):
+      # Stop the GPU owner first so tinygrad can drain and finalize the device
+      # before the downstream PCIe rails are removed. Either modeld variant may
+      # hold it depending on the active runner; stopping a dead process is a noop.
+      if not started:
+        for name in ("modeld", "modeld_tinygrad"):
+          managed_processes[name].stop()
+
+      chestnut_power_attempt = time.monotonic()
+      power_changed = set_pcie_power(started)
+      if power_changed or started:
+        # modeld performs the same link-up during initialization, so a failed
+        # power-on preflight must not block the normal small-model fallback.
+        chestnut_powered = started
+      cloudlog.event("chestnut power", enabled=started, success=power_changed, error=not power_changed)
 
     # update offroad state for services that don't subscribe to deviceState
     if started != started_prev:

@@ -105,8 +105,9 @@ def open_device(path):
   return os.open(f"/dev/bus/usb/{bus:03d}/{dev:03d}", os.O_RDWR)
 
 
-def link_up() -> bool:
-  # asm enumerates on USB-C alone, gpu is only usable once pcie link is up
+def set_pcie_power(enabled: bool) -> bool:
+  # asm enumerates on USB-C alone, so the GPU rails can be toggled while
+  # leaving the controller available for the next ignition transition.
   try:
     path, _, _ = find_chestnut()
     if path is None:
@@ -115,7 +116,10 @@ def link_up() -> bool:
   except (OSError, RuntimeError):
     return False
   try:
-    fcntl.ioctl(fd, USBDEVFS_CONTROL, Ctrl(0x40, 0xF3, 1, 0, 0, 2000, None))
+    fcntl.ioctl(fd, USBDEVFS_CONTROL, Ctrl(0x40, 0xF3, int(enabled), 0, 0, 2000, None))
+    if not enabled:
+      return True
+
     buf = (ctypes.c_ubyte * 1)()
     fcntl.ioctl(fd, USBDEVFS_CONTROL, Ctrl(0xC0, 0xE4, 0xB450, 0, 1, 1000, ctypes.cast(buf, ctypes.c_void_p)))
     return buf[0] == 0x78  # LTSSM L0
@@ -123,6 +127,10 @@ def link_up() -> bool:
     return False
   finally:
     os.close(fd)
+
+
+def link_up() -> bool:
+  return set_pcie_power(True)
 
 
 def claim_interface(path, setup=False):
