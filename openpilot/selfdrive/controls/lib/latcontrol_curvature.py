@@ -6,7 +6,7 @@ from openpilot.selfdrive.controls.lib.latcontrol import LatControl
 from openpilot.selfdrive.controls.lib.drive_helpers import MAX_CURVATURE
 
 LAT_ACCEL_SATURATION_THRESHOLD = 0.4  # m/s^2
-STEERING_OVERRIDE_UNWIND_TIME = 0.1  # seconds
+STEERING_OVERRIDE_UNWIND_TIME = MultiplicativeUnwindPID.DEFAULT_UNWIND_TIME
 SLIGHT_STEERING_OVERRIDE_UNWIND_TIME = 10.0  # seconds
 
 
@@ -61,14 +61,14 @@ class LatControlCurvature(LatControl):
       curvature_log.active = True
     else:
       freeze_integrator = steer_limited_by_safety or CS.vEgo < 5
-      if CS.steeringPressed:
-        unwind_time = STEERING_OVERRIDE_UNWIND_TIME
-      elif self.steering_slightly_pressed:
+      if self.steering_slightly_pressed and not CS.steeringPressed:
         unwind_time = SLIGHT_STEERING_OVERRIDE_UNWIND_TIME
       else:
-        unwind_time = None
+        unwind_time = STEERING_OVERRIDE_UNWIND_TIME
+      self.pid.set_unwind_time(unwind_time)
       output_curvature = self.pid.update(error, speed=CS.vEgo, feedforward=feedforward,
-                                         freeze_integrator=freeze_integrator, unwind_time=unwind_time)
+                                         freeze_integrator=freeze_integrator,
+                                         override=CS.steeringPressed or self.steering_slightly_pressed)
       curvature_log.p = float(self.pid.p)
       curvature_log.i = float(self.pid.i)
       curvature_log.f = float(self.pid.f)

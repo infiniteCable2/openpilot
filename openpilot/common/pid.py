@@ -60,8 +60,10 @@ class PIDController:
 
 
 class MultiplicativeUnwindPID:
+  DEFAULT_UNWIND_TIME = 0.1  # seconds
+
   def __init__(self, k_p: Gain, k_i: Gain, k_f=0., k_d: Gain = 0., pos_limit=1e308, neg_limit=-1e308,
-               rate=100, min_cmd=1e-10):
+               rate=100, min_cmd=1e-10, unwind_time=DEFAULT_UNWIND_TIME):
     self._k_p = ([0], [k_p]) if isinstance(k_p, (int, float)) else k_p
     self._k_i = ([0], [k_i]) if isinstance(k_i, (int, float)) else k_i
     self._k_d = ([0], [k_d]) if isinstance(k_d, (int, float)) else k_d
@@ -72,6 +74,7 @@ class MultiplicativeUnwindPID:
     self.i_dt = 1.0 / rate
     self.min_cmd = abs(min_cmd)
     self.speed = 0.0
+    self.set_unwind_time(unwind_time)
     self.reset()
 
   @property
@@ -95,31 +98,31 @@ class MultiplicativeUnwindPID:
     self.unwind_time_prev: float | None = None
     self.i_unwind_factor = 1.0
 
-  def _calc_unwind_factor(self, unwind_time):
-    # Recalculate when unwinding starts or the requested duration changes.
-    if unwind_time == self.unwind_time_prev:
-      return
+  def set_unwind_time(self, unwind_time: float) -> None:
     if unwind_time <= 0.0:
-      self.i_unwind_factor = 1.0
+      raise ValueError("unwind_time must be greater than zero")
+    self.unwind_time = float(unwind_time)
+
+  def _calc_unwind_factor(self):
+    # Recalculate when unwinding starts or the requested duration changes.
+    if self.unwind_time == self.unwind_time_prev:
       return
     if abs(self.i) <= self.min_cmd:
       self.i_unwind_factor = 0.0
       return
-    steps = max(int(unwind_time * self.rate), 1)
+    steps = max(int(self.unwind_time * self.rate), 1)
     factor = (self.min_cmd / abs(self.i)) ** (1.0 / steps)
     self.i_unwind_factor = min(factor, 1.0)
 
-  def update(self, error, error_rate=0.0, speed=0.0, feedforward=0., freeze_integrator=False,
-             unwind_time: float | None = None):
+  def update(self, error, error_rate=0.0, speed=0.0, override=False, feedforward=0., freeze_integrator=False):
     self.speed = speed
 
     self.p = float(error) * self.k_p
     self.f = feedforward * self.k_f
     self.d = error_rate * self.k_d
 
-    if unwind_time is not None:
-      unwind_time = float(unwind_time)
-      self._calc_unwind_factor(unwind_time)
+    if override:
+      self._calc_unwind_factor()
       self.i *= self.i_unwind_factor
       if abs(self.i) < self.min_cmd:
         self.i = 0.0
@@ -135,5 +138,5 @@ class MultiplicativeUnwindPID:
     control = self.p + self.i + self.d + self.f
 
     self.control = np.clip(control, self.neg_limit, self.pos_limit)
-    self.unwind_time_prev = unwind_time
+    self.unwind_time_prev = self.unwind_time if override else None
     return self.control

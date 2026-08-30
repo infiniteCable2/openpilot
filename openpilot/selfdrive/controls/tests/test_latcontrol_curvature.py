@@ -79,3 +79,12 @@ def test_full_steering_override_keeps_fast_unwind():
     update_controller(controller, steering_pressed=True)
 
   assert abs(controller.pid.i) <= MIN_I * (1.0 + 1e-12)
+
+
+def test_override_uses_default_fast_unwind_time():
+  controller = make_controller()
+
+  for _ in range(round(STEERING_OVERRIDE_UNWIND_TIME / DT)):
+    controller.pid.update(0.0, override=True)
+
+  assert abs(controller.pid.i) <= MIN_I * (1.0 + 1e-12)
