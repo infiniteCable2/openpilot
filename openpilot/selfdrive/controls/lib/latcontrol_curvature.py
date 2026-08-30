@@ -6,6 +6,8 @@ from openpilot.selfdrive.controls.lib.latcontrol import LatControl
 from openpilot.selfdrive.controls.lib.drive_helpers import MAX_CURVATURE
 
 LAT_ACCEL_SATURATION_THRESHOLD = 0.4  # m/s^2
+STEERING_OVERRIDE_UNWIND_TIME = 0.1  # seconds
+SLIGHT_STEERING_OVERRIDE_UNWIND_TIME = 10.0  # seconds
 
 
 class LatControlCurvature(LatControl):
@@ -14,12 +16,13 @@ class LatControlCurvature(LatControl):
     self.sat_check_min_speed = 5.
     self.enable_pid = False
     self.curvature_correction = 0.0
+    self.steering_slightly_pressed = False
     if CP.lateralTuning.which() == 'pid':
       ct = CP.lateralTuning.pid
       self.pid = MultiplicativeUnwindPID((ct.kpBP, ct.kpV), (ct.kiBP, ct.kiV),
                                          k_f=ct.kf,
                                          pos_limit=MAX_CURVATURE, neg_limit=-MAX_CURVATURE,
-                                         rate=1 / dt, min_cmd=1e-6, ki_red_time=0.1)
+                                         rate=1 / dt, min_cmd=1e-6)
       self.kf = ct.kf
     else:
       self.pid = None
@@ -30,6 +33,9 @@ class LatControlCurvature(LatControl):
 
   def set_curvature_correction(self, correction: float) -> None:
     self.curvature_correction = correction
+
+  def set_steering_slightly_pressed(self, pressed: bool) -> None:
+    self.steering_slightly_pressed = pressed
 
   def reset(self):
     super().reset()
@@ -55,9 +61,14 @@ class LatControlCurvature(LatControl):
       curvature_log.active = True
     else:
       freeze_integrator = steer_limited_by_safety or CS.vEgo < 5
+      if CS.steeringPressed:
+        unwind_time = STEERING_OVERRIDE_UNWIND_TIME
+      elif self.steering_slightly_pressed:
+        unwind_time = SLIGHT_STEERING_OVERRIDE_UNWIND_TIME
+      else:
+        unwind_time = None
       output_curvature = self.pid.update(error, speed=CS.vEgo, feedforward=feedforward,
-                                         override=CS.steeringPressed,
-                                         freeze_integrator=freeze_integrator)
+                                         freeze_integrator=freeze_integrator, unwind_time=unwind_time)
       curvature_log.p = float(self.pid.p)
       curvature_log.i = float(self.pid.i)
       curvature_log.f = float(self.pid.f)
