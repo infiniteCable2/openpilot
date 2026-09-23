@@ -24,6 +24,7 @@ class ICTogglesLayoutMici(NavScroller):
     enable_accel_bar            = BigParamControl("Enable Accel Bar", "ShowAccelBar")
     show_egpu_temperatures      = BigParamControl("Show eGPU Temperatures", "ICShowEgpuTemperatures")
     enable_curvatured           = BigParamControl("Enable Dynamic Steering Learner", "EnableCurvatureD")
+    enable_laneful              = BigParamControl("Laneful Mode", "EnableLaneful")
     show_curvatured_graph       = BigParamControl("Show Dynamic Steering Learner Graph", "ShowDynamicSteeringLearnerGraph")
 
     fingerprint_btn = BigButton(tr("fingerprint"))
@@ -45,6 +46,7 @@ class ICTogglesLayoutMici(NavScroller):
       enable_accel_bar,
       show_egpu_temperatures,
       enable_curvatured,
+      enable_laneful,
       show_curvatured_graph,
     ])
 
@@ -64,6 +66,7 @@ class ICTogglesLayoutMici(NavScroller):
       ("ShowAccelBar", enable_accel_bar),
       ("ICShowEgpuTemperatures", show_egpu_temperatures),
       ("EnableCurvatureD", enable_curvatured),
+      ("EnableLaneful", enable_laneful),
       ("ShowDynamicSteeringLearnerGraph", show_curvatured_graph),
     )
 

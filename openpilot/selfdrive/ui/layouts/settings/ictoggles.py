@@ -18,6 +18,9 @@ DESCRIPTIONS = {
     "Learns speed- and curvature-dependent steering corrections around center for dynamic steering behavior. " +
     "Experimental and only used on curvature-based steering paths."
   ),
+  "EnableLaneful": tr_noop(
+    "Uses openpilot's detected lane lines to guide the E2E driving path toward the lane center when both lines are reliable."
+  ),
   "ShowDynamicSteeringLearnerGraph": tr_noop(
     "Display the current dynamic steering learner fit, marker, and status information in the onroad UI."
   ),
@@ -139,6 +142,12 @@ class ICTogglesLayout(Widget):
       "EnableCurvatureD": (
         lambda: tr("Enable Dynamic Steering Learner"),
         DESCRIPTIONS["EnableCurvatureD"],
+        "chffr_wheel.png",
+        False,
+      ),
+      "EnableLaneful": (
+        lambda: tr("Laneful Mode"),
+        DESCRIPTIONS["EnableLaneful"],
         "chffr_wheel.png",
         False,
       ),

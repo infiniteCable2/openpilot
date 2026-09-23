@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import math
+import time
 from numbers import Number
 
 from openpilot.cereal import log, custom
@@ -13,6 +14,7 @@ from openpilot.common.swaglog import cloudlog
 from opendbc.car.car_helpers import interfaces
 from opendbc.car.vehicle_model import VehicleModel
 from openpilot.selfdrive.controls.lib.curvatured import CurvatureDController
+from openpilot.selfdrive.controls.lib.laneful import LanefulController
 from openpilot.selfdrive.controls.lib.drive_helpers import clip_curvature
 from openpilot.selfdrive.controls.lib.latcontrol import LatControl
 from openpilot.selfdrive.controls.lib.latcontrol_pid import LatControlPID
@@ -64,6 +66,8 @@ class Controls(ControlsExt):
     self.roll_compensation = 0.0
     self.model_desired_curvature = 0.0
     self.desired_curvature = 0.0
+    self.laneful = LanefulController()
+    self.enable_laneful = self.params.get_bool("EnableLaneful")
 
     self.enable_curvature_controller = self.params.get_bool("EnableCurvatureController")
     self.enable_curvatured = self.params.get_bool("EnableCurvatureD")
@@ -110,6 +114,7 @@ class Controls(ControlsExt):
       if self.CP.steerControlType == car.CarParams.SteerControlType.curvature:
         self.LaC.set_pid_enabled(self.enable_curvature_controller)
       self.enable_smooth_steer = self.params.get_bool("EnableSmoothSteer")
+      self.enable_laneful = self.params.get_bool("EnableLaneful")
       self.enable_speed_limit_control = self.params.get_bool("EnableSpeedLimitControl")
       self.enable_speed_limit_predicative = self.params.get_bool("EnableSpeedLimitPredicative")
       self.enable_pred_react_to_speed_limits = self.params.get_bool("EnableSLPredReactToSL")
@@ -190,13 +195,20 @@ class Controls(ControlsExt):
 
     # Steering PID loop and lateral MPC
     # Reset desired curvature to current to avoid violating the limits on engage
-    if self.sm.valid['lateralManeuverPlan']:
+    maneuver_plan_valid = self.sm.valid['lateralManeuverPlan']
+    if maneuver_plan_valid:
       new_desired_curvature = self.sm['lateralManeuverPlan'].desiredCurvature if CC.latActive else self.curvature
     else:
       new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
     self.model_desired_curvature = float(model_v2.action.desiredCurvature)
     if self.enable_smooth_steer:
       new_desired_curvature = self.smooth_steer.update(new_desired_curvature)
+    laneful_correction = self.laneful.update(model_v2, self.sm.logMonoTime['modelV2'], time.monotonic_ns(), CS.vEgo,
+                                             self.enable_laneful, self.sm.valid['modelV2'] and self.sm.alive['modelV2'],
+                                             maneuver_plan_valid or model_v2.meta.laneChangeState != LaneChangeState.off or
+                                             CS.leftBlinker or CS.rightBlinker)
+    if CC.latActive and not maneuver_plan_valid:
+      new_desired_curvature += laneful_correction
     if self.CP.steerControlType == car.CarParams.SteerControlType.curvature:
       self.LaC.set_steering_slightly_pressed(CS_IC.steeringSlightlyPressed)
       # CurvatureD correction routed as additive term on the controller output (not setpoint shift)
@@ -324,6 +336,9 @@ class Controls(ControlsExt):
     cs_ic_send = messaging.new_message('controlsStateIC')
     cs_ic_send.valid = CS.canValid
     cs_ic_send.controlsStateIC.modelDesiredCurvature = self.model_desired_curvature
+    cs_ic_send.controlsStateIC.lanefulCorrection = self.laneful.correction
+    cs_ic_send.controlsStateIC.lanefulQuality = self.laneful.quality
+    cs_ic_send.controlsStateIC.lanefulActive = self.laneful.active
     self.pm.send('controlsStateIC', cs_ic_send)
 
     # carControl
