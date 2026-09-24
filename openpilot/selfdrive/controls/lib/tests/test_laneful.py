@@ -6,7 +6,7 @@ import numpy as np
 
 from openpilot.cereal import messaging
 from openpilot.selfdrive.controls.lib.laneful import (ARM_TIME, BRIEF_LINE_HOLD, DT_CTRL, ENGAGE_RATE, MAX_ADDED_ACCEL,
-                                                       MAX_MODEL_AGE, RELEASE_RATE, LanefulController, lane_target)
+                                                       MAX_MODEL_AGE, MAX_PATH_SHIFT, RELEASE_RATE, LanefulController, lane_target)
 from openpilot.selfdrive.modeld.constants import ModelConstants
 
 
@@ -52,6 +52,11 @@ class TestLaneful(unittest.TestCase):
     model.position.x = np.linspace(0.0, 90.0, 33).tolist()
     model.position.y = [0.0] * 33
     self.assertGreater(lane_target(model, 20.0)[0], 0.0)
+
+  def test_nominal_preview_shift_cap(self):
+    correction, strong, _ = lane_target(model_frame(lane_center=0.65), 30.0)
+    self.assertTrue(strong)
+    self.assertAlmostEqual(correction * 45.0 ** 2 / 2.0, MAX_PATH_SHIFT)
 
   def test_arms_on_new_frames_and_limits_high_speed_acceleration(self):
     controller = LanefulController()

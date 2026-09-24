@@ -25,10 +25,12 @@ plan takes immediate priority over the residual correction while its state
 decays. Steering-wheel input does not gate or reset the desired path. This
 keeps the path policy independent of the driver's short steering corrections.
 
-The contribution is limited to a 30 cm preview displacement, 0.00045 1/m of
-curvature and 0.35 m/s² of added lateral acceleration. Entry and release rates
-are limited, with faster release. `controlsd` applies it before its existing
-curvature clip and lateral controller; `curvatured` still handles its own
+The contribution is limited to a nominal 50 cm preview displacement, 0.00045 1/m
+of curvature and 0.35 m/s² of added lateral acceleration. The curvature and
+acceleration limits can reduce the effective preview displacement below 50 cm,
+especially at highway speeds. Entry and release rates are limited, with faster
+release. `controlsd` applies it before its existing curvature clip and lateral
+controller; `curvatured` still handles its own
 actuator correction. `controlsStateIC` logs the Laneful correction, quality
 and active state for route review.
 
