@@ -137,6 +137,7 @@ class Controls(ControlsExt):
     steer_angle_without_offset = math.radians(CS.steeringAngleDeg - lp.angleOffsetDeg)
     self.curvature = -self.VM.calc_curvature(steer_angle_without_offset, CS.vEgo, lp.roll)
     self.roll_compensation = -self.VM.roll_compensation(lp.roll, CS.vEgo)
+    self.vehicle_model_end_ns = time.monotonic_ns()
 
     # Update Torque Params
     if self.CP.lateralTuning.which() == 'torque':
@@ -193,6 +194,7 @@ class Controls(ControlsExt):
     pid_accel_limits = self.CI.get_pid_accel_limits(self.CP, self.CP_SP, CS.vEgo, CS.vCruise * CV.KPH_TO_MS)
     actuators.accel = float(self.LoC.update(CC.longActive, CS, long_plan.aTarget, long_plan.shouldStop, pid_accel_limits))
     actuators.speed = float(self.sm['longitudinalPlanIC'].vTarget)
+    self.longitudinal_control_end_ns = time.monotonic_ns()
 
     # Steering PID loop and lateral MPC
     # Reset desired curvature to current to avoid violating the limits on engage
@@ -208,6 +210,7 @@ class Controls(ControlsExt):
                                              self.enable_laneful, self.sm.valid['modelV2'] and self.sm.alive['modelV2'],
                                              maneuver_plan_valid or model_v2.meta.laneChangeState != LaneChangeState.off or
                                              CS.leftBlinker or CS.rightBlinker)
+    self.laneful_end_ns = time.monotonic_ns()
     if CC.latActive and not maneuver_plan_valid:
       new_desired_curvature += laneful_correction
     if self.CP.steerControlType == car.CarParams.SteerControlType.curvature:
@@ -225,6 +228,7 @@ class Controls(ControlsExt):
     steer, lateral_output, lac_log = self.LaC.update(CC.latActive, CS, self.VM, lp,
                                                      self.steer_limited_by_safety, self.desired_curvature,
                                                      self.calibrated_pose, curvature_limited, lat_delay)
+    self.lateral_control_end_ns = time.monotonic_ns()
     actuators.torque = float(steer)
     if self.CP.steerControlType == car.CarParams.SteerControlType.curvature:
       actuators.curvature = float(lateral_output)
@@ -354,7 +358,9 @@ class Controls(ControlsExt):
       cycle_start_ns = time.monotonic_ns()
       self.update()
       update_end_ns = time.monotonic_ns()
+      control_start_cpu_ns = time.thread_time_ns()
       CC, lac_log = self.state_control()
+      control_thread_cpu_time_ns = time.thread_time_ns() - control_start_cpu_ns
       control_end_ns = time.monotonic_ns()
       self.publish(CC, lac_log)
       publish_end_ns = time.monotonic_ns()
@@ -370,6 +376,11 @@ class Controls(ControlsExt):
       timing.controlsTiming.controlEndMonoTime = control_end_ns
       timing.controlsTiming.publishEndMonoTime = publish_end_ns
       timing.controlsTiming.extensionEndMonoTime = extension_end_ns
+      timing.controlsTiming.vehicleModelEndMonoTime = self.vehicle_model_end_ns
+      timing.controlsTiming.longitudinalControlEndMonoTime = self.longitudinal_control_end_ns
+      timing.controlsTiming.lanefulEndMonoTime = self.laneful_end_ns
+      timing.controlsTiming.lateralControlEndMonoTime = self.lateral_control_end_ns
+      timing.controlsTiming.controlThreadCpuTimeNs = control_thread_cpu_time_ns
       self.pm.send('controlsTiming', timing)
       rk.monitor_time()
 

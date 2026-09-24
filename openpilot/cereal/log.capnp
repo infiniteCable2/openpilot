@@ -1011,6 +1011,11 @@ struct ControlsTiming @0xc41b87d3a6e809f2 {
   controlEndMonoTime @3 :UInt64;
   publishEndMonoTime @4 :UInt64;
   extensionEndMonoTime @5 :UInt64;
+  vehicleModelEndMonoTime @6 :UInt64;
+  longitudinalControlEndMonoTime @7 :UInt64;
+  lanefulEndMonoTime @8 :UInt64;
+  lateralControlEndMonoTime @9 :UInt64;
+  controlThreadCpuTimeNs @10 :UInt64;
 }
 
 struct DrivingModelData {
