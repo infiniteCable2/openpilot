@@ -150,6 +150,7 @@ class SelfdriveD(CruiseHelper):
     self.last_functional_fan_frame = 0
     self.events_prev = []
     self.logged_comm_issue = None
+    self.comm_issue_start_ns = None
     self.not_running_prev = None
     self.experimental_mode = False
     self.personality = get_sanitize_int_param(
@@ -459,15 +460,18 @@ class SelfdriveD(CruiseHelper):
       else:
         self.events.add(EventName.commIssue)
 
-      logs = {
-        'invalid': [s for s, valid in self.sm.valid.items() if not valid],
-        'not_alive': [s for s, alive in self.sm.alive.items() if not alive],
-        'not_freq_ok': [s for s, freq_ok in self.sm.freq_ok.items() if not freq_ok],
-      }
-      if logs != self.logged_comm_issue:
-        cloudlog.event("commIssue", error=True, **logs)
-        self.logged_comm_issue = logs
+      failures = self.sm.failed_checks()
+      signature = {key: failures[key] for key in ('invalid', 'not_alive', 'not_freq_ok')}
+      if self.comm_issue_start_ns is None:
+        self.comm_issue_start_ns = time.monotonic_ns()
+      if signature != self.logged_comm_issue:
+        cloudlog.event("commIssue", error=True, **failures)
+        self.logged_comm_issue = signature
     else:
+      if self.comm_issue_start_ns is not None:
+        event = "commIssueRecovered" if self.sm.all_checks() else "commIssueSuppressed"
+        cloudlog.event(event, duration_ms=round((time.monotonic_ns() - self.comm_issue_start_ns) / 1e6, 1))
+        self.comm_issue_start_ns = None
       self.logged_comm_issue = None
 
     if not self.CP.notCar and not big_model_settling:  # localization has nothing to work with during the load

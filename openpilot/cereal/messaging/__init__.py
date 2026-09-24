@@ -277,6 +277,29 @@ class SubMaster:
   def all_checks(self, service_list: list[str] | None = None) -> bool:
     return self.all_alive(service_list) and self.all_freq_ok(service_list) and self.all_valid(service_list)
 
+  def failed_checks(self, service_list: list[str] | None = None) -> dict:
+    """Explain all_checks() failures using the same ignore rules and monotonic clock."""
+    services = service_list or self.services
+    invalid = [s for s in services if s not in self.ignore_valid and not self.valid[s]]
+    not_alive = [s for s in services if s not in self.ignore_alive and not self.alive[s]]
+    not_freq_ok = [s for s in services if self._check_avg_freq(s) and not self.freq_ok[s]]
+    now_ns = time.monotonic_ns()
+    details = {}
+    for s in dict.fromkeys(invalid + not_alive + not_freq_ok):
+      tracker = self.freq_tracker[s]
+      avg_dt = tracker.avg_dt.get_average() if tracker.avg_dt.count else None
+      recent_dt = tracker.recent_avg_dt.get_average() if tracker.recent_avg_dt.count else None
+      details[s] = {
+        'last_recv_age_ms': round((now_ns / 1e9 - self.recv_time[s]) * 1e3, 1) if self.seen[s] else None,
+        'last_recv_mono_time_ns': round(self.recv_time[s] * 1e9) if self.seen[s] else None,
+        'last_message_log_mono_time_ns': self.logMonoTime[s] or None,
+        'alive_timeout_ms': round(1e4 / SERVICE_LIST[s].frequency, 1) if SERVICE_LIST[s].frequency > 0 else None,
+        'expected_frequency_hz': SERVICE_LIST[s].frequency,
+        'average_frequency_hz': round(1 / avg_dt, 1) if avg_dt and avg_dt > 0 else None,
+        'recent_frequency_hz': round(1 / recent_dt, 1) if recent_dt and recent_dt > 0 else None,
+      }
+    return {'invalid': invalid, 'not_alive': not_alive, 'not_freq_ok': not_freq_ok, 'details': details}
+
 
 class PubMaster:
   def __init__(self, services: list[str]):

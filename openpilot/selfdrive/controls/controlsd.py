@@ -59,7 +59,7 @@ class Controls(ControlsExt):
                                    'extrinsicsCalibration', 'deviceMotion', 'longitudinalPlan', 'lateralManeuverPlan', 'carState', 'carOutput',
                                    'driverMonitoringState', 'onroadEvents', 'driverAssistance'] + ic_sm_services + self.sm_services_ext,
                                   poll='selfdriveState')
-    self.pm = messaging.PubMaster(['carControl', 'controlsState'] + ic_pm_services + self.pm_services_ext)
+    self.pm = messaging.PubMaster(['carControl', 'controlsState', 'controlsTiming'] + ic_pm_services + self.pm_services_ext)
 
     self.steer_limited_by_safety = False
     self.curvature = 0.0
@@ -101,6 +101,7 @@ class Controls(ControlsExt):
 
   def update(self):
     self.sm.update(15)
+    self.submaster_update_end_ns = time.monotonic_ns()
     if self.sm.updated["extrinsicsCalibration"]:
       self.pose_calibrator.feed_extrinsics_calibration(self.sm['extrinsicsCalibration'])
     if self.sm.updated["deviceMotion"]:
@@ -350,11 +351,26 @@ class Controls(ControlsExt):
   def run(self):
     rk = Ratekeeper(100, print_delay_threshold=None)
     while True:
+      cycle_start_ns = time.monotonic_ns()
       self.update()
+      update_end_ns = time.monotonic_ns()
       CC, lac_log = self.state_control()
+      control_end_ns = time.monotonic_ns()
       self.publish(CC, lac_log)
+      publish_end_ns = time.monotonic_ns()
       self.get_params_sp(self.sm)
       self.run_ext(self.sm, self.pm)
+      extension_end_ns = time.monotonic_ns()
+
+      timing = messaging.new_message('controlsTiming')
+      timing.valid = True
+      timing.controlsTiming.cycleStartMonoTime = cycle_start_ns
+      timing.controlsTiming.subMasterUpdateEndMonoTime = self.submaster_update_end_ns
+      timing.controlsTiming.updateEndMonoTime = update_end_ns
+      timing.controlsTiming.controlEndMonoTime = control_end_ns
+      timing.controlsTiming.publishEndMonoTime = publish_end_ns
+      timing.controlsTiming.extensionEndMonoTime = extension_end_ns
+      self.pm.send('controlsTiming', timing)
       rk.monitor_time()
 
 

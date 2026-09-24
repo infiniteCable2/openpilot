@@ -92,6 +92,24 @@ class TestSubMaster(OpenpilotTestCase):
         else:
           assert not sm._check_avg_freq(service)
 
+  def test_failed_checks_respects_ignores_and_reports_age(self):
+    sm = messaging.SubMaster(['carControl', 'deviceState'], frequency=100,
+                             ignore_alive=['deviceState'], ignore_avg_freq=['deviceState'], ignore_valid=['deviceState'])
+    sm.seen['carControl'] = True
+    sm.recv_time['carControl'] = time.monotonic() - 0.15
+    sm.logMonoTime['carControl'] = time.monotonic_ns() - 150_000_000
+    failures = sm.failed_checks()
+
+    assert not sm.all_checks()
+    assert failures['invalid'] == ['carControl']
+    assert failures['not_alive'] == ['carControl']
+    assert failures['not_freq_ok'] == ['carControl']
+    assert 100 <= failures['details']['carControl']['last_recv_age_ms'] <= 500
+    assert failures['details']['carControl']['last_message_log_mono_time_ns'] == sm.logMonoTime['carControl']
+    assert failures['details']['carControl']['expected_frequency_hz'] == SERVICE_LIST['carControl'].frequency
+    assert failures['details']['carControl']['average_frequency_hz'] is None
+    assert 'deviceState' not in failures['details']
+
   # SubMaster should always conflate
   def test_conflate(self):
     sock = "carState"

@@ -158,6 +158,9 @@ def hw_state_thread(end_event, hw_queue):
   while not end_event.is_set():
     usb_topology = get_usb_topology()
     usb_changed = usb_topology != prev_usb_topology
+    if usb_changed and count > 0:
+      cloudlog.event('hardwared.usbTopologyChanged', mono_time_ns=time.monotonic_ns(),
+                     added=sorted(usb_topology - prev_usb_topology), removed=sorted(prev_usb_topology - usb_topology))
 
     # these are expensive calls. update every 10s or when USB devices change
     if (count % int(10. / DT_HW)) == 0 or usb_changed:

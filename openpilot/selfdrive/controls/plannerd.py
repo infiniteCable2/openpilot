@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import time
+
 from openpilot.cereal import custom
 from opendbc.car.structs import car
 from openpilot.common.gps import get_gps_location_service
@@ -31,11 +33,26 @@ def main():
   sm = messaging.SubMaster(['carControl', 'carState', 'controlsState', 'vehicleParameters', 'radarState', 'modelV2', 'selfdriveState',
                             'liveMapDataSP', 'carStateSP', 'selfdriveStateSP', gps_location_service],
                            poll='modelV2', ignore_alive=ignore_services, ignore_avg_freq=ignore_services, ignore_valid=ignore_services)
+  failed_checks_prev = None
+  failed_checks_start_ns = None
 
   while True:
     sm.update()
     longitudinal_planner.sla.update_buttons(sm['selfdriveStateSP'].buttonsReleaseToggle)
     if sm.updated['modelV2']:
+      if not sm.all_checks():
+        failures = sm.failed_checks()
+        signature = {key: failures[key] for key in ('invalid', 'not_alive', 'not_freq_ok')}
+        if failed_checks_start_ns is None:
+          failed_checks_start_ns = time.monotonic_ns()
+        if signature != failed_checks_prev:
+          cloudlog.event('plannerd.inputChecksFailed', error=True, model_mono_time_ns=sm.logMonoTime['modelV2'], **failures)
+          failed_checks_prev = signature
+      elif failed_checks_start_ns is not None:
+        cloudlog.event('plannerd.inputChecksRecovered', duration_ms=round((time.monotonic_ns() - failed_checks_start_ns) / 1e6, 1))
+        failed_checks_start_ns = None
+        failed_checks_prev = None
+
       longitudinal_planner.update(sm)
       longitudinal_planner.publish(sm, pm)
 

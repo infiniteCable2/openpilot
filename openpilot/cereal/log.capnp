@@ -1003,6 +1003,16 @@ struct ControlsState @0x97ff69c53601abf1 {
   }
 }
 
+# Monotonic timestamps for every controlsd loop, recorded after its outputs are sent.
+struct ControlsTiming @0xc41b87d3a6e809f2 {
+  cycleStartMonoTime @0 :UInt64;
+  subMasterUpdateEndMonoTime @1 :UInt64;
+  updateEndMonoTime @2 :UInt64;
+  controlEndMonoTime @3 :UInt64;
+  publishEndMonoTime @4 :UInt64;
+  extensionEndMonoTime @5 :UInt64;
+}
+
 struct DrivingModelData {
   frameId @0 :UInt32;
   frameIdExtra @1 :UInt32;
@@ -2538,6 +2548,7 @@ struct Event {
     # ********** openpilot daemon msgs **********
     can @5 :List(CanData);
     controlsState @7 :ControlsState;
+    controlsTiming @153 :ControlsTiming;
     selfdriveState @130 :SelfdriveState;
     gyroscope @99 :SensorEventData;
     accelerometer @98 :SensorEventData;
