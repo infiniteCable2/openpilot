@@ -50,7 +50,9 @@ def inspect(url: str, segment: int, focus: float | None):
                                                                  'hardwared.usbTopologyChanged', 'hardwared.slowCycle',
                                                                  'selfdrived.carStateMissing', 'selfdrived.carStateRecovered',
                                                                  'selfdrived.personalityButton', 'selfdrived.personalityParamChanged'):
-        events.append((t_ns, payload))
+        # logmessaged can write an event seconds after the producer emitted it.
+        producer_ns = payload.get('mono_time_ns')
+        events.append((producer_ns if isinstance(producer_ns, int) and producer_ns > 0 else t_ns, payload))
       elif isinstance(payload, str) and 'SPI: got NACK' in payload:
         spi_log_times.append(t_ns)
     elif kind == 'selfdriveState':
@@ -65,7 +67,7 @@ def inspect(url: str, segment: int, focus: float | None):
   spi_span = [(spi_log_times[0]-start_ns)/1e9, (spi_log_times[-1]-start_ns)/1e9] if spi_log_times else None
   print(f'SPI NACK logs: {len(spi_log_times)}; first/last: {spi_span}')
   last_event_time = {}
-  for t_ns, text in events:
+  for t_ns, text in sorted(events, key=lambda row: row[0]):
     if isinstance(text, dict):
       name = text['event']
       signature = (name, tuple(text.get('invalid', [])), tuple(text.get('not_alive', [])), tuple(text.get('not_freq_ok', [])))

@@ -46,10 +46,12 @@ def main():
         if failed_checks_start_ns is None:
           failed_checks_start_ns = time.monotonic_ns()
         if signature != failed_checks_prev:
-          cloudlog.event('plannerd.inputChecksFailed', error=True, model_mono_time_ns=sm.logMonoTime['modelV2'], **failures)
+          cloudlog.event('plannerd.inputChecksFailed', mono_time_ns=time.monotonic_ns(), error=True,
+                         model_mono_time_ns=sm.logMonoTime['modelV2'], **failures)
           failed_checks_prev = signature
       elif failed_checks_start_ns is not None:
-        cloudlog.event('plannerd.inputChecksRecovered', duration_ms=round((time.monotonic_ns() - failed_checks_start_ns) / 1e6, 1))
+        cloudlog.event('plannerd.inputChecksRecovered', mono_time_ns=time.monotonic_ns(),
+                       duration_ms=round((time.monotonic_ns() - failed_checks_start_ns) / 1e6, 1))
         failed_checks_start_ns = None
         failed_checks_prev = None
 

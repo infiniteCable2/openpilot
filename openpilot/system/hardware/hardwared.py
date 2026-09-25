@@ -378,12 +378,14 @@ def hardware_thread(end_event, hw_queue) -> None:
     offroad_mode = params.get_bool("OffroadMode")
     startup_conditions["not_always_offroad"] = not offroad_mode
     onroad_conditions["not_always_offroad"] = not offroad_mode
+    offroad_mode_end_ns = time.monotonic_ns()
 
     # if an unsupported device and branch is detected, going onroad is blocked
     # only allow going onroad when:
     # - TIZI, or
     # - TICI and channel_type is "tici"
     build_metadata = get_build_metadata()
+    build_metadata_end_ns = time.monotonic_ns()
     is_unsupported_combo = COMMA_HARDWARE and HARDWARE.get_device_type() == "tici" and build_metadata.channel_type != "tici"
     startup_conditions["not_tici"] = not is_unsupported_combo
     onroad_conditions["not_tici"] = not is_unsupported_combo
@@ -533,7 +535,11 @@ def hardware_thread(end_event, hw_queue) -> None:
 
     if (count % int(60. / DT_HW)) == 0:
       params.put("UptimeOffroad", uptime_offroad, block=True)
+      uptime_offroad_end_ns = time.monotonic_ns()
       params.put("UptimeOnroad", uptime_onroad, block=True)
+      uptime_onroad_end_ns = time.monotonic_ns()
+    else:
+      uptime_offroad_end_ns = uptime_onroad_end_ns = network_param_end_ns
     uptime_param_end_ns = time.monotonic_ns()
 
     count += 1
@@ -547,6 +553,9 @@ def hardware_thread(end_event, hw_queue) -> None:
                      startup_ms=round((startup_end_ns - stats_end_ns) / 1e6, 2),
                      startup_params_ms=round((startup_params_end_ns - stats_end_ns) / 1e6, 2),
                      support_alert_ms=round((support_alert_end_ns - startup_params_end_ns) / 1e6, 2),
+                     offroad_mode_param_ms=round((offroad_mode_end_ns - startup_params_end_ns) / 1e6, 2),
+                     build_metadata_ms=round((build_metadata_end_ns - offroad_mode_end_ns) / 1e6, 2),
+                     support_alert_call_ms=round((support_alert_end_ns - build_metadata_end_ns) / 1e6, 2),
                      temperature_alert_ms=round((temperature_alert_end_ns - support_alert_end_ns) / 1e6, 2),
                      engagement_ms=round((engagement_end_ns - temperature_alert_end_ns) / 1e6, 2),
                      power_save_ms=round((power_save_end_ns - engagement_end_ns) / 1e6, 2),
@@ -556,6 +565,8 @@ def hardware_thread(end_event, hw_queue) -> None:
                      status_packet_ms=round((status_packet_end_ns - publish_end_ns) / 1e6, 2),
                      network_param_ms=round((network_param_end_ns - status_packet_end_ns) / 1e6, 2),
                      uptime_param_ms=round((uptime_param_end_ns - network_param_end_ns) / 1e6, 2),
+                     uptime_offroad_put_ms=round((uptime_offroad_end_ns - network_param_end_ns) / 1e6, 2),
+                     uptime_onroad_put_ms=round((uptime_onroad_end_ns - uptime_offroad_end_ns) / 1e6, 2),
                      thread_cpu_ms=round((time.thread_time_ns() - cycle_start_cpu_ns) / 1e6, 2))
 
 

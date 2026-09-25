@@ -467,12 +467,13 @@ class SelfdriveD(CruiseHelper):
       if self.comm_issue_start_ns is None:
         self.comm_issue_start_ns = time.monotonic_ns()
       if signature != self.logged_comm_issue:
-        cloudlog.event("commIssue", error=True, **failures)
+        cloudlog.event("commIssue", mono_time_ns=time.monotonic_ns(), error=True, **failures)
         self.logged_comm_issue = signature
     else:
       if self.comm_issue_start_ns is not None:
         event = "commIssueRecovered" if self.sm.all_checks() else "commIssueSuppressed"
-        cloudlog.event(event, duration_ms=round((time.monotonic_ns() - self.comm_issue_start_ns) / 1e6, 1))
+        cloudlog.event(event, mono_time_ns=time.monotonic_ns(),
+                       duration_ms=round((time.monotonic_ns() - self.comm_issue_start_ns) / 1e6, 1))
         self.comm_issue_start_ns = None
       self.logged_comm_issue = None
 
