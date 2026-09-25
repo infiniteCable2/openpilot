@@ -137,6 +137,8 @@ class SelfdriveD(CruiseHelper):
       self.params.remove("ExperimentalMode")
 
     self.CS_prev = car.CarState.new_message()
+    self.last_car_state_recv_ns: int | None = None
+    self.car_state_gap_start_ns: int | None = None
     self.AM = AlertManager()
     self.events = Events()
 
@@ -540,8 +542,13 @@ class SelfdriveD(CruiseHelper):
     if self.CP.openpilotLongitudinalControl:
       if any(not be.pressed and be.type == ButtonType.gapAdjustCruise for be in CS.buttonEvents):
         if not self.experimental_mode_switched:
+          old_personality = self.personality
           self.personality = (self.personality - 1) % 3
+          write_start_ns = time.monotonic_ns()
           self.params.put('LongitudinalPersonality', self.personality)
+          cloudlog.event('selfdrived.personalityButton', mono_time_ns=time.monotonic_ns(),
+                         previous=int(old_personality), selected=int(self.personality),
+                         param_put_ms=round((time.monotonic_ns() - write_start_ns) / 1e6, 2))
           self.events.add(EventName.personalityChanged)
         self.experimental_mode_switched = False
 
@@ -549,6 +556,18 @@ class SelfdriveD(CruiseHelper):
 
   def data_sample(self):
     _car_state = messaging.recv_one(self.car_state_sock)
+    recv_ns = time.monotonic_ns()
+    if _car_state is not None:
+      if self.car_state_gap_start_ns is not None:
+        cloudlog.event('selfdrived.carStateRecovered', mono_time_ns=recv_ns,
+                       gap_ms=round((recv_ns - self.last_car_state_recv_ns) / 1e6, 2))
+        self.car_state_gap_start_ns = None
+      self.last_car_state_recv_ns = recv_ns
+    elif (self.last_car_state_recv_ns is not None and self.car_state_gap_start_ns is None and
+          recv_ns - self.last_car_state_recv_ns > 100_000_000):
+      self.car_state_gap_start_ns = recv_ns
+      cloudlog.event('selfdrived.carStateMissing', mono_time_ns=recv_ns,
+                     last_recv_age_ms=round((recv_ns - self.last_car_state_recv_ns) / 1e6, 2), error=True)
     CS = _car_state.carState if _car_state else self.CS_prev
 
     self.sm.update(0)
@@ -688,7 +707,11 @@ class SelfdriveD(CruiseHelper):
       self.is_ldw_enabled = self.params.get_bool("IsLdwEnabled")
       self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
       self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
-      self.personality = self.params.get("LongitudinalPersonality", return_default=True)
+      personality_param = self.params.get("LongitudinalPersonality", return_default=True)
+      if personality_param != self.personality:
+        cloudlog.event('selfdrived.personalityParamChanged', mono_time_ns=time.monotonic_ns(),
+                       previous=int(self.personality), selected=int(personality_param))
+      self.personality = personality_param
 
       self.mads.read_params()
       time.sleep(0.1)

@@ -9,10 +9,11 @@ from openpilot.tools.lib.route import Route
 
 
 TRACKED = ('carControl', 'controlsState', 'controlsStateIC', 'controlsTiming', 'modelV2', 'longitudinalPlan',
-           'driverAssistance', 'carState', 'carOutput', 'deviceState', 'managerState', 'pandaStates')
+           'driverAssistance', 'carState', 'carStateSP', 'carStateIC', 'carOutput', 'deviceState', 'managerState', 'pandaStates')
 MIN_GAP_MS = {'carControl': 35, 'controlsState': 35, 'controlsStateIC': 35, 'controlsTiming': 35,
               'modelV2': 120, 'longitudinalPlan': 180, 'driverAssistance': 180,
-              'carState': 35, 'carOutput': 35, 'deviceState': 1200, 'managerState': 1200, 'pandaStates': 350}
+              'carState': 35, 'carStateSP': 35, 'carStateIC': 35, 'carOutput': 35,
+              'deviceState': 1200, 'managerState': 1200, 'pandaStates': 350}
 
 
 def control_detail(timing) -> str:
@@ -46,7 +47,9 @@ def inspect(url: str, segment: int, focus: float | None):
         continue
       if isinstance(payload, dict) and payload.get('event') in ('commIssue', 'commIssueRecovered', 'commIssueSuppressed',
                                                                  'plannerd.inputChecksFailed', 'plannerd.inputChecksRecovered',
-                                                                 'hardwared.usbTopologyChanged'):
+                                                                 'hardwared.usbTopologyChanged', 'hardwared.slowCycle',
+                                                                 'selfdrived.carStateMissing', 'selfdrived.carStateRecovered',
+                                                                 'selfdrived.personalityButton', 'selfdrived.personalityParamChanged'):
         events.append((t_ns, payload))
       elif isinstance(payload, str) and 'SPI: got NACK' in payload:
         spi_log_times.append(t_ns)
@@ -69,11 +72,15 @@ def inspect(url: str, segment: int, focus: float | None):
       if signature in last_event_time and abs(t_ns - last_event_time[signature]) < 100_000_000:
         continue
       last_event_time[signature] = t_ns
-      detail = {s: {'recv_age_ms': d.get('last_recv_age_ms'), 'avg_hz': d.get('average_frequency_hz'),
-                    'recent_hz': d.get('recent_frequency_hz')} for s, d in text.get('details', {}).items()}
-      text = {k: text[k] for k in ('event', 'invalid', 'not_alive', 'not_freq_ok', 'duration_ms') if k in text}
-      if detail:
-        text['details'] = detail
+      if name in ('commIssue', 'commIssueRecovered', 'commIssueSuppressed',
+                  'plannerd.inputChecksFailed', 'plannerd.inputChecksRecovered'):
+        detail = {s: {'recv_age_ms': d.get('last_recv_age_ms'), 'avg_hz': d.get('average_frequency_hz'),
+                      'recent_hz': d.get('recent_frequency_hz')} for s, d in text.get('details', {}).items()}
+        text = {k: text[k] for k in ('event', 'invalid', 'not_alive', 'not_freq_ok', 'duration_ms') if k in text}
+        if detail:
+          text['details'] = detail
+      else:
+        text = {k: v for k, v in text.items() if k not in ('ctx', 'thread', 'filename', 'lineno', 'funcname')}
     print(f'EVENT +{(t_ns-start_ns)/1e9:.3f}s {text}')
   for kind, seq in rows.items():
     seq.sort(key=lambda row: row[0])
@@ -150,6 +157,9 @@ def inspect(url: str, segment: int, focus: float | None):
           print(f'FOCUS SLOW CYCLE +{(t-start_ns)/1e9:.3f}s phase_ms={[round(x, 2) for x in phases]}'
                 + control_detail(timing))
 
+  return {kind: (min(seq, key=lambda row: row[0])[0], max(seq, key=lambda row: row[0])[0])
+          for kind, seq in rows.items() if seq}
+
 
 def main():
   parser = argparse.ArgumentParser(description=__doc__)
@@ -158,12 +168,22 @@ def main():
   parser.add_argument('--focus', type=float, help='seconds relative to earliest message timestamp in segment')
   args = parser.parse_args()
   route = Route(args.route)
+  previous = None
   for segment in args.segments:
     url = route.log_paths()[segment]
     if url is None:
       print(f'Segment {segment}: no rlog')
+      previous = None
       continue
-    inspect(url, segment, args.focus)
+    current = inspect(url, segment, args.focus)
+    if previous is not None and segment == previous[0] + 1:
+      prev_segment, prev_bounds = previous
+      for kind in TRACKED:
+        if kind in prev_bounds and kind in current:
+          gap_ms = (current[kind][0] - prev_bounds[kind][1]) / 1e6
+          if gap_ms >= MIN_GAP_MS[kind]:
+            print(f'CROSS_SEGMENT_GAP {kind} segment {prev_segment} to {segment}: {gap_ms:.1f}ms')
+    previous = segment, current
 
 
 if __name__ == '__main__':

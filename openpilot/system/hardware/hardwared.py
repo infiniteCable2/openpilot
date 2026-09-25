@@ -251,7 +251,10 @@ def hardware_thread(end_event, hw_queue) -> None:
   branch = get_short_branch()
 
   while not end_event.is_set():
+    cycle_start_ns = time.monotonic_ns()
+    cycle_start_cpu_ns = time.thread_time_ns()
     sm.update(PANDA_STATES_TIMEOUT)
+    sm_update_end_ns = time.monotonic_ns()
 
     pandaStates = sm['pandaStates']
     peripheralState = sm['peripheralState']
@@ -279,6 +282,13 @@ def hardware_thread(end_event, hw_queue) -> None:
     # Run at 2Hz, plus either edge of ignition
     ign_edge = (started_ts is not None) != all(onroad_conditions.values())
     if (sm.frame % round(SERVICE_LIST['pandaStates'].frequency * DT_HW) != 0) and not ign_edge:
+      cycle_end_ns = time.monotonic_ns()
+      if cycle_end_ns - cycle_start_ns > 500_000_000:
+        cloudlog.event('hardwared.slowCycle', mono_time_ns=cycle_end_ns, published_device_state=False,
+                       cycle_ms=round((cycle_end_ns - cycle_start_ns) / 1e6, 2),
+                       submaster_ms=round((sm_update_end_ns - cycle_start_ns) / 1e6, 2),
+                       pre_gate_ms=round((cycle_end_ns - sm_update_end_ns) / 1e6, 2),
+                       thread_cpu_ms=round((time.thread_time_ns() - cycle_start_cpu_ns) / 1e6, 2))
       continue
 
     msg = messaging.new_message('deviceState', valid=True)
@@ -315,6 +325,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     chestnut_status.update(started_ts is None, branch, last_hw_state.usb_state, chestnut.failed,
                            params.get_bool("ChestnutLoading"), params.get("ChestnutActive"),
                            chestnut_state if chestnut_valid else None, set_offroad_alert_if_changed)
+    stats_end_ns = time.monotonic_ns()
     # this subset is only used for offroad
     temp_sources = [
       msg.deviceState.memoryTempC,
@@ -431,6 +442,7 @@ def hardware_thread(end_event, hw_queue) -> None:
       started_ts = None
       if off_ts is None:
         off_ts = time.monotonic()
+    startup_end_ns = time.monotonic_ns()
 
     # Offroad power monitoring
     voltage = None if peripheralState.pandaType == log.PandaState.PandaType.unknown else peripheralState.voltage
@@ -464,6 +476,7 @@ def hardware_thread(end_event, hw_queue) -> None:
 
     msg.deviceState.thermalStatus = thermal_status
     pm.send("deviceState", msg)
+    publish_end_ns = time.monotonic_ns()
 
     statlog.gauge("free_space_percent", msg.deviceState.freeSpacePercent)
     statlog.gauge("gpu_usage_percent", msg.deviceState.gpuUsagePercent)
@@ -517,6 +530,16 @@ def hardware_thread(end_event, hw_queue) -> None:
 
     count += 1
     should_start_prev = should_start
+    cycle_end_ns = time.monotonic_ns()
+    if cycle_end_ns - cycle_start_ns > 500_000_000:
+      cloudlog.event('hardwared.slowCycle', mono_time_ns=cycle_end_ns, published_device_state=True,
+                     cycle_ms=round((cycle_end_ns - cycle_start_ns) / 1e6, 2),
+                     submaster_ms=round((sm_update_end_ns - cycle_start_ns) / 1e6, 2),
+                     stats_ms=round((stats_end_ns - sm_update_end_ns) / 1e6, 2),
+                     startup_ms=round((startup_end_ns - stats_end_ns) / 1e6, 2),
+                     pre_publish_ms=round((publish_end_ns - startup_end_ns) / 1e6, 2),
+                     post_publish_ms=round((cycle_end_ns - publish_end_ns) / 1e6, 2),
+                     thread_cpu_ms=round((time.thread_time_ns() - cycle_start_cpu_ns) / 1e6, 2))
 
 
 def main():
