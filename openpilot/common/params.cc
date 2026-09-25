@@ -155,22 +155,33 @@ int Params::put(const char* key, const char* value, size_t value_size) {
   // 4) rename the temp file to the real name
   // 5) fsync() the containing directory
   const uint64_t start_ns = nanos_monotonic();
-  uint64_t temp_fsync_ns = 0, lock_open_ns = 0, flock_ns = 0, rename_ns = 0, dir_fsync_ns = 0;
+  uint64_t temp_create_ns = 0, write_ns = 0, temp_fsync_ns = 0, lock_open_ns = 0, flock_ns = 0;
+  uint64_t rename_ns = 0, dir_fsync_ns = 0, close_ns = 0, cleanup_unlink_ns = 0;
   std::string tmp_path = params_path + "/.tmp_value_XXXXXX";
+  uint64_t phase_start_ns = nanos_monotonic();
   int tmp_fd = mkstemp((char*)tmp_path.c_str());
-  if (tmp_fd < 0) return -1;
+  temp_create_ns = nanos_monotonic() - phase_start_ns;
+  if (tmp_fd < 0) {
+    if (temp_create_ns > 200000000ULL) {
+      LOGW("params.slowOp mono_time_ns=%llu pid=%d op=put key=%s total_ms=%.2f temp_create_ms=%.2f result=%d",
+           (unsigned long long)nanos_monotonic(), getpid(), key, temp_create_ns / 1e6, temp_create_ns / 1e6, -1);
+    }
+    return -1;
+  }
 
   int result = -1;
   do {
     // Write value to temp.
+    phase_start_ns = nanos_monotonic();
     ssize_t bytes_written = HANDLE_EINTR(write(tmp_fd, value, value_size));
+    write_ns = nanos_monotonic() - phase_start_ns;
     if (bytes_written < 0 || (size_t)bytes_written != value_size) {
       result = -20;
       break;
     }
 
     // fsync to force persist the changes.
-    uint64_t phase_start_ns = nanos_monotonic();
+    phase_start_ns = nanos_monotonic();
     result = HANDLE_EINTR(fsync(tmp_fd));
     temp_fsync_ns = nanos_monotonic() - phase_start_ns;
     if (result < 0) break;
@@ -191,15 +202,20 @@ int Params::put(const char* key, const char* value, size_t value_size) {
     dir_fsync_ns = nanos_monotonic() - phase_start_ns;
   } while (false);
 
+  phase_start_ns = nanos_monotonic();
   close(tmp_fd);
+  close_ns = nanos_monotonic() - phase_start_ns;
   if (result != 0) {
+    phase_start_ns = nanos_monotonic();
     ::unlink(tmp_path.c_str());
+    cleanup_unlink_ns = nanos_monotonic() - phase_start_ns;
   }
   const uint64_t end_ns = nanos_monotonic();
   if (end_ns - start_ns > 200000000ULL) {
-    LOGW("params.slowOp mono_time_ns=%llu pid=%d op=put key=%s total_ms=%.2f temp_fsync_ms=%.2f lock_open_ms=%.2f flock_ms=%.2f rename_ms=%.2f dir_fsync_ms=%.2f result=%d",
-         (unsigned long long)end_ns, getpid(), key, (end_ns - start_ns) / 1e6, temp_fsync_ns / 1e6,
-         lock_open_ns / 1e6, flock_ns / 1e6, rename_ns / 1e6, dir_fsync_ns / 1e6, result);
+    LOGW("params.slowOp mono_time_ns=%llu pid=%d op=put key=%s total_ms=%.2f temp_create_ms=%.2f write_ms=%.2f temp_fsync_ms=%.2f lock_open_ms=%.2f flock_ms=%.2f rename_ms=%.2f dir_fsync_ms=%.2f close_ms=%.2f cleanup_unlink_ms=%.2f result=%d",
+         (unsigned long long)end_ns, getpid(), key, (end_ns - start_ns) / 1e6, temp_create_ns / 1e6,
+         write_ns / 1e6, temp_fsync_ns / 1e6, lock_open_ns / 1e6, flock_ns / 1e6,
+         rename_ns / 1e6, dir_fsync_ns / 1e6, close_ns / 1e6, cleanup_unlink_ns / 1e6, result);
   }
   return result;
 }

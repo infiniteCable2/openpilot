@@ -270,6 +270,8 @@ def hardware_thread(end_event, hw_queue, probe: dict) -> None:
   chestnut = Chestnut()
   chestnut_status = ChestnutStatus()
   branch = get_short_branch()
+  last_github_runner_voltage: bool | None = None
+  last_network_metered: bool | None = None
   probe['thread_ident'] = threading.get_ident()
 
   while not end_event.is_set():
@@ -419,7 +421,7 @@ def hardware_thread(end_event, hw_queue, probe: dict) -> None:
     startup_conditions["not_tici"] = not is_unsupported_combo
     onroad_conditions["not_tici"] = not is_unsupported_combo
     probe['stage'] = 'Offroad_TiciSupport.set_offroad_alert'
-    set_offroad_alert("Offroad_TiciSupport", is_unsupported_combo, extra_text=build_metadata.channel)
+    set_offroad_alert_if_changed("Offroad_TiciSupport", is_unsupported_combo, extra_text=build_metadata.channel)
     support_alert_end_ns = time.monotonic_ns()
     probe['stage'] = 'deviceState.startupAndPower'
 
@@ -487,7 +489,10 @@ def hardware_thread(end_event, hw_queue, probe: dict) -> None:
 
     # GitHub runner auto off: 9V is used as the threshold because most desktop runners
     # will rarely exceed 5V so 9V is set as our buffer between desk use and car use.
-    params.put_bool("GithubRunnerSufficientVoltage", ((voltage or 0) and voltage > 9000))
+    github_runner_voltage = bool((voltage or 0) and voltage > 9000)
+    if github_runner_voltage != last_github_runner_voltage:
+      params.put_bool("GithubRunnerSufficientVoltage", github_runner_voltage)
+      last_github_runner_voltage = github_runner_voltage
 
     power_monitor.calculate(voltage, onroad_conditions["ignition"])
     msg.deviceState.offroadPowerUsageUwh = power_monitor.get_power_used()
@@ -558,7 +563,9 @@ def hardware_thread(end_event, hw_queue, probe: dict) -> None:
     status_packet_end_ns = time.monotonic_ns()
 
     probe['stage'] = 'NetworkMetered.put'
-    params.put_bool("NetworkMetered", msg.deviceState.networkMetered)
+    if msg.deviceState.networkMetered != last_network_metered:
+      params.put_bool("NetworkMetered", msg.deviceState.networkMetered)
+      last_network_metered = msg.deviceState.networkMetered
     network_param_end_ns = time.monotonic_ns()
 
     now_ts = time.monotonic()
@@ -570,10 +577,10 @@ def hardware_thread(end_event, hw_queue, probe: dict) -> None:
 
     if (count % int(60. / DT_HW)) == 0:
       probe['stage'] = 'UptimeOffroad.put'
-      params.put("UptimeOffroad", uptime_offroad, block=True)
+      params.put("UptimeOffroad", uptime_offroad)
       uptime_offroad_end_ns = time.monotonic_ns()
       probe['stage'] = 'UptimeOnroad.put'
-      params.put("UptimeOnroad", uptime_onroad, block=True)
+      params.put("UptimeOnroad", uptime_onroad)
       uptime_onroad_end_ns = time.monotonic_ns()
     else:
       uptime_offroad_end_ns = uptime_onroad_end_ns = network_param_end_ns
