@@ -134,6 +134,14 @@ def inspect(url: str, segment: int, focus: float | None):
         print(f'  latActive false={sum(not msg.carControl.latActive for _, _, msg in near)}')
         print('  latActive first/last:', [(round((t-start_ns)/1e9, 3), msg.carControl.latActive)
                                          for t, _, msg in (near[0], near[-1])])
+        transitions = []
+        previous_lat_active = near[0][2].carControl.latActive
+        for t, _, msg in near[1:]:
+          if msg.carControl.latActive != previous_lat_active:
+            transitions.append((round((t-start_ns)/1e9, 3), msg.carControl.latActive))
+          previous_lat_active = msg.carControl.latActive
+        if transitions:
+          print('  latActive transitions:', transitions)
       elif kind == 'controlsStateIC' and near:
         print(f'  lanefulActive true={sum(msg.controlsStateIC.lanefulActive for _, _, msg in near)}')
         print('  lanefulActive first/last:', [(round((t-start_ns)/1e9, 3), msg.controlsStateIC.lanefulActive)

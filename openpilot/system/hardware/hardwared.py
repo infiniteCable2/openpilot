@@ -372,6 +372,7 @@ def hardware_thread(end_event, hw_queue) -> None:
 
     # ensure device is fully booted
     startup_conditions["device_booted"] = startup_conditions.get("device_booted", False) or HARDWARE.booted()
+    startup_params_end_ns = time.monotonic_ns()
 
     # user-forced status
     offroad_mode = params.get_bool("OffroadMode")
@@ -387,12 +388,14 @@ def hardware_thread(end_event, hw_queue) -> None:
     startup_conditions["not_tici"] = not is_unsupported_combo
     onroad_conditions["not_tici"] = not is_unsupported_combo
     set_offroad_alert("Offroad_TiciSupport", is_unsupported_combo, extra_text=build_metadata.channel)
+    support_alert_end_ns = time.monotonic_ns()
 
     # if the temperature enters the danger zone, go offroad to cool down
     onroad_conditions["device_temp_good"] = thermal_status < ThermalStatus.critical
     extra_text = f"{offroad_comp_temp:.1f}C"
     show_alert = (not onroad_conditions["device_temp_good"] or not startup_conditions["device_temp_engageable"]) and onroad_conditions["ignition"]
     set_offroad_alert_if_changed("Offroad_TemperatureTooHigh", show_alert, extra_text=extra_text)
+    temperature_alert_end_ns = time.monotonic_ns()
 
     if show_alert:
       msg.deviceState.fanSpeedPercentDesired = 100
@@ -417,11 +420,13 @@ def hardware_thread(end_event, hw_queue) -> None:
           kmsg.write(f"<3>[hardware] engaged: {engaged}\n")
       except Exception:
         pass
+    engagement_end_ns = time.monotonic_ns()
 
     should_pwrsave = not onroad_conditions["ignition"] and msg.deviceState.screenBrightnessPercent < 1e-3
     if should_pwrsave != pwrsave or (count == 0):
       HARDWARE.set_power_save(should_pwrsave)
     pwrsave = should_pwrsave
+    power_save_end_ns = time.monotonic_ns()
 
     if should_start:
       off_ts = None
@@ -514,8 +519,10 @@ def hardware_thread(end_event, hw_queue) -> None:
           params.put("LastOffroadStatusPacket", dat, block=True)
         except Exception:
           cloudlog.exception("failed to save offroad status")
+    status_packet_end_ns = time.monotonic_ns()
 
     params.put_bool("NetworkMetered", msg.deviceState.networkMetered)
+    network_param_end_ns = time.monotonic_ns()
 
     now_ts = time.monotonic()
     if off_ts:
@@ -527,6 +534,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     if (count % int(60. / DT_HW)) == 0:
       params.put("UptimeOffroad", uptime_offroad, block=True)
       params.put("UptimeOnroad", uptime_onroad, block=True)
+    uptime_param_end_ns = time.monotonic_ns()
 
     count += 1
     should_start_prev = should_start
@@ -537,8 +545,17 @@ def hardware_thread(end_event, hw_queue) -> None:
                      submaster_ms=round((sm_update_end_ns - cycle_start_ns) / 1e6, 2),
                      stats_ms=round((stats_end_ns - sm_update_end_ns) / 1e6, 2),
                      startup_ms=round((startup_end_ns - stats_end_ns) / 1e6, 2),
+                     startup_params_ms=round((startup_params_end_ns - stats_end_ns) / 1e6, 2),
+                     support_alert_ms=round((support_alert_end_ns - startup_params_end_ns) / 1e6, 2),
+                     temperature_alert_ms=round((temperature_alert_end_ns - support_alert_end_ns) / 1e6, 2),
+                     engagement_ms=round((engagement_end_ns - temperature_alert_end_ns) / 1e6, 2),
+                     power_save_ms=round((power_save_end_ns - engagement_end_ns) / 1e6, 2),
+                     transition_ms=round((startup_end_ns - power_save_end_ns) / 1e6, 2),
                      pre_publish_ms=round((publish_end_ns - startup_end_ns) / 1e6, 2),
                      post_publish_ms=round((cycle_end_ns - publish_end_ns) / 1e6, 2),
+                     status_packet_ms=round((status_packet_end_ns - publish_end_ns) / 1e6, 2),
+                     network_param_ms=round((network_param_end_ns - status_packet_end_ns) / 1e6, 2),
+                     uptime_param_ms=round((uptime_param_end_ns - network_param_end_ns) / 1e6, 2),
                      thread_cpu_ms=round((time.thread_time_ns() - cycle_start_cpu_ns) / 1e6, 2))
 
 
