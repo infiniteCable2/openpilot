@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import math
+import resource
 import time
 from numbers import Number
 
@@ -204,12 +205,19 @@ class Controls(ControlsExt):
     else:
       new_desired_curvature = model_v2.action.desiredCurvature if CC.latActive else self.curvature
     self.model_desired_curvature = float(model_v2.action.desiredCurvature)
+    self.lane_curvature_read_end_ns = time.monotonic_ns()
+    self.smooth_steer_start_ns = self.smooth_steer_end_ns = 0
     if self.enable_smooth_steer:
+      self.smooth_steer_start_ns = time.monotonic_ns()
       new_desired_curvature = self.smooth_steer.update(new_desired_curvature)
+      self.smooth_steer_end_ns = time.monotonic_ns()
+    self.laneful_start_ns = time.monotonic_ns()
+    laneful_start_cpu_ns = time.thread_time_ns()
     laneful_correction = self.laneful.update(model_v2, self.sm.logMonoTime['modelV2'], time.monotonic_ns(), CS.vEgo,
                                              self.enable_laneful, self.sm.valid['modelV2'] and self.sm.alive['modelV2'],
                                              maneuver_plan_valid or model_v2.meta.laneChangeState != LaneChangeState.off or
                                              CS.leftBlinker or CS.rightBlinker)
+    self.laneful_thread_cpu_ns = time.thread_time_ns() - laneful_start_cpu_ns
     self.laneful_end_ns = time.monotonic_ns()
     if CC.latActive and not maneuver_plan_valid:
       new_desired_curvature += laneful_correction
@@ -359,8 +367,12 @@ class Controls(ControlsExt):
       self.update()
       update_end_ns = time.monotonic_ns()
       control_start_cpu_ns = time.thread_time_ns()
+      control_start_process_cpu_ns = time.process_time_ns()
+      control_start_usage = resource.getrusage(resource.RUSAGE_THREAD)
       CC, lac_log = self.state_control()
       control_thread_cpu_time_ns = time.thread_time_ns() - control_start_cpu_ns
+      control_process_cpu_time_ns = time.process_time_ns() - control_start_process_cpu_ns
+      control_end_usage = resource.getrusage(resource.RUSAGE_THREAD)
       control_end_ns = time.monotonic_ns()
       self.publish(CC, lac_log)
       publish_end_ns = time.monotonic_ns()
@@ -381,6 +393,20 @@ class Controls(ControlsExt):
       timing.controlsTiming.lanefulEndMonoTime = self.laneful_end_ns
       timing.controlsTiming.lateralControlEndMonoTime = self.lateral_control_end_ns
       timing.controlsTiming.controlThreadCpuTimeNs = control_thread_cpu_time_ns
+      timing.controlsTiming.lanefulStartMonoTime = self.laneful_start_ns
+      timing.controlsTiming.lanefulThreadCpuTimeNs = self.laneful_thread_cpu_ns
+      timing.controlsTiming.laneTargetStartMonoTime = self.laneful.target_start_ns
+      timing.controlsTiming.laneTargetEndMonoTime = self.laneful.target_end_ns
+      timing.controlsTiming.laneTargetThreadCpuTimeNs = self.laneful.target_thread_cpu_ns
+      timing.controlsTiming.lanePolyfitStartMonoTime = self.laneful.polyfit_start_ns
+      timing.controlsTiming.lanePolyfitEndMonoTime = self.laneful.polyfit_end_ns
+      timing.controlsTiming.controlProcessCpuTimeNs = control_process_cpu_time_ns
+      timing.controlsTiming.controlVoluntaryContextSwitches = control_end_usage.ru_nvcsw - control_start_usage.ru_nvcsw
+      timing.controlsTiming.controlInvoluntaryContextSwitches = control_end_usage.ru_nivcsw - control_start_usage.ru_nivcsw
+      timing.controlsTiming.controlMajorPageFaults = control_end_usage.ru_majflt - control_start_usage.ru_majflt
+      timing.controlsTiming.laneCurvatureReadEndMonoTime = self.lane_curvature_read_end_ns
+      timing.controlsTiming.smoothSteerStartMonoTime = self.smooth_steer_start_ns
+      timing.controlsTiming.smoothSteerEndMonoTime = self.smooth_steer_end_ns
       self.pm.send('controlsTiming', timing)
       rk.monitor_time()
 

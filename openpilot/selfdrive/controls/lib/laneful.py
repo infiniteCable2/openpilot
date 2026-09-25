@@ -6,6 +6,7 @@ It is independent of the vehicle interface and of steering-wheel input.
 """
 
 import math
+import time
 
 import numpy as np
 
@@ -33,15 +34,22 @@ def smoothstep(x: np.ndarray) -> np.ndarray:
   return x ** 3 * (10.0 + x * (-15.0 + 6.0 * x))
 
 
-def virtual_path(center: np.ndarray, e2e: np.ndarray, x: np.ndarray) -> tuple[np.ndarray, float, np.ndarray]:
+def virtual_path(center: np.ndarray, e2e: np.ndarray, x: np.ndarray,
+                 timing: dict[str, int] | None = None) -> tuple[np.ndarray, float, np.ndarray]:
   """Align E2E to the lane midpoint, then blend its residual path shape."""
-  heading, offset = np.polyfit(x, center - e2e, 1)
+  if timing is not None:
+    timing['polyfit_start_ns'] = time.monotonic_ns()
+  try:
+    heading, offset = np.polyfit(x, center - e2e, 1)
+  finally:
+    if timing is not None:
+      timing['polyfit_end_ns'] = time.monotonic_ns()
   gain = smoothstep((x - BLEND_START) / (BLEND_END - BLEND_START))
   aligned = e2e + offset + heading * x
   return aligned + gain * (center - aligned), float(heading), gain
 
 
-def lane_target(model, speed: float) -> tuple[float, bool, float]:
+def lane_target(model, speed: float, timing: dict[str, int] | None = None) -> tuple[float, bool, float]:
   """Return curvature correction, strong-confidence flag and quality.
 
   All distances and lateral coordinates come from the same modelV2 message.
@@ -90,7 +98,7 @@ def lane_target(model, speed: float) -> tuple[float, bool, float]:
 
   # Match the E2E path's lateral offset and heading to the lane center across
   # the shared horizon, then blend only its remaining shape toward the lanes.
-  target, heading, gain = virtual_path(center, e2e, fit_x)
+  target, heading, gain = virtual_path(center, e2e, fit_x, timing)
   field = gain * (target - e2e - (1.0 - HEADING_GAIN) * heading * fit_x)
 
   lookahead = min(float(np.clip(1.5 * speed, 20.0, 45.0)), float(fit_x[-1]))
@@ -123,9 +131,16 @@ class LanefulController:
     self.last_model_time = 0
     self.last_good_time = 0
     self.holding = False
+    self.target_start_ns = 0
+    self.target_end_ns = 0
+    self.target_thread_cpu_ns = 0
+    self.polyfit_start_ns = 0
+    self.polyfit_end_ns = 0
 
   def update(self, model, model_time_ns: int, now_ns: int, speed: float, enabled: bool,
              model_valid: bool, maneuvering: bool) -> float:
+    self.target_start_ns = self.target_end_ns = self.target_thread_cpu_ns = 0
+    self.polyfit_start_ns = self.polyfit_end_ns = 0
     age = (now_ns - model_time_ns) * 1e-9 if model_time_ns else float('inf')
     usable = (enabled and model_valid and not maneuvering and math.isfinite(speed) and speed >= MIN_SPEED and
               -0.05 <= age <= MAX_MODEL_AGE)
@@ -140,8 +155,17 @@ class LanefulController:
         self.active = False
         self.arm_time = 0.0
         gap = 0.05
+      target_timing: dict[str, int] = {}
+      self.target_start_ns = time.monotonic_ns()
+      target_cpu_start_ns = time.thread_time_ns()
       try:
-        correction, strong, quality = lane_target(model, speed)
+        try:
+          correction, strong, quality = lane_target(model, speed, target_timing)
+        finally:
+          self.target_end_ns = time.monotonic_ns()
+          self.target_thread_cpu_ns = time.thread_time_ns() - target_cpu_start_ns
+          self.polyfit_start_ns = target_timing.get('polyfit_start_ns', 0)
+          self.polyfit_end_ns = target_timing.get('polyfit_end_ns', 0)
       except (AttributeError, IndexError, TypeError, ValueError, FloatingPointError, np.linalg.LinAlgError):
         # One missed detection should not cause a release and a second 0.75 s
         # arm cycle. Retain the last bounded command briefly, then fade it.

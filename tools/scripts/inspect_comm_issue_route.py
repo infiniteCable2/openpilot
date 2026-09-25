@@ -22,7 +22,26 @@ def control_detail(timing) -> str:
   times = (timing.updateEndMonoTime, timing.vehicleModelEndMonoTime, timing.longitudinalControlEndMonoTime,
            timing.lanefulEndMonoTime, timing.lateralControlEndMonoTime, timing.controlEndMonoTime)
   stages = [round((end-start)/1e6, 2) for start, end in zip(times, times[1:], strict=False)]
-  return f' state_control_stage_ms={stages} thread_cpu_ms={timing.controlThreadCpuTimeNs/1e6:.2f}'
+  detail = f' state_control_stage_ms={stages} thread_cpu_ms={timing.controlThreadCpuTimeNs/1e6:.2f}'
+  if timing.controlProcessCpuTimeNs:
+    detail += ''.join((f' process_cpu_ms={timing.controlProcessCpuTimeNs/1e6:.2f}',
+                       f' voluntary_cs={timing.controlVoluntaryContextSwitches}',
+                       f' involuntary_cs={timing.controlInvoluntaryContextSwitches}',
+                       f' major_faults={timing.controlMajorPageFaults}'))
+  if timing.lanefulStartMonoTime:
+    detail += ''.join((f' lane_prep_ms={(timing.lanefulStartMonoTime-timing.longitudinalControlEndMonoTime)/1e6:.2f}',
+                       f' laneful_ms={(timing.lanefulEndMonoTime-timing.lanefulStartMonoTime)/1e6:.2f}',
+                       f' laneful_thread_cpu_ms={timing.lanefulThreadCpuTimeNs/1e6:.2f}'))
+    if timing.laneCurvatureReadEndMonoTime:
+      detail += f' lane_curvature_read_ms={(timing.laneCurvatureReadEndMonoTime-timing.longitudinalControlEndMonoTime)/1e6:.2f}'
+    if timing.smoothSteerStartMonoTime:
+      detail += f' smooth_steer_ms={(timing.smoothSteerEndMonoTime-timing.smoothSteerStartMonoTime)/1e6:.2f}'
+    if timing.laneTargetStartMonoTime:
+      detail += ''.join((f' lane_target_ms={(timing.laneTargetEndMonoTime-timing.laneTargetStartMonoTime)/1e6:.2f}',
+                         f' lane_target_thread_cpu_ms={timing.laneTargetThreadCpuTimeNs/1e6:.2f}'))
+    if timing.lanePolyfitStartMonoTime:
+      detail += f' lane_polyfit_ms={(timing.lanePolyfitEndMonoTime-timing.lanePolyfitStartMonoTime)/1e6:.2f}'
+  return detail
 
 
 def inspect(url: str, segment: int, focus: float | None):
@@ -48,6 +67,7 @@ def inspect(url: str, segment: int, focus: float | None):
       if isinstance(payload, dict) and payload.get('event') in ('commIssue', 'commIssueRecovered', 'commIssueSuppressed',
                                                                  'plannerd.inputChecksFailed', 'plannerd.inputChecksRecovered',
                                                                  'hardwared.usbTopologyChanged', 'hardwared.slowCycle',
+                                                                 'hardwared.slowCycleStack',
                                                                  'selfdrived.carStateMissing', 'selfdrived.carStateRecovered',
                                                                  'selfdrived.personalityButton', 'selfdrived.personalityParamChanged'):
         # logmessaged can write an event seconds after the producer emitted it.

@@ -1016,6 +1016,20 @@ struct ControlsTiming @0xc41b87d3a6e809f2 {
   lanefulEndMonoTime @8 :UInt64;
   lateralControlEndMonoTime @9 :UInt64;
   controlThreadCpuTimeNs @10 :UInt64;
+  lanefulStartMonoTime @11 :UInt64;
+  lanefulThreadCpuTimeNs @12 :UInt64;
+  laneTargetStartMonoTime @13 :UInt64;
+  laneTargetEndMonoTime @14 :UInt64;
+  laneTargetThreadCpuTimeNs @15 :UInt64;
+  lanePolyfitStartMonoTime @16 :UInt64;
+  lanePolyfitEndMonoTime @17 :UInt64;
+  controlProcessCpuTimeNs @18 :UInt64;
+  controlVoluntaryContextSwitches @19 :UInt32;
+  controlInvoluntaryContextSwitches @20 :UInt32;
+  controlMajorPageFaults @21 :UInt32;
+  laneCurvatureReadEndMonoTime @22 :UInt64;
+  smoothSteerStartMonoTime @23 :UInt64;
+  smoothSteerEndMonoTime @24 :UInt64;
 }
 
 struct DrivingModelData {

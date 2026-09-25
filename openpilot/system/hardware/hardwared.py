@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 from collections import OrderedDict, namedtuple
 
 import openpilot.cereal.messaging as messaging
@@ -196,7 +197,27 @@ def hw_state_thread(end_event, hw_queue):
     time.sleep(DT_HW)
 
 
-def hardware_thread(end_event, hw_queue) -> None:
+def slow_cycle_watchdog(end_event: threading.Event, probe: dict) -> None:
+  """Capture the hardware thread's caller while a slow cycle is blocked."""
+  reported: set[tuple[int, int]] = set()
+  while not end_event.wait(0.1):
+    start_ns = probe.get('start_ns', 0)
+    now_ns = time.monotonic_ns()
+    elapsed_ns = now_ns - start_ns if start_ns else 0
+    threshold_ms = 2500 if elapsed_ns >= 2_500_000_000 else 750 if elapsed_ns >= 750_000_000 else 0
+    key = (start_ns, threshold_ms)
+    if not threshold_ms or key in reported or probe.get('start_ns') != start_ns:
+      continue
+    reported.add(key)
+    if len(reported) > 32:
+      reported = {key}
+    frame = sys._current_frames().get(probe.get('thread_ident'))
+    cloudlog.event('hardwared.slowCycleStack', mono_time_ns=now_ns, cycle_start_mono_time_ns=start_ns,
+                   elapsed_ms=round(elapsed_ns / 1e6, 2), stage=probe.get('stage'),
+                   stack=''.join(traceback.format_stack(frame, limit=16)) if frame is not None else 'unavailable')
+
+
+def hardware_thread(end_event, hw_queue, probe: dict) -> None:
   system_stats = LinuxSystemStats()
   pm = messaging.PubMaster(['deviceState'])
   sm = messaging.SubMaster(["peripheralState", "gpsLocationExternal", "selfdriveState", "pandaStates", "chestnutState"], poll="pandaStates")
@@ -249,9 +270,12 @@ def hardware_thread(end_event, hw_queue) -> None:
   chestnut = Chestnut()
   chestnut_status = ChestnutStatus()
   branch = get_short_branch()
+  probe['thread_ident'] = threading.get_ident()
 
   while not end_event.is_set():
     cycle_start_ns = time.monotonic_ns()
+    probe['stage'] = 'submaster.update'
+    probe['start_ns'] = cycle_start_ns
     cycle_start_cpu_ns = time.thread_time_ns()
     sm.update(PANDA_STATES_TIMEOUT)
     sm_update_end_ns = time.monotonic_ns()
@@ -289,8 +313,10 @@ def hardware_thread(end_event, hw_queue) -> None:
                        submaster_ms=round((sm_update_end_ns - cycle_start_ns) / 1e6, 2),
                        pre_gate_ms=round((cycle_end_ns - sm_update_end_ns) / 1e6, 2),
                        thread_cpu_ms=round((time.thread_time_ns() - cycle_start_cpu_ns) / 1e6, 2))
+      probe['start_ns'] = 0
       continue
 
+    probe['stage'] = 'deviceState.stats'
     msg = messaging.new_message('deviceState', valid=True)
     msg.deviceState = thermal_config.get_msg()
     msg.deviceState.deviceType = HARDWARE.get_device_type()
@@ -326,6 +352,7 @@ def hardware_thread(end_event, hw_queue) -> None:
                            params.get_bool("ChestnutLoading"), params.get("ChestnutActive"),
                            chestnut_state if chestnut_valid else None, set_offroad_alert_if_changed)
     stats_end_ns = time.monotonic_ns()
+    probe['stage'] = 'deviceState.startupParams'
     # this subset is only used for offroad
     temp_sources = [
       msg.deviceState.memoryTempC,
@@ -375,6 +402,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     startup_params_end_ns = time.monotonic_ns()
 
     # user-forced status
+    probe['stage'] = 'OffroadMode.get'
     offroad_mode = params.get_bool("OffroadMode")
     startup_conditions["not_always_offroad"] = not offroad_mode
     onroad_conditions["not_always_offroad"] = not offroad_mode
@@ -384,13 +412,16 @@ def hardware_thread(end_event, hw_queue) -> None:
     # only allow going onroad when:
     # - TIZI, or
     # - TICI and channel_type is "tici"
+    probe['stage'] = 'get_build_metadata'
     build_metadata = get_build_metadata()
     build_metadata_end_ns = time.monotonic_ns()
     is_unsupported_combo = COMMA_HARDWARE and HARDWARE.get_device_type() == "tici" and build_metadata.channel_type != "tici"
     startup_conditions["not_tici"] = not is_unsupported_combo
     onroad_conditions["not_tici"] = not is_unsupported_combo
+    probe['stage'] = 'Offroad_TiciSupport.set_offroad_alert'
     set_offroad_alert("Offroad_TiciSupport", is_unsupported_combo, extra_text=build_metadata.channel)
     support_alert_end_ns = time.monotonic_ns()
+    probe['stage'] = 'deviceState.startupAndPower'
 
     # if the temperature enters the danger zone, go offroad to cool down
     onroad_conditions["device_temp_good"] = thermal_status < ThermalStatus.critical
@@ -482,8 +513,10 @@ def hardware_thread(end_event, hw_queue) -> None:
       msg.deviceState.lastAthenaPingTime = last_ping
 
     msg.deviceState.thermalStatus = thermal_status
+    probe['stage'] = 'deviceState.publish'
     pm.send("deviceState", msg)
     publish_end_ns = time.monotonic_ns()
+    probe['stage'] = 'deviceState.postPublish'
 
     statlog.gauge("free_space_percent", msg.deviceState.freeSpacePercent)
     statlog.gauge("gpu_usage_percent", msg.deviceState.gpuUsagePercent)
@@ -505,6 +538,7 @@ def hardware_thread(end_event, hw_queue) -> None:
     # report to server once every 10 minutes, or every 1s when thermally blocked
     rising_edge_started = should_start and not should_start_prev
     status_packet_interval = 1. if show_alert else 600.
+    probe['stage'] = 'deviceState.statusPacket'
     if rising_edge_started or (count % int(status_packet_interval / DT_HW)) == 0:
       dat = {
         'count': count,
@@ -523,6 +557,7 @@ def hardware_thread(end_event, hw_queue) -> None:
           cloudlog.exception("failed to save offroad status")
     status_packet_end_ns = time.monotonic_ns()
 
+    probe['stage'] = 'NetworkMetered.put'
     params.put_bool("NetworkMetered", msg.deviceState.networkMetered)
     network_param_end_ns = time.monotonic_ns()
 
@@ -534,13 +569,16 @@ def hardware_thread(end_event, hw_queue) -> None:
     last_uptime_ts = now_ts
 
     if (count % int(60. / DT_HW)) == 0:
+      probe['stage'] = 'UptimeOffroad.put'
       params.put("UptimeOffroad", uptime_offroad, block=True)
       uptime_offroad_end_ns = time.monotonic_ns()
+      probe['stage'] = 'UptimeOnroad.put'
       params.put("UptimeOnroad", uptime_onroad, block=True)
       uptime_onroad_end_ns = time.monotonic_ns()
     else:
       uptime_offroad_end_ns = uptime_onroad_end_ns = network_param_end_ns
     uptime_param_end_ns = time.monotonic_ns()
+    probe['stage'] = 'deviceState.cycleEnd'
 
     count += 1
     should_start_prev = should_start
@@ -568,22 +606,26 @@ def hardware_thread(end_event, hw_queue) -> None:
                      uptime_offroad_put_ms=round((uptime_offroad_end_ns - network_param_end_ns) / 1e6, 2),
                      uptime_onroad_put_ms=round((uptime_onroad_end_ns - uptime_offroad_end_ns) / 1e6, 2),
                      thread_cpu_ms=round((time.thread_time_ns() - cycle_start_cpu_ns) / 1e6, 2))
+    probe['start_ns'] = 0
 
 
 def main():
   hw_queue = queue.Queue(maxsize=1)
   end_event = threading.Event()
+  slow_cycle_probe: dict = {'start_ns': 0, 'stage': 'initializing', 'thread_ident': None}
 
   threads = [
     threading.Thread(target=hw_state_thread, args=(end_event, hw_queue)),
-    threading.Thread(target=hardware_thread, args=(end_event, hw_queue)),
+    threading.Thread(target=hardware_thread, args=(end_event, hw_queue, slow_cycle_probe)),
   ]
+  watchdog = threading.Thread(target=slow_cycle_watchdog, args=(end_event, slow_cycle_probe), daemon=True)
 
   if COMMA_HARDWARE:
     threads.append(threading.Thread(target=touch_thread, args=(end_event,)))
 
   for t in threads:
     t.start()
+  watchdog.start()
 
   try:
     while True:
@@ -595,6 +637,7 @@ def main():
 
   for t in threads:
     t.join()
+  watchdog.join(timeout=1)
 
 
 if __name__ == "__main__":
