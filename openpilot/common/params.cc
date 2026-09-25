@@ -76,16 +76,34 @@ std::string ensure_params_path(const std::string &prefix, const std::string &pat
 
 class FileLock {
 public:
-  FileLock(const std::string &fn) {
+  FileLock(const std::string &fn, const char *op) : op_(op) {
+    const uint64_t start_ns = nanos_monotonic();
     fd_ = HANDLE_EINTR(open(fn.c_str(), O_CREAT, 0775));
+    open_ns_ = nanos_monotonic() - start_ns;
+    const uint64_t flock_start_ns = nanos_monotonic();
     if (fd_ < 0 || HANDLE_EINTR(flock(fd_, LOCK_EX)) < 0) {
       LOGE("Failed to lock file %s, errno=%d", fn.c_str(), errno);
     }
+    flock_ns_ = nanos_monotonic() - flock_start_ns;
+    acquired_ns_ = nanos_monotonic();
   }
-  ~FileLock() { close(fd_); }
+  ~FileLock() {
+    const uint64_t before_close_ns = nanos_monotonic();
+    close(fd_);
+    const uint64_t end_ns = nanos_monotonic();
+    if (before_close_ns - acquired_ns_ > 200000000ULL) {
+      LOGW("params.slowLockHold mono_time_ns=%llu pid=%d op=%s hold_ms=%.2f open_ms=%.2f flock_ms=%.2f close_ms=%.2f",
+           (unsigned long long)end_ns, getpid(), op_, (before_close_ns - acquired_ns_) / 1e6,
+           open_ns_ / 1e6, flock_ns_ / 1e6, (end_ns - before_close_ns) / 1e6);
+    }
+  }
+  uint64_t open_ns() const { return open_ns_; }
+  uint64_t flock_ns() const { return flock_ns_; }
 
 private:
   int fd_ = -1;
+  const char *op_;
+  uint64_t open_ns_ = 0, flock_ns_ = 0, acquired_ns_ = 0;
 };
 
 } // namespace
@@ -136,6 +154,8 @@ int Params::put(const char* key, const char* value, size_t value_size) {
   // 3) fsync() the temp file
   // 4) rename the temp file to the real name
   // 5) fsync() the containing directory
+  const uint64_t start_ns = nanos_monotonic();
+  uint64_t temp_fsync_ns = 0, lock_open_ns = 0, flock_ns = 0, rename_ns = 0, dir_fsync_ns = 0;
   std::string tmp_path = params_path + "/.tmp_value_XXXXXX";
   int tmp_fd = mkstemp((char*)tmp_path.c_str());
   if (tmp_fd < 0) return -1;
@@ -150,31 +170,64 @@ int Params::put(const char* key, const char* value, size_t value_size) {
     }
 
     // fsync to force persist the changes.
-    if ((result = HANDLE_EINTR(fsync(tmp_fd))) < 0) break;
+    uint64_t phase_start_ns = nanos_monotonic();
+    result = HANDLE_EINTR(fsync(tmp_fd));
+    temp_fsync_ns = nanos_monotonic() - phase_start_ns;
+    if (result < 0) break;
 
-    FileLock file_lock(params_path + "/.lock");
+    FileLock file_lock(params_path + "/.lock", "put");
+    lock_open_ns = file_lock.open_ns();
+    flock_ns = file_lock.flock_ns();
 
     // Move temp into place.
-    if ((result = rename(tmp_path.c_str(), getParamPath(key).c_str())) < 0) break;
+    phase_start_ns = nanos_monotonic();
+    result = rename(tmp_path.c_str(), getParamPath(key).c_str());
+    rename_ns = nanos_monotonic() - phase_start_ns;
+    if (result < 0) break;
 
     // fsync parent directory
+    phase_start_ns = nanos_monotonic();
     result = fsync_dir(getParamPath());
+    dir_fsync_ns = nanos_monotonic() - phase_start_ns;
   } while (false);
 
   close(tmp_fd);
   if (result != 0) {
     ::unlink(tmp_path.c_str());
   }
+  const uint64_t end_ns = nanos_monotonic();
+  if (end_ns - start_ns > 200000000ULL) {
+    LOGW("params.slowOp mono_time_ns=%llu pid=%d op=put key=%s total_ms=%.2f temp_fsync_ms=%.2f lock_open_ms=%.2f flock_ms=%.2f rename_ms=%.2f dir_fsync_ms=%.2f result=%d",
+         (unsigned long long)end_ns, getpid(), key, (end_ns - start_ns) / 1e6, temp_fsync_ns / 1e6,
+         lock_open_ns / 1e6, flock_ns / 1e6, rename_ns / 1e6, dir_fsync_ns / 1e6, result);
+  }
   return result;
 }
 
 int Params::remove(const std::string &key) {
-  FileLock file_lock(params_path + "/.lock");
-  int result = unlink(getParamPath(key).c_str());
-  if (result != 0) {
-    return result;
+  const uint64_t start_ns = nanos_monotonic();
+  uint64_t lock_open_ns = 0, flock_ns = 0, unlink_ns = 0, dir_fsync_ns = 0;
+  int result;
+  {
+    FileLock file_lock(params_path + "/.lock", "remove");
+    lock_open_ns = file_lock.open_ns();
+    flock_ns = file_lock.flock_ns();
+    uint64_t phase_start_ns = nanos_monotonic();
+    result = unlink(getParamPath(key).c_str());
+    unlink_ns = nanos_monotonic() - phase_start_ns;
+    if (result == 0) {
+      phase_start_ns = nanos_monotonic();
+      result = fsync_dir(getParamPath());
+      dir_fsync_ns = nanos_monotonic() - phase_start_ns;
+    }
   }
-  return fsync_dir(getParamPath());
+  const uint64_t end_ns = nanos_monotonic();
+  if (end_ns - start_ns > 200000000ULL) {
+    LOGW("params.slowOp mono_time_ns=%llu pid=%d op=remove key=%s total_ms=%.2f lock_open_ms=%.2f flock_ms=%.2f unlink_ms=%.2f dir_fsync_ms=%.2f result=%d",
+         (unsigned long long)end_ns, getpid(), key.c_str(), (end_ns - start_ns) / 1e6,
+         lock_open_ns / 1e6, flock_ns / 1e6, unlink_ns / 1e6, dir_fsync_ns / 1e6, result);
+  }
+  return result;
 }
 
 std::string Params::get(const std::string &key, bool block) {
@@ -201,12 +254,12 @@ std::string Params::get(const std::string &key, bool block) {
 }
 
 std::map<std::string, std::string> Params::readAll() {
-  FileLock file_lock(params_path + "/.lock");
+  FileLock file_lock(params_path + "/.lock", "readAll");
   return util::read_files_in_dir(getParamPath());
 }
 
 void Params::clearAll(ParamKeyFlag key_flag) {
-  FileLock file_lock(params_path + "/.lock");
+  FileLock file_lock(params_path + "/.lock", "clearAll");
 
   // 1) delete params of key_flag
   // 2) delete files that are not defined in the keys.

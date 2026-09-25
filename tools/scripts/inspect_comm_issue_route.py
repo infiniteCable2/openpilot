@@ -2,6 +2,7 @@
 """Print route events and timing gaps relevant to inter-process comm issues."""
 import argparse
 import json
+import re
 from collections import Counter, defaultdict
 
 from openpilot.tools.lib.logreader import LogReader
@@ -75,6 +76,9 @@ def inspect(url: str, segment: int, focus: float | None):
         events.append((producer_ns if isinstance(producer_ns, int) and producer_ns > 0 else t_ns, payload))
       elif isinstance(payload, str) and 'SPI: got NACK' in payload:
         spi_log_times.append(t_ns)
+      elif isinstance(payload, str) and payload.startswith(('params.slowOp ', 'params.slowLockHold ')):
+        match = re.search(r'\bmono_time_ns=(\d+)', payload)
+        events.append((int(match.group(1)) if match else t_ns, payload))
     elif kind == 'selfdriveState':
       alert = str(msg.selfdriveState.alertType)
       if alert != alert_prev:
