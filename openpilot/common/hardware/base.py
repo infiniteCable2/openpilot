@@ -1,4 +1,5 @@
 import os
+import time
 from abc import abstractmethod, ABC
 from dataclasses import dataclass, fields
 
@@ -16,20 +17,29 @@ class ThermalZone:
   zone_number = -1
 
   def read(self) -> float:
-    if self.zone_number < 0:
-      for n in os.listdir("/sys/devices/virtual/thermal"):
-        if not n.startswith("thermal_zone"):
-          continue
-        with open(os.path.join("/sys/devices/virtual/thermal", n, "type")) as f:
-          if f.read().strip() == self.name:
-            self.zone_number = int(n.removeprefix("thermal_zone"))
-            break
-
+    start_ns = time.monotonic_ns()
     try:
-      with open(f"/sys/devices/virtual/thermal/thermal_zone{self.zone_number}/temp") as f:
-        return int(f.read()) / self.scale
-    except FileNotFoundError:
-      return 0
+      if self.zone_number < 0:
+        for n in os.listdir("/sys/devices/virtual/thermal"):
+          if not n.startswith("thermal_zone"):
+            continue
+          with open(os.path.join("/sys/devices/virtual/thermal", n, "type")) as f:
+            if f.read().strip() == self.name:
+              self.zone_number = int(n.removeprefix("thermal_zone"))
+              break
+
+      try:
+        with open(f"/sys/devices/virtual/thermal/thermal_zone{self.zone_number}/temp") as f:
+          return int(f.read()) / self.scale
+      except FileNotFoundError:
+        return 0
+    finally:
+      end_ns = time.monotonic_ns()
+      if end_ns - start_ns >= 250_000_000:
+        from openpilot.common.swaglog import cloudlog
+        cloudlog.event('hardwared.slowThermalZoneRead', mono_time_ns=end_ns,
+                       zone_name=self.name, zone_number=self.zone_number,
+                       duration_ms=round((end_ns - start_ns) / 1e6, 2))
 
 @dataclass
 class ThermalConfig:
