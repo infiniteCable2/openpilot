@@ -15,6 +15,7 @@ MIN_GAP_MS = {'carControl': 35, 'controlsState': 35, 'controlsStateIC': 35, 'con
               'modelV2': 120, 'longitudinalPlan': 180, 'driverAssistance': 180,
               'carState': 35, 'carStateSP': 35, 'carStateIC': 35, 'carOutput': 35,
               'deviceState': 1200, 'managerState': 1200, 'pandaStates': 350}
+STORAGE_ERROR_RE = re.compile(r'EXT4-fs error|F2FS-fs error|ufs.*error|mmc.*error|I/O error|writeback error|blk_update_request', re.I)
 
 
 def control_detail(timing) -> str:
@@ -45,11 +46,14 @@ def control_detail(timing) -> str:
   return detail
 
 
-def inspect(url: str, segment: int, focus: float | None):
+def inspect(url: str, segment: int, focus: float | None, events_only: bool = False):
   rows = defaultdict(list)
   counts = Counter()
   events = []
   spi_log_times = []
+  storage_log_hits = []
+  first_laneful_active_ns = None
+  laneful_active_samples = 0
   alert_prev = None
   start_ns = None
   for msg in LogReader(url):
@@ -58,7 +62,11 @@ def inspect(url: str, segment: int, focus: float | None):
     t_ns = msg.logMonoTime
     if start_ns is None or t_ns < start_ns:
       start_ns = t_ns
-    if kind in TRACKED:
+    if kind == 'controlsStateIC' and msg.controlsStateIC.lanefulActive:
+      laneful_active_samples += 1
+      if first_laneful_active_ns is None:
+        first_laneful_active_ns = t_ns
+    if kind in TRACKED and not events_only:
       rows[kind].append((t_ns, msg.valid, msg))
     elif kind in ('logMessage', 'errorLogMessage'):
       try:
@@ -85,11 +93,20 @@ def inspect(url: str, segment: int, focus: float | None):
         if 'commIssue' in alert or (alert_prev and 'commIssue' in alert_prev):
           events.append((t_ns, f'selfdriveState alert={alert} state={msg.selfdriveState.state}'))
         alert_prev = alert
+    elif kind == 'operatingSystemLog':
+      message = msg.operatingSystemLog.message
+      if STORAGE_ERROR_RE.search(message):
+        storage_log_hits.append((t_ns, message))
 
   print(f'Segment {segment}: {sum(counts.values())} messages, start_ns={start_ns}')
   print('Counts:', {k: counts[k] for k in TRACKED})
   spi_span = [(spi_log_times[0]-start_ns)/1e9, (spi_log_times[-1]-start_ns)/1e9] if spi_log_times else None
   print(f'SPI NACK logs: {len(spi_log_times)}; first/last: {spi_span}')
+  print(f'OS storage error logs: {len(storage_log_hits)}')
+  for t_ns, message in storage_log_hits[:10]:
+    print(f'OS_STORAGE +{(t_ns-start_ns)/1e9:.3f}s {message[:250]}')
+  if first_laneful_active_ns is not None:
+    print(f'LANEFUL first_active=+{(first_laneful_active_ns-start_ns)/1e9:.3f}s samples={laneful_active_samples}')
   last_event_time = {}
   for t_ns, text in sorted(events, key=lambda row: row[0]):
     if isinstance(text, dict):
@@ -108,6 +125,8 @@ def inspect(url: str, segment: int, focus: float | None):
       else:
         text = {k: v for k, v in text.items() if k not in ('ctx', 'thread', 'filename', 'lineno', 'funcname')}
     print(f'EVENT +{(t_ns-start_ns)/1e9:.3f}s {text}')
+  if events_only:
+    return {}
   for kind, seq in rows.items():
     seq.sort(key=lambda row: row[0])
     gaps = [(t0, t1, valid) for (t0, _, _), (t1, valid, _) in zip(seq, seq[1:], strict=False)
@@ -121,6 +140,12 @@ def inspect(url: str, segment: int, focus: float | None):
         first, last = (invalid[0]-start_ns)/1e9, (invalid[-1]-start_ns)/1e9
         print(f'INVALID {kind} count={len(invalid)} first=+{first:.3f}s last=+{last:.3f}s')
     if kind == 'controlsTiming':
+      first_target = next(((t_ns, msg.controlsTiming) for t_ns, _, msg in seq
+                           if msg.controlsTiming.laneTargetStartMonoTime), None)
+      if first_target is not None:
+        t_ns, timing = first_target
+        duration_ms = (timing.laneTargetEndMonoTime-timing.laneTargetStartMonoTime)/1e6
+        print(f'LANE_TARGET first=+{(t_ns-start_ns)/1e9:.3f}s duration_ms={duration_ms:.2f} major_faults={timing.controlMajorPageFaults}')
       slow = []
       for t_ns, _, msg in seq:
         t = msg.controlsTiming
@@ -200,16 +225,18 @@ def main():
   parser.add_argument('route', help='dongle_id/route_id')
   parser.add_argument('segments', nargs='*', type=int, default=[0])
   parser.add_argument('--focus', type=float, help='seconds relative to earliest message timestamp in segment')
+  parser.add_argument('--qlog-events', action='store_true', help='scan qlogs for events without timing gaps')
   args = parser.parse_args()
   route = Route(args.route)
+  paths = route.qlog_paths() if args.qlog_events else route.log_paths()
   previous = None
   for segment in args.segments:
-    url = route.log_paths()[segment]
+    url = paths[segment]
     if url is None:
-      print(f'Segment {segment}: no rlog')
+      print(f'Segment {segment}: no {"qlog" if args.qlog_events else "rlog"}')
       previous = None
       continue
-    current = inspect(url, segment, args.focus)
+    current = inspect(url, segment, args.focus, events_only=args.qlog_events)
     if previous is not None and segment == previous[0] + 1:
       prev_segment, prev_bounds = previous
       for kind in TRACKED:

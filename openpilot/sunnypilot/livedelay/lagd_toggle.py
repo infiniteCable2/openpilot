@@ -4,6 +4,8 @@ Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
+import time
+
 from openpilot.cereal import log
 
 from opendbc.car import structs
@@ -15,6 +17,8 @@ class LagdToggle:
     self.CP = CP
     self.params = Params()
     self.lag = 0.0
+    self.last_cached_lag = self.params.get("LagdValueCache")
+    self.last_cache_write_time = time.monotonic()
 
     self.lagd_toggle = self.params.get_bool("LagdToggle")
     self.software_delay = self.params.get("LagdToggleDelay", return_default=True)
@@ -30,9 +34,16 @@ class LagdToggle:
       steer_actuator_delay = self.CP.steerActuatorDelay
       delay = self.software_delay
       self.lag = (steer_actuator_delay + delay)
-      self.params.put("LagdValueCache", self.lag)
+      self.cache_lag_if_changed()
       return
 
     lateral_delay = lag_msg.lateralDelay.lateralDelay
     self.lag = lateral_delay
-    self.params.put("LagdValueCache", self.lag)
+    self.cache_lag_if_changed()
+
+  def cache_lag_if_changed(self) -> None:
+    now = time.monotonic()
+    if self.lag != self.last_cached_lag or now - self.last_cache_write_time >= 60.0:
+      self.params.put("LagdValueCache", self.lag)
+      self.last_cached_lag = self.lag
+      self.last_cache_write_time = now

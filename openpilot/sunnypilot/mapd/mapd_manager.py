@@ -140,9 +140,12 @@ def main_thread():
   except PermissionError:
     cloudlog.exception(f"mapd: failed to make {Paths.mapd_root()}")
 
+  previous_update_alert: bool | None = None
   while True:
     show_alert = bool(get_files_for_cleanup() and params.get_bool("OsmLocal"))
-    set_offroad_alert("Offroad_OSMUpdateRequired", show_alert, "This alert will be cleared when new maps are downloaded.")
+    if show_alert != previous_update_alert:
+      set_offroad_alert("Offroad_OSMUpdateRequired", show_alert, "This alert will be cleared when new maps are downloaded.")
+      previous_update_alert = show_alert
 
     if params.get("Mapd_ClearCache"):
       clear_downloaded_maps()

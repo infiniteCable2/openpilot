@@ -192,6 +192,10 @@ class UIStateSP:
     has_long = self.has_longitudinal_control
     CP = self.CP
 
+    def remove_if_present(key: str) -> None:
+      if self.params.get(key) is not None:
+        self.params.remove(key)
+
     if CP is not None:
       if self.params.get_bool("EnforceTorqueControl") and self.params.get_bool("NeuralNetworkLateralControl"):
         self.params.put_bool("EnforceTorqueControl", False, block=True)
@@ -204,43 +208,43 @@ class UIStateSP:
       # Angle steering: no torque-based lateral controls
       if (CP.steerControlType == car.CarParams.SteerControlType.angle or
           CP.steerControlType == car.CarParams.SteerControlType.curvature):
-        self.params.remove("EnforceTorqueControl")
-        self.params.remove("NeuralNetworkLateralControl")
-        self.params.remove("LateralJerkTorqueController")
+        remove_if_present("EnforceTorqueControl")
+        remove_if_present("NeuralNetworkLateralControl")
+        remove_if_present("LateralJerkTorqueController")
 
       # Alpha longitudinal: clear if not available
       if not CP.alphaLongitudinalAvailable:
-        self.params.remove("AlphaLongitudinalEnabled")
+        remove_if_present("AlphaLongitudinalEnabled")
 
       # BSM not available: clear BSM-dependent settings
       if not CP.enableBsm:
-        self.params.remove("AutoLaneChangeBsmDelay")
+        remove_if_present("AutoLaneChangeBsmDelay")
     else:
       # No CarParams: clear all car-dependent params as safety default
-      self.params.remove("EnforceTorqueControl")
-      self.params.remove("NeuralNetworkLateralControl")
-      self.params.remove("LateralJerkTorqueController")
-      self.params.remove("AlphaLongitudinalEnabled")
+      remove_if_present("EnforceTorqueControl")
+      remove_if_present("NeuralNetworkLateralControl")
+      remove_if_present("LateralJerkTorqueController")
+      remove_if_present("AlphaLongitudinalEnabled")
 
     # No longitudinal control: no experimental mode or DEC
     if not has_long:
-      self.params.remove("ExperimentalMode")
-      self.params.remove("DynamicExperimentalControl")
+      remove_if_present("ExperimentalMode")
+      remove_if_present("DynamicExperimentalControl")
 
     # ICBM: clear if not available or if full longitudinal control is active
     if self.CP_SP is not None:
       if not self.CP_SP.intelligentCruiseButtonManagementAvailable or has_long:
-        self.params.remove("IntelligentCruiseButtonManagement")
+        remove_if_present("IntelligentCruiseButtonManagement")
         self.has_icbm = False
     else:
-      self.params.remove("IntelligentCruiseButtonManagement")
+      remove_if_present("IntelligentCruiseButtonManagement")
       self.has_icbm = False
 
     # Cruise features requiring longitudinal or ICBM
     if not (has_long or self.has_icbm):
-      self.params.remove("CustomAccIncrementsEnabled")
-      self.params.remove("SmartCruiseControlVision")
-      self.params.remove("SmartCruiseControlMap")
+      remove_if_present("CustomAccIncrementsEnabled")
+      remove_if_present("SmartCruiseControlVision")
+      remove_if_present("SmartCruiseControlMap")
 
 
 class DeviceSP:

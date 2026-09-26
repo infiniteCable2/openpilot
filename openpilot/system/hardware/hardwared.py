@@ -110,9 +110,12 @@ prev_offroad_states: dict[str, tuple[bool, str | None]] = {}
 
 
 def set_offroad_alert_if_changed(offroad_alert: str, show_alert: bool, extra_text: str | None=None):
-  if prev_offroad_states.get(offroad_alert, None) == (show_alert, extra_text):
+  # Extra text only matters while the alert is visible. Changing temperatures
+  # must not turn an unchanged hidden alert into another filesystem removal.
+  state = (show_alert, extra_text if show_alert else None)
+  if prev_offroad_states.get(offroad_alert, None) == state:
     return
-  prev_offroad_states[offroad_alert] = (show_alert, extra_text)
+  prev_offroad_states[offroad_alert] = state
   set_offroad_alert(offroad_alert, show_alert, extra_text)
 
 def touch_thread(end_event):
