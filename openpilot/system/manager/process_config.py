@@ -1,11 +1,12 @@
 import os
 import operator
 import platform
+import sys
 
 from opendbc.car.structs import car
 from openpilot.cereal import custom
 from openpilot.common.params import Params
-from openpilot.common.hardware import PC, COMMA_HARDWARE
+from openpilot.common.hardware import PC, COMMA_HARDWARE, HARDWARE
 from openpilot.system.manager.process import PythonProcess, NativeProcess, DaemonProcess
 from openpilot.common.hardware.hw import Paths
 
@@ -116,6 +117,8 @@ procs = [
   NativeProcess("encoderd", "openpilot/system/loggerd", ["./encoderd"], only_onroad),
   NativeProcess("stream_encoderd", "openpilot/system/loggerd", ["./encoderd", "--stream"], or_(livestream, notcar)),
   PythonProcess("logmessaged", "openpilot.system.logmessaged", always_run),
+  NativeProcess("storage_traced", ".", ["sudo", "-n", sys.executable, "-m", "openpilot.system.manager.storage_trace"],
+                always_run, enabled=HARDWARE.get_device_type() == "mici"),
 
   NativeProcess("camerad", "openpilot/system/camerad", ["./camerad"], or_(driverview, livestream), enabled=not WEBCAM),
   PythonProcess("webcamerad", "openpilot.system.camerad.webcam.camerad", driverview, enabled=WEBCAM),

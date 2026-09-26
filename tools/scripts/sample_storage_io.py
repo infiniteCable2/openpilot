@@ -6,6 +6,8 @@ uses the same CLOCK_MONOTONIC time base as openpilot's mono_time_ns logs.
 """
 import argparse
 import json
+import os
+import signal
 import time
 from pathlib import Path
 
@@ -74,8 +76,8 @@ def snapshot(devices: set[str], include_ufs: bool) -> dict:
 
 
 def sample(args: argparse.Namespace) -> None:
-  if not 0.1 <= args.interval <= 5 or not 1 <= args.seconds <= 3600:
-    raise ValueError('interval must be 0.1-5 s and duration 1-3600 s')
+  if not 0.1 <= args.interval <= 5 or not 0 <= args.seconds <= 86400:
+    raise ValueError('interval must be 0.1-5 s and duration 0-86400 s (0 means until SIGTERM)')
   output = Path(args.output or f'/dev/shm/openpilot-storage-{time.monotonic_ns()}.jsonl').resolve()
   if output.parent != Path('/dev/shm'):
     raise ValueError('output must be directly inside /dev/shm')
@@ -88,10 +90,28 @@ def sample(args: argparse.Namespace) -> None:
   start = time.monotonic()
   next_sample = start
   count = 0
+  stop_requested = False
+
+  def parent_alive() -> bool:
+    if args.watch_pid is None:
+      return True
+    try:
+      os.kill(args.watch_pid, 0)
+      return True
+    except ProcessLookupError:
+      return False
+
+  def request_stop(_signal: int, _frame) -> None:
+    nonlocal stop_requested
+    stop_requested = True
+
+  signal.signal(signal.SIGTERM, request_stop)
+  signal.signal(signal.SIGINT, request_stop)
   with output.open('x', buffering=1) as stream:
     stream.write(json.dumps({'schema': 1, 'devices': sorted(devices), 'interval_s': args.interval,
                              'boot_id': read_text(Path('/proc/sys/kernel/random/boot_id'))}) + '\n')
-    while time.monotonic() - start < args.seconds:
+    while (not stop_requested and parent_alive()
+           and (args.seconds == 0 or time.monotonic() - start < args.seconds)):
       stream.write(json.dumps(snapshot(devices, include_ufs=(count % max(1, round(1 / args.interval)) == 0))) + '\n')
       count += 1
       next_sample += args.interval
@@ -155,6 +175,7 @@ def main() -> None:
   sampler.add_argument('--interval', type=float, default=0.2)
   sampler.add_argument('--device', action='append', help='repeat for each block device (default: sda and sda12)')
   sampler.add_argument('--output')
+  sampler.add_argument('--watch-pid', type=int, help='stop if the supervisor exits')
   summary = subparsers.add_parser('summary')
   summary.add_argument('path', type=Path)
   summary.add_argument('--device', default='sda')

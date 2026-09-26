@@ -8,6 +8,19 @@ Lesende Geräteprüfung am 26. September 2026: `/data/params` liegt auf `/data`,
 
 ## Stufe 1: niedrige Last, gleiche Zeitbasis
 
+### Automatische Erfassung auf dem Comma 4
+
+Auf dem `logging`-Branch startet der Manager auf Mici den Prozess `storage_traced` dauerhaft mit Root-Rechten (`sudo -n`). Sobald `deviceState.started` von `false` nach `true` wechselt, starten der 200-ms-Sampler und eine eigene Kernel-Tracefs-Instanz. Ein erneuter Wechsel nach `false` beendet beide Messungen und sichert sie unter `/data/media/0/storage_traces/openpilot-storage-<Boot-ID>-<Startzeit>/`. Das Verzeichnis enthält die `.trace`-Datei, Trace-Metadaten mit Überlaufzählern, Sampler-JSONL, den Kernel-Ringpufferstand am Fahrtende, Prozessausgaben und `manifest.json` mit monotonen Zeiten und `CurrentRoute`. Während der Fahrt bleiben alle Ausgaben in `/dev/shm`; erst offroad wird nach `/data` geschrieben.
+
+Die Trace-Instanz hat 8192 KiB Ringpuffer je CPU und kann bei langen Fahrten frühe Ereignisse überschreiben; die Überlaufzähler stehen in der Trace-JSON. Der Sampler läuft bis zum Offroad-Wechsel. Die Sicherung stoppt, falls nach dem Kopieren weniger als 1 GiB auf `/data` frei wäre. In diesem Fall bleiben die Daten bis zum Neustart in `/dev/shm` und `storage_traced` meldet den Fehler im Prozesslog. Gesicherte Fahrten werden nicht automatisch gelöscht. `storage_traced` braucht ein nichtinteraktives `sudo`; fehlt es, erscheint der Startfehler im Manager-Log. Bei einem Manager-Neustart mitten in der Fahrt wird die aktuelle Aufnahme beendet und verbleibt in `/dev/shm`; nach dem Neustart beginnt für die laufende Fahrt eine neue Aufnahme. Eine Fahrt muss damit nicht mehr vorab per SSH vorbereitet werden.
+
+Prüfung nach der Fahrt:
+
+```sh
+ls -lt /data/media/0/storage_traces/
+cat /data/media/0/storage_traces/openpilot-storage-*/manifest.json
+```
+
 `tools/scripts/sample_storage_io.py` liest alle 200 ms die kumulativen Zähler von `/proc/diskstats` für `sda` und `sda12`, Dirty-/Writeback-Seiten aus `/proc/meminfo`, ext4-Fehler und verzögerte Allokationen sowie ungefähr einmal pro Sekunde UFS-Debug-Statistiken. Jede Zeile enthält `mono_ns = CLOCK_MONOTONIC`, passend zu `mono_time_ns` in den openpilot-Logs. Die Ausgabe liegt ausschließlich in `/dev/shm` (tmpfs), verursacht also keine zusätzlichen persistierenden Schreibvorgänge auf `/data`.
 
 Auf dem Gerät nach Aktualisierung des Branches:

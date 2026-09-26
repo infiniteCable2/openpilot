@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Capture a bounded block/ext4/UFS trace in a private tracefs instance.
 
-Run as root on a comma device. Output stays in /dev/shm and must be copied
-before reboot. No persistent storage writes are made by this script.
+Run as root on a comma device. Output stays in /dev/shm; the automatic
+onroad supervisor copies it to persistent storage after the drive.
 """
 
 import argparse
@@ -57,16 +57,29 @@ def read_optional(path: Path) -> str | None:
     return None
 
 
+def process_exists(pid: int) -> bool:
+  try:
+    os.kill(pid, 0)
+    return True
+  except ProcessLookupError:
+    return False
+
+
 def main() -> None:
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument('--seconds', type=int, default=180)
+  parser.add_argument('--basename', help='shared capture name for an automatic session')
+  parser.add_argument('--watch-pid', type=int, help='stop if the supervisor exits')
   parser.add_argument('--buffer-kb', type=int, default=8192,
                       help='ring buffer KiB per CPU (default: 8192)')
   args = parser.parse_args()
   if os.geteuid() != 0:
     parser.error('run with sudo')
-  if not 1 <= args.seconds <= 1200 or not 1024 <= args.buffer_kb <= 16384:
-    parser.error('seconds must be 1-1200 and buffer-kb 1024-16384')
+  if not 0 <= args.seconds <= 86400 or not 1024 <= args.buffer_kb <= 16384:
+    parser.error('seconds must be 0-86400 (0 means until SIGTERM) and buffer-kb 1024-16384')
+  if args.basename and (not args.basename.startswith('openpilot-storage-') or
+                        not all(c.isalnum() or c in '-_' for c in args.basename)):
+    parser.error('basename must be an openpilot-storage-* filename stem')
   if not (TRACEFS / 'available_events').is_file():
     parser.error('tracefs is not mounted at /sys/kernel/tracing')
 
@@ -80,7 +93,7 @@ def main() -> None:
     parser.error(f'{instance} already exists; refusing to alter another capture')
 
   boot_id = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
-  basename = f'openpilot-storage-trace-{boot_id[:8]}-{time.monotonic_ns()}'
+  basename = args.basename or f'openpilot-storage-trace-{boot_id[:8]}-{time.monotonic_ns()}'
   trace_path = OUTPUT_DIR / f'{basename}.trace'
   metadata_path = OUTPUT_DIR / f'{basename}.json'
   stop_requested = False
@@ -110,9 +123,10 @@ def main() -> None:
     write_control(instance / 'tracing_on', '1')
     write_control(instance / 'trace_marker', f'codex_storage_start mono_ns={started_ns}')
     print(f'TRACE_STARTED mono_ns={started_ns} seconds={args.seconds} events={len(selected)}', flush=True)
-    deadline = time.monotonic() + args.seconds
-    while not stop_requested and time.monotonic() < deadline:
-      time.sleep(min(0.25, max(0, deadline - time.monotonic())))
+    deadline = time.monotonic() + args.seconds if args.seconds else None
+    while (not stop_requested and (deadline is None or time.monotonic() < deadline)
+           and (args.watch_pid is None or process_exists(args.watch_pid))):
+      time.sleep(0.25 if deadline is None else min(0.25, max(0, deadline - time.monotonic())))
   finally:
     try:
       if started_ns is not None:
