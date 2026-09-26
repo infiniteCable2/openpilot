@@ -78,7 +78,8 @@ def inspect(url: str, segment: int, focus: float | None, events_only: bool = Fal
                                                                  'hardwared.usbTopologyChanged', 'hardwared.slowCycle',
                                                                  'hardwared.slowCycleStack',
                                                                  'selfdrived.carStateMissing', 'selfdrived.carStateRecovered',
-                                                                 'selfdrived.personalityButton', 'selfdrived.personalityParamChanged'):
+                                                                 'selfdrived.personalityButton', 'selfdrived.personalityParamChanged',
+                                                                 'selfdrived.personalityWriteCompleted'):
         # logmessaged can write an event seconds after the producer emitted it.
         producer_ns = payload.get('mono_time_ns')
         events.append((producer_ns if isinstance(producer_ns, int) and producer_ns > 0 else t_ns, payload))

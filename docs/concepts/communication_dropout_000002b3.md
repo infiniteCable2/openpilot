@@ -1,0 +1,21 @@
+# Kommunikationsaussetzer in `d4dd69160a48f11f/000002b3--dbe47b015a`
+
+Ausgewertet wurden qlogs und rlogs aller 12 Segmente. Die `+`-Zeiten ab Segment 1 beziehen sich auf die gemeinsame Basis `740504662123` ns; Segment 0 beginnt 177,381 s früher. Die Fahrt enthält viele Persönlichkeitswechsel und einen separaten kurzen `commIssue` beim Anlaufen der Laneful-Geometrie. Während der Persönlichkeitswechsel gab es **keinen** `commIssue` und keinen beobachteten Abbruch.
+
+## Persönlichkeitswechsel: Rücksprung bleibt, Speicherpfad weiter langsam
+
+Beispiel in Segment 7: Ein Tastendruck bei +430,456 s änderte die Persönlichkeit von 0 auf 2; 52 ms später las `params_thread()` den alten Wert 0 zurück. Der native Schreibvorgang benötigte 5,728 s, davon 5,703 s im `fsync` der temporären Datei. Weitere Tastendrücke und Rücksprünge wiederholten sich. Bei +445,559 s endete ein weiterer `LongitudinalPersonality`-Schreibvorgang nach 9,365 s, davon 9,312 s im `fsync`.
+
+Auch andere Prozesse warteten im selben Zeitfenster: `LagdValueCache` benötigte 9,388 s (davon 9,308 s im Verzeichnis-`fsync`), `CarBatteryCapacity` 13,253 s (3,900 s `mkstemp`, 9,333 s Datei-`fsync`), und `IsDriverViewEnabled`, `LiveParametersV2`, `LiveTorqueParameters` sowie `LiveCurvatureParameters` verbrachten 6–8 s überwiegend in `fsync`. Segment 2 zeigte einen `LongitudinalPersonality`-Schreibvorgang von 13,848 s, fast vollständig im Datei-`fsync`; weitere lange Schreibvorgänge traten in Segmenten 8 und 9 auf. Damit bleibt eine breite Verzögerung im Datei-/Speicherpfad bestehen. Weder ein bestimmter auslösender Prozess noch ein Hardwaredefekt sind nachgewiesen. Die rlogs enthalten keinen offensichtlichen OS-Dateisystem-/I/O-Fehler.
+
+Die vorige Entlastung von wiederholten Alert-Entfernungen ist sichtbar: In den betroffenen Zeitfenstern wurde kein entsprechender langsamer `remove` mehr geloggt. `hardwared` hatte in Segment 7 nur eine 1,501-s-Lücke in `deviceState` bei +452,247 bis +453,748 s. Der dazugehörige 1,218-s-Zyklus wartete etwa 1,102 s beim Lesen von Temperaturwerten aus sysfs; `temperature_alert_ms` lag bei 0,02 ms. Die Lücke blieb unter der Schwelle für die früheren mehrsekündigen `commIssue`-Warnungen. Das ist mit einer Wirkung der Entlastung vereinbar, belegt aber keinen kausalen Vorher-nachher-Vergleich.
+
+Die Bedienungsstörung hat eine klar abgrenzbare zusätzliche Ursache: `selfdrived` setzte den Wert beim Tastendruck sofort im Speicher, während `Params.put(..., block=False)` nur einen asynchronen Schreibvorgang einreihte. Sein 100-ms-Parameterthread las bis zur Persistierung wiederholt den alten Plattenwert und überschrieb so die neue Auswahl. Die folgende Änderung legt die Persistierung in einen eigenen Worker mit `block=True` und hält den ausgewählten Wert während des Schreibens im Speicher fest. Mehrere Tastendrücke werden auf den zuletzt gewünschten Wert weitergeführt; der 100-Hz-Steuerungsloop wartet nicht auf `fsync`. Ein Regressionstest blockiert die Persistierung künstlich und prüft den Zwischenzustand und den finalen Wert.
+
+## Separater Laneful-Aussetzer
+
+In Segment 1 fehlten `carControl` und `controlsState` von +84,288 bis +84,396 s für 108,3 ms. `plannerd` markierte genau einen Plan ungültig; `selfdriveState` zeigte von +84,393 bis +86,417 s `commIssue/softDisable`, bereits im Zustand `disabled`. Der betroffene Controls-Zyklus brauchte 102,49 ms für `state_control`, davon 101,15 ms in `lane_target()`. Die Thread-CPU lag bei 28,36 ms, es gab acht freiwillige Kontextwechsel und drei schwere Seitenfehler; `np.polyfit` selbst benötigte nur 0,73 ms. Der erste aufgezeichnete `lane_target()`-Aufruf in diesem Segment lag bereits bei +65,535 s und dauerte 0,43 ms. Die Verzögerung ist damit **nicht schlicht der erste Aufruf der Funktion**; möglicherweise wurde hier erstmals ein teurerer Pfad mit plausiblen zwei Spurgrenzen erreicht. `lanefulActive` wurde erst bei +101,157 s wahr. Die genaue Ursache der 101 ms bleibt Gegenstand der separaten Laneful-Untersuchung.
+
+Die rlogs enthalten SPI-NACKs auch außerhalb des Fensters. Die ersten Zähleränderungen nahe dem `commIssue` liegen erst bei +84,724 s. Ein ursächlicher Zusammenhang mit dem Controls-Aussetzer ist nicht belegt.
+
+Nachvollziehbar mit `PYTHONPATH=. python tools/scripts/inspect_comm_issue_route.py d4dd69160a48f11f/000002b3--dbe47b015a 1 2 7 8 9`.
