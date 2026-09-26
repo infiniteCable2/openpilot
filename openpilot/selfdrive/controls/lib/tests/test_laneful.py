@@ -6,7 +6,8 @@ import numpy as np
 
 from openpilot.cereal import messaging
 from openpilot.selfdrive.controls.lib.laneful import (ARM_TIME, BRIEF_LINE_HOLD, DT_CTRL, ENGAGE_RATE, MAX_ADDED_ACCEL,
-                                                       MAX_MODEL_AGE, MAX_PATH_SHIFT, RELEASE_RATE, LanefulController, lane_target)
+                                                       MAX_MODEL_AGE, MAX_PATH_SHIFT, RELEASE_RATE, LanefulController,
+                                                       lane_target, linear_percentile, virtual_path)
 from openpilot.selfdrive.modeld.constants import ModelConstants
 
 
@@ -38,6 +39,20 @@ class TestLaneful(unittest.TestCase):
     self.assertAlmostEqual(right, -left)
     self.assertGreater(right, 0.0)
     self.assertAlmostEqual(lane_target(model_frame(lane_center=0.2, e2e_offset=0.2), 20.0)[0], 0.0)
+
+  def test_short_percentiles_and_linear_fit_match_reference(self):
+    values = [0.1, 0.2, 0.5, 0.6, 1.0, 1.1]
+    for fraction in (0.1, 0.5, 0.9):
+      self.assertAlmostEqual(linear_percentile(values, fraction), np.percentile(values, fraction * 100))
+
+    x = np.linspace(8.0, 55.0, 20)
+    e2e = 0.001 * x ** 2
+    center = e2e + 0.2 + 0.015 * x + 0.0002 * x ** 2
+    target, heading, gain = virtual_path(center, e2e, x)
+    reference_heading, reference_offset = np.polyfit(x, center - e2e, 1)
+    aligned = e2e + reference_offset + reference_heading * x
+    np.testing.assert_allclose(target, aligned + gain * (center - aligned), atol=1e-12)
+    self.assertAlmostEqual(heading, reference_heading)
 
   def test_real_modelv2_message_layout(self):
     message = messaging.new_message('modelV2')

@@ -13,6 +13,8 @@ to a **bounded correction of the E2E curvature action**. The model path in
 `modelV2.position` is not rewritten. This is a scalar steering approximation
 to a virtual target, not a new trajectory optimizer. The spatial fitting idea
 was informed by [gm1500's lp-e2e-blend experiment](https://github.com/gm1500/openpilot/tree/79762bcaf8555795e309e630329c7b313d92b48b).
+The line fit and short-array percentiles use direct arithmetic to avoid
+first-use NumPy fitting and percentile initialization inside controlsd.
 
 The mode needs both lines with plausible width, sufficient probabilities,
 reasonable standard deviations, and a common horizon with the E2E path. A
