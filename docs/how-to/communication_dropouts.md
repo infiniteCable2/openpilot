@@ -33,3 +33,5 @@ Wenn die Lücke außerhalb von `SubMaster.update` liegt, Scheduler-Tracing für 
 Eine Vergleichsfahrt mit und ohne eGPU-Verbindung ist erst aussagekräftig, wenn dieselben Messpunkte vorliegen. Die zuerst beobachteten `commIssue`-Muster müssen getrennt ausgewertet werden.
 
 Beispiele: [Route `000002a5`](../concepts/communication_dropout_000002a5.md) mit einer 129,5-ms-Controlsd-Lücke, [Route `000002ac`](../concepts/communication_dropout_000002ac.md) mit beiden Mustern, [Route `000002ad`](../concepts/communication_dropout_000002ad.md) mit Python-Stacks in zwei blockierten Params-Aufrufen und [Route `000002ae`](../concepts/communication_dropout_000002ae.md) mit nativen Zeiten für parallele Speicherlatenzen.
+
+Für die seitdem bestätigten mehrsekündigen Dateioperationen auf dem Comma 4 beschreibt [Speicherlatenz-Diagnose](storage_latency_diagnostics.md) einen passiven Zähler-Sampler und den anschließenden ext4-/Block-/UFS-Trace.
