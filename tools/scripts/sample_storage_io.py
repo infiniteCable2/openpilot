@@ -80,9 +80,11 @@ def sample(args: argparse.Namespace) -> None:
   print(f'{output} samples={count}')
 
 
-def summarize(path: Path, device: str) -> None:
+def summarize(path: Path, device: str, start_ns: int | None = None, end_ns: int | None = None) -> None:
   rows = [json.loads(line) for line in path.read_text().splitlines()]
-  samples = [row for row in rows if 'mono_ns' in row and device in row['disk']]
+  samples = [row for row in rows if 'mono_ns' in row and device in row['disk']
+             and (start_ns is None or row['mono_ns'] >= start_ns)
+             and (end_ns is None or row['mono_ns'] <= end_ns)]
   if len(samples) < 2:
     raise ValueError(f'need at least two samples for {device}')
   intervals = []
@@ -99,8 +101,25 @@ def summarize(path: Path, device: str) -> None:
   print(f'{device}: {len(samples)} samples; mono_ns {samples[0]["mono_ns"]}..{samples[-1]["mono_ns"]}')
   total_writes = sum(row['writes'] for row in intervals)
   total_write_ms = sum(row['write_ms'] for row in intervals)
+  total_weighted_io_ms = sum(row['weighted_io_ms'] for row in intervals)
   max_in_flight = max(row['in_flight'] for row in intervals)
-  print(f'total_writes={total_writes} total_write_ms={total_write_ms} max_in_flight={max_in_flight}')
+  max_writeback_kb = max(row['writeback_kb'] or 0 for row in intervals)
+  print(f'total_writes={total_writes} total_write_ms={total_write_ms} '
+        f'total_weighted_io_ms={total_weighted_io_ms} max_in_flight={max_in_flight} '
+        f'max_writeback_kb={max_writeback_kb}')
+  busy_no_write_ms = 0.0
+  longest_busy_no_write_ms = 0.0
+  longest_busy_no_write_end_ns = None
+  for row in intervals:
+    if row['in_flight'] > 0 and row['writes'] == 0:
+      busy_no_write_ms += row['elapsed_ms']
+      if busy_no_write_ms > longest_busy_no_write_ms:
+        longest_busy_no_write_ms = busy_no_write_ms
+        longest_busy_no_write_end_ns = row['mono_ns']
+    else:
+      busy_no_write_ms = 0.0
+  print(f'longest_busy_no_write_ms={longest_busy_no_write_ms:.1f} '
+        f'end_mono_ns={longest_busy_no_write_end_ns}')
   active = [row for row in intervals if row['weighted_io_ms'] or row['write_ms'] or row['in_flight']]
   if not active:
     print('no measurable queue latency in this sample')
@@ -120,11 +139,13 @@ def main() -> None:
   summary = subparsers.add_parser('summary')
   summary.add_argument('path', type=Path)
   summary.add_argument('--device', default='sda')
+  summary.add_argument('--start-ns', type=int, help='first CLOCK_MONOTONIC timestamp to include')
+  summary.add_argument('--end-ns', type=int, help='last CLOCK_MONOTONIC timestamp to include')
   args = parser.parse_args()
   if args.command == 'sample':
     sample(args)
   else:
-    summarize(args.path, args.device)
+    summarize(args.path, args.device, args.start_ns, args.end_ns)
 
 
 if __name__ == '__main__':

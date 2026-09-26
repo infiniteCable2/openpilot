@@ -4,7 +4,7 @@
 
 Die `params.slowOp`-Logs zeigen die Dauer einzelner Dateioperationen bereits mit monotonen Zeitstempeln. In den Routen `000002ae` bis `000002b3` warteten mehrere Prozesse gleichzeitig teils 5–15 Sekunden in `fsync`, vereinzelt in `mkstemp` oder `open`. Der Persönlichkeitswechsel macht dies sichtbar, ist aber nicht als Auslöser des Speicherpfad-Stillstands belegt. Der Rücksprung des ausgewählten Wertes ist ein separater asynchroner Lese-/Schreibkonflikt, der ab Commit `e870d7e0e3` vermieden wird.
 
-Lesende Geräteprüfung am 26. September 2026: `/data/params` liegt auf `/data`, ext4 auf `/dev/sda12` (UFS-Modell `SDINDDH4-128G`). `/data` ist zu 90 % belegt; 8,9 GB und 99 % der Inodes sind frei. Die Mount-Option `discard` ist aktiv. `/sys/fs/ext4/sda12/errors_count` ist 0, und die derzeitigen UFS-Debug-Fehlerstatistiken melden keine Fehler. Das belegt weder einen intakten noch einen defekten Speicher. Auf dem Gerät läuft derzeit `logging`-Commit `bddc705674`, also noch ohne den Persönlichkeits-Worker aus `e870d7e0e3`.
+Lesende Geräteprüfung am 26. September 2026: `/data/params` liegt auf `/data`, ext4 auf `/dev/sda12` (UFS-Modell `SDINDDH4-128G`). Vor dem Leeren des Model-Caches war `/data` zu 90 % belegt; danach waren etwa 17 GB frei (81 % belegt). Die Mount-Option `discard` ist aktiv. `/sys/fs/ext4/sda12/errors_count` blieb 0, und die UFS-Debug-Fehlerstatistiken meldeten keine Fehler. Das belegt weder einen intakten noch einen defekten Speicher. Route `000002b4` lief mit dem Persönlichkeits-Worker aus `e870d7e0e3` und dem Sampler aus `f2ab95a958`.
 
 ## Stufe 1: niedrige Last, gleiche Zeitbasis
 
@@ -15,11 +15,35 @@ Auf dem Gerät nach Aktualisierung des Branches:
 ```sh
 sudo python3 /data/openpilot/tools/scripts/sample_storage_io.py sample --seconds 900 --interval 0.2
 python3 /data/openpilot/tools/scripts/sample_storage_io.py summary /dev/shm/openpilot-storage-<ID>.jsonl --device sda
+# Ereignisfenster mit CLOCK_MONOTONIC-Zeitstempeln aus dem Rlog eingrenzen:
+python3 /data/openpilot/tools/scripts/sample_storage_io.py summary /dev/shm/openpilot-storage-<ID>.jsonl --device sda --start-ns <START> --end-ns <ENDE>
 ```
 
 Der Sampler gibt den konkreten Dateinamen aus. Die Datei muss vor dem nächsten Neustart aus `/dev/shm` gesichert werden. Für eine kontrollierte Vergleichsmessung zuerst 2–3 Minuten im Stand ohne Bedienung, dann mehrfach die Persönlichkeit ändern; Start- und Endzeit sowie eGPU-/USB-Konfiguration notieren. Bei späteren Fahrten kann derselbe Sampler vor Abfahrt für höchstens eine Stunde gestartet werden. Es wird kein `fsync` auf der Ausgabe ausgeführt.
 
 Ein fünfsekündiger Funktionstest auf dem Gerät lieferte 25 Proben im 200-ms-Raster und blieb ohne messbare Warteschlange. Das ist nur eine Leerlaufprobe und keine Aussage über die früheren 10-s-Stillstände.
+
+## Messung auf Route `d4dd69160a48f11f/000002b4--290afb393e`
+
+Der Sampler lief von `mono_ns=129038983883` bis `1848438530745` (8598 Proben, Boot-ID `4a77b122-7081-4621-b4ae-c9b47c15f5c7`) und deckt die Route ab. Die Rlog-Ereignisse benutzen als Basis `350377386138 ns` für die relativen Zeiten unten. Es gab 63 protokollierte Persönlichkeitstastendrücke, 17 abgeschlossene `LongitudinalPersonality`-Schreibvorgänge und keinen `personalityParamChanged`-Rücksprung. Der Worker fasst schnelle Änderungen also zusammen. Es gibt keinen Hinweis auf eine sich selbst wiederholende Schreibschleife. Die 17 Schreibvorgänge sind dennoch echte, synchrone Dateisystemoperationen im separaten Worker.
+
+Der schwerste Vorgang begann mit einem Tastendruck bei `+549,175 s` und endete bei `+566,073 s`: `LongitudinalPersonality` benötigte `16.892,46 ms`, davon `16.863,32 ms` im Datei-`fsync`. Während der weiteren Tastendrücke wurde die lokale Auswahl sofort aktualisiert; anschließend schrieb der Worker den zuletzt gewählten Wert in `4.741,76 ms`. Gleichzeitig brauchten *andere Prozesse* für `LiveDelay` `5,78 s`, für `LiveTorqueParameters` `10,55 s`, für `LiveParametersV2` `10,71 s`, für `CarBatteryCapacity` `14,66 s` und für `UptimeOffroad` `14,16 s`. Deren Zeit lag teils in `mkstemp`, teils in `flock` hinter einem langen Verzeichnis-`fsync`. Das ist eine gemeinsame Speicherpfad-Störung; ob der Persönlichkeits-`fsync` sie auslöste oder nur mitbetroffen war, ist noch offen.
+
+| Monotones Fenster (s) | Fertige `sda`-Writes | Summe Write-Latenzen | Maximale Queue | Längste Zeit mit Queue ohne abgeschlossene Writes |
+| --- | ---: | ---: | ---: | ---: |
+| 850–873, Vergleich | 195 | 5,09 s | 22 | 0 s |
+| 899–922, schwere Störung | 178 | 479,32 s | 40 | 16,80 s |
+| 620–640, früherer Tastendruckblock | 161 | 79,17 s | 33 | 5,40 s |
+
+Die summierten Write-Latenzen zählen parallel laufende Anforderungen und sind **keine** Dauer auf der Uhr. Besonders aussagekräftig ist, dass zwischen ungefähr `899,64 s` und `916,24 s` laufend Anforderungen in der Queue standen, ohne dass ein Write abgeschlossen wurde. Die Zahl abgeschlossener Writes war im schweren Fenster nicht höher als im gleich langen Vergleichsfenster. Die 200-ms-Proben beweisen noch nicht, ob UFS-Firmware, Blocktreiber, ext4/Writeback oder eine andere I/O-Quelle den Stillstand auslöste.
+
+Im Rlog fehlen `carControl`, `carState` und `controlsTiming` zwischen `+553,311 s` und `+566,02 s` rund `12,7 s`. `controlsState` und `controlsStateIC` aus demselben `controlsd`-Prozess sowie `carStateSP` aus demselben `card`-Prozess liefen in dieser Zeit weiter. Deshalb belegt diese Rlog-Lücke **keinen** 12,7-s-Steuerungsausfall; selektiver Verlust beim Aufzeichnen ist naheliegend. In diesem Zeitfenster erschien kein protokollierter `commIssue`. Die einzige `commIssue`-Phase der Route lag schon bei `+95,291` bis `+95,774 s`, vor den Persönlichkeitstastendrücken; das Speicherfenster um diesen frühen Alarm zeigte keine vergleichbare Write-Queue.
+
+Auch nach dem Leeren des Model-Caches trat der lange Speicherpfad-Stillstand auf. Die geringere Belegung allein löst das Problem also nicht. `ext4_errors` blieb über die Messung 0, und der Rlog-Scan fand keine OS-Speicherfehlermeldung. Das schließt eine intermittierende UFS-/Treiberlatenz nicht aus.
+
+## Vergleich mit originalem openpilot
+
+Im aktuellen [upstream `selfdrived.py`](https://github.com/commaai/openpilot/blob/master/openpilot/selfdrive/selfdrived/selfdrived.py) setzt ein Tastendruck `self.personality` und ruft `Params.put('LongitudinalPersonality', ...)` auf; ein zweiter Thread liest den Parameter etwa alle 100 ms zurück und setzt denselben lokalen Wert. Nach der [upstream `Params.put`-Signatur](https://github.com/commaai/openpilot/blob/master/openpilot/common/params.py) ist `block=False` die Vorgabe, sodass der Rückleser bei verzögerter Persistierung den alten Wert sehen kann. Diese Rücksprungursache folgt aus dem Code; sie ist keine dokumentierte upstream-Diagnose für diese Route. Der [C++-Writer](https://github.com/commaai/openpilot/blob/master/openpilot/common/params.cc) hat ausdrücklich noch einen TODO, bei mehreren Werten desselben Keys nur den letzten aus der Queue zu schreiben. Außerdem erzwingt jeder tatsächliche `put` dort Datei- und Verzeichnis-`fsync`. Unser Worker verhindert den Rücksprung und fasst Tastenfolgen zusammen, beseitigt aber nicht die darunterliegende Speicherlatenz.
 
 Die Auswertung verbindet jeden `params.slowOp mono_time_ns`-Bereich mit den Sampler-Proben:
 
