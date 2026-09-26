@@ -34,13 +34,29 @@ def smoothstep(x: np.ndarray) -> np.ndarray:
   return x ** 3 * (10.0 + x * (-15.0 + 6.0 * x))
 
 
+def linear_percentile(ordered: list[float], fraction: float) -> float:
+  """NumPy's default linear percentile for an already sorted short sequence."""
+  position = (len(ordered) - 1) * fraction
+  index = int(position)
+  next_index = min(index + 1, len(ordered) - 1)
+  return float(ordered[index] + (position - index) * (ordered[next_index] - ordered[index]))
+
+
 def virtual_path(center: np.ndarray, e2e: np.ndarray, x: np.ndarray,
                  timing: dict[str, int] | None = None) -> tuple[np.ndarray, float, np.ndarray]:
   """Align E2E to the lane midpoint, then blend its residual path shape."""
+  # Closed-form degree-one least squares avoids a cold linalg initialization in controlsd.
   if timing is not None:
     timing['polyfit_start_ns'] = time.monotonic_ns()
   try:
-    heading, offset = np.polyfit(x, center - e2e, 1)
+    difference = center - e2e
+    mean_x = math.fsum(x) / len(x)
+    mean_difference = math.fsum(difference) / len(difference)
+    spread = math.fsum((xi - mean_x) ** 2 for xi in x)
+    if spread <= 1e-9:
+      raise ValueError("degenerate lane fit")
+    heading = math.fsum((xi - mean_x) * (yi - mean_difference) for xi, yi in zip(x, difference, strict=True)) / spread
+    offset = mean_difference - heading * mean_x
   finally:
     if timing is not None:
       timing['polyfit_end_ns'] = time.monotonic_ns()
@@ -82,7 +98,9 @@ def lane_target(model, speed: float, timing: dict[str, int] | None = None) -> tu
   if np.count_nonzero(fit) < 5 or x[fit][-1] < 28.0:
     raise ValueError("short shared path horizon")
   widths = right_y[fit] - left_y[fit]
-  low, median, high = np.percentile(widths, (10.0, 50.0, 90.0))
+  ordered_widths = sorted(widths)
+  low = linear_percentile(ordered_widths, 0.10)
+  high = linear_percentile(ordered_widths, 0.90)
   if low < MIN_WIDTH or high > MAX_WIDTH or high - low > MAX_WIDTH_CHANGE:
     raise ValueError("implausible lane width")
 
@@ -92,7 +110,7 @@ def lane_target(model, speed: float, timing: dict[str, int] | None = None) -> tu
   fit_x = x[fit]
   e2e = np.interp(fit_x, plan_x, plan_y)
   relative = center - e2e
-  disagreement = float(np.percentile(np.abs(relative), 90.0))
+  disagreement = linear_percentile(sorted(np.abs(relative)), 0.90)
   if disagreement >= MAX_PATH_DISAGREEMENT:
     raise ValueError("lane and E2E disagree")
 
@@ -166,7 +184,7 @@ class LanefulController:
           self.target_thread_cpu_ns = time.thread_time_ns() - target_cpu_start_ns
           self.polyfit_start_ns = target_timing.get('polyfit_start_ns', 0)
           self.polyfit_end_ns = target_timing.get('polyfit_end_ns', 0)
-      except (AttributeError, IndexError, TypeError, ValueError, FloatingPointError, np.linalg.LinAlgError):
+      except (AttributeError, IndexError, TypeError, ValueError, FloatingPointError):
         # One missed detection should not cause a release and a second 0.75 s
         # arm cycle. Retain the last bounded command briefly, then fade it.
         self.holding = self.active and 0 <= (now_ns - self.last_good_time) * 1e-9 <= BRIEF_LINE_HOLD
