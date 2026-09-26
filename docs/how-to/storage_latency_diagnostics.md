@@ -88,6 +88,14 @@ Für einen kompakten Vergleich der Block-/UFS-Ereignisse pro Sekunde:
 python3 tools/scripts/summarize_storage_trace_window.py <DATEI.trace> --start-s 2355 --end-s 2390
 ```
 
+### Vorbereitung eines Vorher-/Nachher-Vergleichs
+
+Vor einem möglichen Neu-Flash am 26. September 2026: Boot-ID `13bd32ec-bba7-45d9-bc00-92d05abc1c06`, AGNOS `19.7`, openpilot-Branch `logging` bei `f2ab95a9581ecdf917999f316097d9f765b347a7`, sauberes Git-Arbeitsverzeichnis, `/data` 84 % belegt (14 GB frei), ext4-Fehlerzähler und UFS-`err_state` jeweils 0. Die Prozessliste zeigte keinen übrig gebliebenen Analyseprozess. `codex_storage` und andere private Trace-Instanzen waren nicht mehr vorhanden; der globale Tracer war `nop` und hatte keine Ereignisse aktiviert. Root- und `comma`-Crontab waren leer. Der auf AGNOS installierte `power_drop_monitor.service` ist auf Mici wegen seiner Gerätebedingung inaktiv. Das ist eine Momentaufnahme und schließt frühere oder kurzlebige Hintergrundprozesse nicht aus.
+
+Die nächste gezielte Messung kann im Stand stattfinden: erst eine ruhige Basisphase, dann mehrere Wechsel der Persönlichkeit mit kurzen Pausen. Der Trace erfasst jetzt zusätzlich UFS-Clock-Gating, Hibern8-, Runtime-Power-, Auto-Background-Operations- und SCSI-Fehlerereignisse. Der Diskstats-Sampler nimmt etwa einmal pro Sekunde den lesbaren UFS-Hostzustand aus `show_hba` auf. Beide Erweiterungen wurden auf dem C4 zwei Sekunden lang funktionsgeprüft; die Trace-Instanz wurde danach entfernt. Die Dateien gehen weiterhin ausschließlich nach `/dev/shm`. Diese Zustände sollen den bereits beobachteten Block-`requeue`-Stillstand einer konkreteren Hostphase zuordnen.
+
+Für einen Neu-Flash-Vergleich zuerst die vorhandenen Messungen extern sichern (der Fahrttrace liegt bereits lokal im Arbeitsverzeichnis). Danach denselben Testablauf mit dokumentiertem AGNOS-/openpilot-Commit und zunächst ohne wiederhergestellte Zusatzprozesse oder Parameter ausführen. Ein Verschwinden der Stalls nach dem Flash würde für einen veränderten Software-/Dateisystemzustand sprechen, aber einen intermittierenden Hardwarefehler nicht allein ausschließen. Ein erneuter Stall auf dem frischen Zustand mit demselben Block-/UFS-Muster würde die Suche im Host-, Firmware- und Speicherpfad verstärken.
+
 Erst wenn der Trace einen Kandidaten zeigt, lohnt ein Vergleich mit und ohne eGPU/USB oder eine kontrollierte Untersuchung des aktiven `discard`. Eine Änderung der Mount-Option während einer Fahrt wäre kein erster Diagnoseschritt.
 
 ## Dateisystemprüfung und Grenzen

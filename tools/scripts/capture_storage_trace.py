@@ -29,10 +29,18 @@ OPTIONAL_EVENTS = (
   'block:block_rq_abort',
   'scsi:scsi_dispatch_cmd_start',
   'scsi:scsi_dispatch_cmd_done',
+  'scsi:scsi_dispatch_cmd_error',
   'scsi:scsi_dispatch_cmd_timeout',
+  'scsi:scsi_eh_wakeup',
   'ufs:ufshcd_command',
+  'ufs:ufshcd_clk_gating',
+  'ufs:ufshcd_hibern8_on_idle',
+  'ufs:ufshcd_runtime_resume',
+  'ufs:ufshcd_runtime_suspend',
+  'ufs:ufshcd_auto_bkops_state',
   'ufs:ufshcd_profile_clk_gating',
   'ufs:ufshcd_profile_hibern8',
+  'ufs:ufshcd_profile_clk_scaling',
   'ufs:ufshcd_clk_scaling',
 )
 

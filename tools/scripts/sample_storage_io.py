@@ -16,6 +16,12 @@ DISK_FIELDS = ('reads', 'reads_merged', 'read_sectors', 'read_ms',
 MEMINFO_KEYS = {'Dirty', 'Writeback', 'WritebackTmp'}
 EXT4_ROOT = Path('/sys/fs/ext4/sda12')
 UFS_ROOT = Path('/sys/kernel/debug/1d84000.ufshc')
+UFS_HBA_FIELDS = {'hba->outstanding_tasks', 'hba->outstanding_reqs',
+                  'hba->ufshcd_state', 'hba->clk_gating.state',
+                  'hba->eh_flags', 'hba->errors', 'hba->uic_error',
+                  'hba->saved_err', 'hba->saved_uic_err',
+                  'power_mode_change_cnt', 'hibern8_exit_cnt',
+                  'dme_err_cnt'}
 
 
 def read_text(path: Path) -> str | None:
@@ -43,6 +49,18 @@ def read_meminfo() -> dict[str, int]:
   return result
 
 
+def read_ufs_hba() -> dict[str, str] | None:
+  content = read_text(UFS_ROOT / 'show_hba')
+  if content is None:
+    return None
+  result = {}
+  for line in content.splitlines():
+    key, separator, value = line.partition('=')
+    if separator and key.strip() in UFS_HBA_FIELDS:
+      result[key.strip()] = value.strip()
+  return result
+
+
 def snapshot(devices: set[str], include_ufs: bool) -> dict:
   row = {'mono_ns': time.monotonic_ns(), 'wall_ns': time.time_ns(),
          'disk': read_diskstats(devices), 'mem_kb': read_meminfo(),
@@ -51,6 +69,7 @@ def snapshot(devices: set[str], include_ufs: bool) -> dict:
   if include_ufs:
     row['ufs_err_state'] = read_text(UFS_ROOT / 'err_state')
     row['ufs_req_stats'] = read_text(UFS_ROOT / 'stats/req_stats')
+    row['ufs_hba'] = read_ufs_hba()
   return row
 
 
