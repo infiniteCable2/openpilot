@@ -58,7 +58,17 @@ Die Auswertung verbindet jeden `params.slowOp mono_time_ns`-Bereich mit den Samp
 
 ## Stufe 2: nur beim gezielten Reproduzieren Kernel-Trace
 
-Das Gerät bietet `ext4_sync_file_enter/exit`, `block_rq_issue/complete`, `ufshcd_command`, UFS-Clock-/Hibern8- und SCSI-Timeout-Tracepunkte. Ein kurzer, begrenzter Trace soll an einem reproduzierbaren Persönlichkeitswechsel zeigen, ob die lange Zeit in ext4 vor der Block-Anforderung, zwischen Block-Ausgabe und -Abschluss oder im UFS-/Power-Zustand liegt. `trace_clock` muss dazu auf `mono` gestellt werden; aktuell ist `local` aktiv und dessen Zeitstempel sind über CPUs nicht direkt vergleichbar. Die Tracedaten gehören in einen begrenzten Kernel-Ringpuffer und anschließend nach `/dev/shm`. Vor dem Einschalten müssen aktueller Tracer, Clock, Buffergröße und aktivierte Events gespeichert und anschließend wiederhergestellt werden. Keine dauerhafte ungefilterte Trace-Ausgabe auf `/data`.
+Das Gerät bietet `ext4_sync_file_enter/exit`, `block_rq_issue/complete`, `ufshcd_command`, UFS-Clock-/Hibern8- und SCSI-Timeout-Tracepunkte. Ein kurzer, begrenzter Trace soll an einem reproduzierbaren Persönlichkeitswechsel zeigen, ob die lange Zeit in ext4 vor der Block-Anforderung, zwischen Block-Ausgabe und -Abschluss oder im UFS-/Power-Zustand liegt. Die eigene Trace-Instanz benutzt `trace_clock=mono`, passend zu den openpilot-Logs; die globale Instanz kann auf `local` bleiben. Die Tracedaten gehören in einen begrenzten Kernel-Ringpuffer und anschließend nach `/dev/shm`. Keine dauerhafte ungefilterte Trace-Ausgabe auf `/data`.
+
+`capture_storage_trace.py` verwendet dafür eine **eigene** Tracefs-Instanz `codex_storage`; die globale Konfiguration bleibt unangetastet. Die Instanz erhält standardmäßig 8192 KiB Ringpuffer je CPU und wird nach der angegebenen Dauer gestoppt, als `.trace` plus Metadaten und Überlaufzähler nach `/dev/shm` kopiert und entfernt. Ist der Instanzname bereits belegt oder fehlt ein Pflicht-Tracepunkt, bricht das Skript ab. Auf dem C4 wurden zweisekündige Proben mit `mono`-Zeitstempeln, Block-/UFS-Ereignissen und entferntem Instanzverzeichnis verifiziert; auch 16384 KiB je CPU ließen sich anlegen und wieder freigeben.
+
+```sh
+sudo python3 /data/openpilot/tools/scripts/capture_storage_trace.py --seconds 180 --buffer-kb 8192
+# Für eine unmittelbar bevorstehende Fahrt von etwa 15 Minuten:
+sudo python3 /data/openpilot/tools/scripts/capture_storage_trace.py --seconds 1020 --buffer-kb 16384
+```
+
+Die Ausgabe nennt `TRACE_STARTED` und danach den exakten `.trace`- und `.json`-Pfad. Nach einem Tastendrucktest muss die Datei vor dem nächsten Neustart aus `/dev/shm` gesichert werden. Die `per_cpu_stats` in der JSON-Datei zeigen, ob der Ringpuffer Ereignisse überschrieben oder verworfen hat. `analyze_storage_trace.py <DATEI.trace>` paart ext4-`fsync`- und UFS-Send/Complete-Ereignisse und zeigt deren größte Laufzeiten. Ein 180-Sekunden-Test im Stand am 26. September 2026 ergab 269 vollständige ext4-`fsync`-Paare (maximal 628 ms), 11.486 UFS-Kommandopaare (maximal 80 ms) und auf keiner CPU Überläufe; der 16-Sekunden-Stau trat dabei nicht auf. Bei einem Boot-Fehler vor erreichbarem SSH braucht es eine separate Boot-Trace-Konfiguration; dieser manuelle Lauf kann ihn nicht erfassen.
 
 Erst wenn der Trace einen Kandidaten zeigt, lohnt ein Vergleich mit und ohne eGPU/USB oder eine kontrollierte Untersuchung des aktiven `discard`. Eine Änderung der Mount-Option während einer Fahrt wäre kein erster Diagnoseschritt.
 
