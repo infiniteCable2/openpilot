@@ -70,6 +70,24 @@ sudo python3 /data/openpilot/tools/scripts/capture_storage_trace.py --seconds 10
 
 Die Ausgabe nennt `TRACE_STARTED` und danach den exakten `.trace`- und `.json`-Pfad. Nach einem Tastendrucktest muss die Datei vor dem nächsten Neustart aus `/dev/shm` gesichert werden. Die `per_cpu_stats` in der JSON-Datei zeigen, ob der Ringpuffer Ereignisse überschrieben oder verworfen hat. `analyze_storage_trace.py <DATEI.trace>` paart ext4-`fsync`- und UFS-Send/Complete-Ereignisse und zeigt deren größte Laufzeiten. Ein 180-Sekunden-Test im Stand am 26. September 2026 ergab 269 vollständige ext4-`fsync`-Paare (maximal 628 ms), 11.486 UFS-Kommandopaare (maximal 80 ms) und auf keiner CPU Überläufe; der 16-Sekunden-Stau trat dabei nicht auf. Bei einem Boot-Fehler vor erreichbarem SSH braucht es eine separate Boot-Trace-Konfiguration; dieser manuelle Lauf kann ihn nicht erfassen.
 
+## Fahrt mit Kerneltrace: Route `d4dd69160a48f11f/000002b6--645aecde2a`
+
+Die Messung vom 26. September 2026 verbindet die Rlogs mit einem `mono`-Kerneltrace und 200-ms-Diskstats. Der Trace deckt `mono_ns=1911598614718` bis `2541778007796` ab; auf keiner der acht CPUs wurden Ereignisse verworfen oder überschrieben. `inspect_personality_storage_route.py` liest die lokalen Rlogs auf dem Gerät und gibt die Zeitstempel der Tasten-, Schreib- und `commIssue`-Ereignisse aus. Es sind keine vom Fahrer notierten Zeitpunkte erforderlich.
+
+In der Route wurden 25 Persönlichkeitstastendrücke und 19 abgeschlossene `LongitudinalPersonality`-Writes protokolliert, aber kein `personalityParamChanged`-Rücksprung. Die Auswahl im `selfdriveState` folgte den Tastendrücken sofort. Der Worker fasste einige schnelle Tastenfolgen zusammen und schrieb nicht in einer Endlosschleife. Dennoch dauerten die `Params.put`-Aufrufe um `2041–2054 s` bis zu `5,25 s`; fast die gesamte Zeit lag jeweils im Datei-`fsync`.
+
+Beim späteren Wechsel um `2358,752 s` begann der erste `LongitudinalPersonality`-Write und dauerte `10,862 s` (davon `10,773 s` Datei-`fsync`). Weitere Tastendrücke um `2359,442`, `2359,979`, `2366,607`, `2367,087` und `2367,326 s` änderten die lokale Anzeige, während der Worker wartete. Der nächste Write dauerte `17,459 s` (davon `17,312 s` Datei-`fsync`) und endete erst bei `2387,079 s`; der danach benötigte Write endete bei `2387,408 s`. Parallel warteten `LiveCurvatureParameters`, `LiveTorqueParameters`, `CalibrationParams`, `CarBatteryCapacity` und weitere Keys Sekunden bis über 20 Sekunden in `mkstemp`, `fsync`, `flock` oder Verzeichnis-`fsync`. Die Persönlichkeitsfunktion erzeugt echte synchrone Schreiblast im Worker und kann einen Stau sichtbar machen. Ob ihr Write den Speicherpfad-Stillstand auslöst oder mitbetroffen ist, bleibt offen.
+
+Der Kerneltrace grenzt den Stillstand gegenüber den reinen Diskstats ein: Zwischen `2359,218` und `2369,519 s` wurde ein Block-Read mehrfach requeued; über mehr als zehn Sekunden erschien kein UFS-`scsi_send`. Zwischen `2371,422` und `2386,694 s` wurden weitere Blockanforderungen, darunter Writes, requeued; in diesem Zeitraum gab es ebenfalls keinen UFS-`scsi_send` und keinen Block-Completion. Danach arbeiteten die Queues kurz weiter. Die gepaarten UFS-Kommandos selbst dauerten maximal `85,21 ms`, während ext4-`fsync` bis `17,312 s` dauerte. Das verlegt die auffällige Wartezeit **vor die beobachtete UFS-Kommandobearbeitung beziehungsweise in den Block-/Host-Dispatch-Pfad**. Es beweist noch keine konkrete Ursache im Treiber, in der UFS-Firmware oder in der Hardware. Die Kernelmeldungen enthielten während der Fahrt keinen passenden UFS-Timeout oder ext4-Fehler; `ext4_errors` blieb 0.
+
+`selfdrived` meldete bei `2384,939 s` `deviceState` als nicht lebendig: letztes empfangenes Paket `2379,933 s`, Alter `5005,7 ms`. Nach der Erholung war auch die mittlere Frequenz von `deviceState` und `managerState` zu niedrig; `commIssueRecovered` kam bei `2388,259 s`. Dieses Kommunikationsproblem überlappt zeitlich mit der zweiten Speicherpfad-Pause. Der Fahrzeugzustand war allerdings bereits bei `2380,277 s` mit `manualLongitudinalRequired` auf `disabled` gewechselt. Aus dem Trace folgt daher nicht, dass der Persönlichkeitswechsel den beobachteten Fahrabbruch verursacht hat.
+
+Für einen kompakten Vergleich der Block-/UFS-Ereignisse pro Sekunde:
+
+```sh
+python3 tools/scripts/summarize_storage_trace_window.py <DATEI.trace> --start-s 2355 --end-s 2390
+```
+
 Erst wenn der Trace einen Kandidaten zeigt, lohnt ein Vergleich mit und ohne eGPU/USB oder eine kontrollierte Untersuchung des aktiven `discard`. Eine Änderung der Mount-Option während einer Fahrt wäre kein erster Diagnoseschritt.
 
 ## Dateisystemprüfung und Grenzen
