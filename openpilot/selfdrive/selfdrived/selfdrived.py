@@ -158,6 +158,10 @@ class SelfdriveD(CruiseHelper):
       max(log.LongitudinalPersonality.schema.enumerants.values()),
       self.params
     )
+    self.personality_lock = threading.Lock()
+    self.personality_write_event = threading.Event()
+    self.personality_write_pending: int | None = None
+    self.personality_generation = 0
     self.recalibrating_seen = False
     self.dm_lockout_set = False
     self.dm_uncertain_alerted = False
@@ -536,8 +540,7 @@ class SelfdriveD(CruiseHelper):
     if self.CP.openpilotLongitudinalControl:
       if any(not be.pressed and be.type == ButtonType.gapAdjustCruise for be in CS.buttonEvents):
         if not self.experimental_mode_switched:
-          self.personality = (self.personality - 1) % 3
-          self.params.put('LongitudinalPersonality', self.personality)
+          self._change_personality()
           self.events.add(EventName.personalityChanged)
         self.experimental_mode_switched = False
 
@@ -678,28 +681,68 @@ class SelfdriveD(CruiseHelper):
 
     self.CS_prev = CS
 
+  def _change_personality(self) -> tuple[int, int]:
+    with self.personality_lock:
+      old_personality = self.personality
+      self.personality = (self.personality - 1) % 3
+      self.personality_write_pending = self.personality
+      self.personality_generation += 1
+      self.personality_write_event.set()
+      return old_personality, self.personality
+
   def params_thread(self, evt):
     while not evt.is_set():
       self.is_metric = self.params.get_bool("IsMetric")
       self.is_ldw_enabled = self.params.get_bool("IsLdwEnabled")
       self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
       self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
-      self.personality = self.params.get("LongitudinalPersonality", return_default=True)
+
+      with self.personality_lock:
+        personality_generation = self.personality_generation
+      personality_param = self.params.get("LongitudinalPersonality", return_default=True)
+      with self.personality_lock:
+        # A slow write must not let a stale read undo a button press.
+        if self.personality_write_pending is None and personality_generation == self.personality_generation:
+          self.personality = personality_param
 
       self.mads.read_params()
       time.sleep(0.1)
 
+  def personality_write_thread(self, evt):
+    while not evt.is_set():
+      self.personality_write_event.wait()
+      if evt.is_set():
+        break
+      with self.personality_lock:
+        selected = self.personality_write_pending
+        self.personality_write_event.clear()
+      if selected is None:
+        continue
+
+      self.params.put('LongitudinalPersonality', selected, block=True)
+      with self.personality_lock:
+        if self.personality_write_pending == selected:
+          self.personality_write_pending = None
+        else:
+          self.personality_write_event.set()
+        # Invalidate reads that began before the committed value was visible.
+        self.personality_generation += 1
+
   def run(self):
     e = threading.Event()
     t = threading.Thread(target=self.params_thread, args=(e, ))
+    personality_writer = threading.Thread(target=self.personality_write_thread, args=(e, ))
     try:
       t.start()
+      personality_writer.start()
       while True:
         self.step()
         self.rk.monitor_time()
     finally:
       e.set()
+      self.personality_write_event.set()
       t.join()
+      personality_writer.join()
 
 
 def main():
