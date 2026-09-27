@@ -40,6 +40,15 @@ class TestLaneful(unittest.TestCase):
     self.assertGreater(right, 0.0)
     self.assertAlmostEqual(lane_target(model_frame(lane_center=0.2, e2e_offset=0.2), 20.0)[0], 0.0)
 
+  def test_small_center_error_tapers_without_changing_larger_corrections(self):
+    small = lane_target(model_frame(lane_center=0.04), 20.0)[0]
+    medium = lane_target(model_frame(lane_center=0.15), 20.0)[0]
+    large = lane_target(model_frame(lane_center=0.20), 20.0)[0]
+    self.assertGreater(small, 0.0)
+    self.assertLess(small / 0.04, medium / 0.15)
+    self.assertAlmostEqual(medium / 0.15, large / 0.20, delta=1e-8)
+    self.assertAlmostEqual(lane_target(model_frame(lane_center=-0.04), 20.0)[0], -small)
+
   def test_short_percentiles_and_linear_fit_match_reference(self):
     values = [0.1, 0.2, 0.5, 0.6, 1.0, 1.1]
     for fraction in (0.1, 0.5, 0.9):

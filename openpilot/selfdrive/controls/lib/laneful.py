@@ -20,6 +20,7 @@ MIN_WIDTH, MAX_WIDTH = 2.6, 4.6
 MAX_WIDTH_CHANGE = 0.6
 MAX_PATH_DISAGREEMENT = 0.8
 MAX_PATH_SHIFT = 0.50
+SMALL_ERROR_TAPER = 0.04
 MAX_CORRECTION = 0.00045
 MAX_ADDED_ACCEL = 0.35
 ENGAGE_RATE = 0.0008   # curvature / s; full entry takes at least 0.5 s
@@ -121,6 +122,11 @@ def lane_target(model, speed: float) -> tuple[float, bool, float]:
                 np.dot(weights, field) / denominator)
   if not math.isfinite(error):
     raise ValueError("invalid lane fit")
+
+  # Dampen tiny lane-center differences without a hard deadband or changing
+  # corrections above 4 cm. Keep the E2E path's small natural movements.
+  small_error_gain = min(abs(error) / SMALL_ERROR_TAPER, 1.0)
+  error *= small_error_gain ** 3 * (10.0 + small_error_gain * (-15.0 + 6.0 * small_error_gain))
 
   strong = probability >= 0.90 and std <= 0.20
   prob_quality = float(np.clip((probability - 0.70) / 0.20, 0.0, 1.0))
