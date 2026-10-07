@@ -120,8 +120,6 @@ class UIState(UIStateSP):
     self.CP: car.CarParams | None = None
     self.light_sensor: float = -1.0
 
-    self.dark_mode: bool = False
-    self.onroad_screen_timeout: bool = False
     self.enable_accel_bar: bool = False
     self.ic_show_egpu_temperatures: bool = False
     self.has_alert: bool = False
@@ -303,8 +301,6 @@ class UIState(UIStateSP):
 
     UIStateSP.update_params(self)
 
-    self.dark_mode = self.params.get_bool("DarkMode")
-    self.onroad_screen_timeout = self.params.get_bool("DisableScreenTimer")
     self.enable_accel_bar = self.params.get_bool("ShowAccelBar")
     self.ic_show_egpu_temperatures = self.params.get_bool("ICShowEgpuTemperatures")
 
@@ -397,9 +393,6 @@ class Device(DeviceSP):
 
       clipped_brightness = float(np.interp(clipped_brightness, [0, 1], [min_brightness, 100]))
 
-    if ui_state.started and ui_state.dark_mode:
-      clipped_brightness = 1.0
-
     brightness = round(self._brightness_filter.update(clipped_brightness))
 
     if gui_app.sunnypilot_ui():
@@ -432,7 +425,7 @@ class Device(DeviceSP):
         callback()
     self._prev_timed_out = interaction_timeout
 
-    self._set_awake((ui_state.ignition and not ui_state.onroad_screen_timeout) or not interaction_timeout or PC)
+    self._set_awake(ui_state.ignition or not interaction_timeout or PC)
 
   def _set_awake(self, on: bool, _ui_state=None):
     # screensaver holds _awake True, so waking is not a state change
