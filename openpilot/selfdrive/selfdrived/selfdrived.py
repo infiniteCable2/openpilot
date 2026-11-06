@@ -158,6 +158,8 @@ class SelfdriveD:
     self.personality_write_event = threading.Event()
     self.personality_write_pending: int | None = None
     self.personality_generation = 0
+    self.distance_button_pressed_frame: int | None = None
+    self.distance_button_long_press = False
     self.recalibrating_seen = False
     self.dm_lockout_set = False
     self.dm_uncertain_alerted = False
@@ -533,11 +535,7 @@ class SelfdriveD:
     if CS.gearShifter == car.CarState.GearShifter.park and self.mads.enabled:
       self.events.remove(EventName.canBusMissing)
 
-    # Decrement personality on distance button press
-    if self.CP.openpilotLongitudinalControl:
-      if any(not be.pressed and be.type == ButtonType.gapAdjustCruise for be in CS.buttonEvents):
-        self._change_personality()
-        self.events.add(EventName.personalityChanged)
+    self._update_distance_button(CS)
 
     self.icbm.run(CS, self.sm['carControl'], self.sm['longitudinalPlanSP'], self.is_metric)
 
@@ -674,6 +672,37 @@ class SelfdriveD:
     self.publish_selfdriveState(CS)
 
     self.CS_prev = CS
+
+  def _update_distance_button(self, CS):
+    if not CS.canValid:
+      self.distance_button_pressed_frame = None
+      self.distance_button_long_press = False
+      return
+
+    released = False
+    for button in CS.buttonEvents:
+      if button.type == ButtonType.gapAdjustCruise:
+        if button.pressed:
+          if self.distance_button_pressed_frame is None:
+            self.distance_button_pressed_frame = self.sm.frame
+        else:
+          released = True
+
+    if self.distance_button_pressed_frame is None:
+      return
+    if not self.distance_button_long_press and (self.sm.frame - self.distance_button_pressed_frame) * DT_CTRL >= 1.0:
+      self.distance_button_long_press = True
+      if self.params.get("ModelRunnerTypeCache") == custom.ModelManagerSP.Runner.tinygrad:
+        enabled = not self.params.get_bool("Blendful")
+        self.params.put_bool("Blendful", enabled)
+        event = custom.OnroadEventSP.EventName.blendfulEnabled if enabled else custom.OnroadEventSP.EventName.blendfulDisabled
+        self.events_sp.add(event)
+    if released:
+      if not self.distance_button_long_press and self.CP.openpilotLongitudinalControl:
+        self._change_personality()
+        self.events.add(EventName.personalityChanged)
+      self.distance_button_pressed_frame = None
+      self.distance_button_long_press = False
 
   def _change_personality(self) -> tuple[int, int]:
     with self.personality_lock:
