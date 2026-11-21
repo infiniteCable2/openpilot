@@ -13,13 +13,12 @@ import os
 os.environ['GMMU'] = '0'
 from tinygrad.device import Device
 import numpy as np
-import threading
 import time
 from setproctitle import setproctitle
 
 import openpilot.cereal.messaging as messaging
 from openpilot.common.hardware import COMMA_HARDWARE
-from openpilot.selfdrive.modeld.helpers import chestnut_present, wait_for_chestnut
+from openpilot.selfdrive.modeld.helpers import chestnut_present, load_driving_models
 from openpilot.cereal import log
 from opendbc.car.structs import car
 from openpilot.cereal.services import SERVICE_LIST
@@ -301,35 +300,8 @@ def main(demo=False):
   cloudlog.warning("loading model")
   st = time.monotonic()
 
-  model = None
-  if CHESTNUT:
-    big_model = None
-    def load_big():
-      nonlocal big_model
-      try:
-        wait_for_chestnut()
-        m = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=True)
-        m.warmup()
-        big_model = m
-      except Exception:
-        cloudlog.exception("chestnut load failed")
-    loader = threading.Thread(target=load_big, daemon=True)
-    loader.start()
-    loader.join(BIG_MODEL_TIMEOUT)
-    model = big_model
-    if model is None and not params.get_bool("ChestnutRetry"):
-      # a crank can cut the chestnut power during the load, retry once with an onroad cycle
-      cloudlog.error("big model load failed, cycling onroad to retry")
-      params.put_bool("ChestnutRetry", True)
-      params.put_bool("OnroadCycleRequested", True)
-    else:
-      params.put_bool("ChestnutActive", model is not None)
-
-  small_model = ModelState(cam_w=vipc_client_main.width, cam_h=vipc_client_main.height, chestnut=False) if model is None or CHESTNUT else None
-  if model is None:
-    model = small_model
-  params.put_bool("ChestnutLoading", False)
-  assert model is not None
+  model, small_model = load_driving_models(lambda big: ModelState(vipc_client_main.width, vipc_client_main.height, chestnut=big),
+                                          CHESTNUT, BIG_MODEL_TIMEOUT, params)
   cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
 
   config_realtime_process(7, 54)

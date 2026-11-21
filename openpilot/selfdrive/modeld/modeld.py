@@ -16,7 +16,6 @@ from tinygrad.helpers import round_up
 from tinygrad.uop.ops import UOp
 import math
 import pickle
-import threading
 import time
 import numpy as np
 import openpilot.cereal.messaging as messaging
@@ -40,7 +39,7 @@ from openpilot.selfdrive.controls.lib.drive_helpers import get_accel_from_plan, 
 from openpilot.selfdrive.modeld.parse_model_outputs import Parser
 from openpilot.selfdrive.modeld.fill_model_msg import fill_model_msg, fill_driving_model_data, fill_pose_msg, PublishState
 from openpilot.selfdrive.modeld.constants import ModelConstants, Plan
-from openpilot.selfdrive.modeld.helpers import MODELS_DIR, chestnut_present, chestnut_compiled, modeld_pkl_path, load_oob, wait_for_chestnut
+from openpilot.selfdrive.modeld.helpers import MODELS_DIR, chestnut_present, chestnut_compiled, modeld_pkl_path, load_oob, load_driving_models
 from openpilot.sunnypilot.livedelay.helpers import LateralDelayCache
 from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
 from openpilot.sunnypilot.selfdrive.controls.lib.relc import RoadEdgeLaneChangeController
@@ -271,35 +270,8 @@ def main(demo=False):
 
   st = time.monotonic()
   cloudlog.warning("loading model")
-  model = None
-  if CHESTNUT:
-    big_model = None
-    def load_big():
-      nonlocal big_model
-      try:
-        wait_for_chestnut()
-        m = ModelState(vipc_client_main.width, vipc_client_main.height, True)
-        m.warmup()
-        big_model = m
-      except Exception:
-        cloudlog.exception("big model load failed")
-    loader = threading.Thread(target=load_big, daemon=True)
-    loader.start()
-    loader.join(BIG_MODEL_TIMEOUT)
-    model = big_model
-    if model is None and not params.get_bool("ChestnutRetry"):
-      # a crank can cut the chestnut power during the load, retry once with an onroad cycle
-      cloudlog.error("big model load failed, cycling onroad to retry")
-      params.put_bool("ChestnutRetry", True)
-      params.put_bool("OnroadCycleRequested", True)
-    else:
-      params.put_bool("ChestnutActive", model is not None)
-
-  small_model = ModelState(vipc_client_main.width, vipc_client_main.height, False) if model is None or CHESTNUT else None
-  if model is None:
-    model = small_model
-  assert model is not None
-  params.put_bool("ChestnutLoading", False)
+  model, small_model = load_driving_models(lambda big: ModelState(vipc_client_main.width, vipc_client_main.height, big),
+                                          CHESTNUT, BIG_MODEL_TIMEOUT, params)
   cloudlog.warning(f"models loaded in {time.monotonic() - st:.1f}s, modeld starting")
 
   config_realtime_process(7, 54)

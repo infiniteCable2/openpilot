@@ -211,14 +211,15 @@ class SelfdriveD:
       self.startup_event = None
 
     loading = self.params.get_bool("ChestnutLoading")
+    big_active = self.params.get("ChestnutActive")
     if self.big_model_loading and not loading:
       self.big_model_ready_t = time.monotonic()
-      self.events_sp.add(custom.OnroadEventSP.EventName.bigModelReady)
+      if big_active is True:
+        self.events_sp.add(custom.OnroadEventSP.EventName.bigModelReady)
     self.big_model_loading = loading
     if self.big_model_loading:
       self.events.add(EventName.bigModelLoading)
 
-    big_active = self.params.get("ChestnutActive")
     chestnut_present = self.sm['deviceState'].chestnutPresent
     model_unavailable = big_active is True and self.sm.seen['modelV2'] and not self.sm.alive['modelV2']
     big_failed = big_active is False or model_unavailable or (self.big_model_active and not chestnut_present)

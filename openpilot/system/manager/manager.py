@@ -12,7 +12,7 @@ from openpilot.common.utils import atomic_write
 from openpilot.common.params import Params, ParamKeyFlag
 from openpilot.common.text_window import TextWindow
 from openpilot.common.hardware import HARDWARE, PC
-from openpilot.system.hardware.chestnut.flash import set_pcie_power
+from openpilot.system.hardware.chestnut.power import ChestnutOffroadPower
 from openpilot.system.manager.helpers import unblock_stdout, save_bootlog
 from openpilot.system.manager.process import ensure_running
 from openpilot.system.manager.process_config import managed_processes
@@ -137,8 +137,8 @@ def manager_thread() -> None:
 
   started_prev = False
   ignition_prev = False
-  chestnut_powered: bool | None = None
-  chestnut_power_attempt = 0.
+  chestnut_power = ChestnutOffroadPower()
+  model_processes = (managed_processes['modeld'], managed_processes['modeld_tinygrad'])
 
   while True:
     sm.update(1000)
@@ -154,29 +154,6 @@ def manager_thread() -> None:
     if ignition and not ignition_prev:
       params.clear_all(ParamKeyFlag.CLEAR_ON_IGNITION_ON)
 
-    # Chestnut's PCIe/GPU rails draw power and spin fans even while idle, so keep
-    # them powered only while onroad. modeld owns the GPU, and it is gated on
-    # `started`, so track power against `started` to avoid restarting modeld
-    # against a rail we just cut (e.g. during the ignition->offroad lag).
-    chestnut_present = sm['deviceState'].chestnutPresent
-    if not chestnut_present:
-      chestnut_powered = None
-    elif chestnut_powered != started and (started or time.monotonic() - chestnut_power_attempt >= 5.):
-      # Stop the GPU owner first so tinygrad can drain and finalize the device
-      # before the downstream PCIe rails are removed. Either modeld variant may
-      # hold it depending on the active runner; stopping a dead process is a noop.
-      if not started:
-        for name in ("modeld", "modeld_tinygrad"):
-          managed_processes[name].stop()
-
-      chestnut_power_attempt = time.monotonic()
-      power_changed = set_pcie_power(started)
-      if power_changed or started:
-        # modeld performs the same link-up during initialization, so a failed
-        # power-on preflight must not block the normal small-model fallback.
-        chestnut_powered = started
-      cloudlog.event("chestnut power", enabled=started, success=power_changed, error=not power_changed)
-
     # update offroad state for services that don't subscribe to deviceState
     if started != started_prev:
       params.put_bool("IsOffroad", not started, block=True)
@@ -185,6 +162,11 @@ def manager_thread() -> None:
     ignition_prev = ignition
 
     ensure_running(managed_processes.values(), started, params=params, CP=sm['carParams'], not_run=ignore)
+
+    # ensure_running has requested both model processes to stop when offroad.
+    chestnut_power.update(time.monotonic(), fresh=sm.updated['deviceState'] and sm.valid['deviceState'],
+                          started=started, present=sm['deviceState'].chestnutPresent,
+                          model_running=any(p.proc is not None and p.proc.exitcode is None for p in model_processes))
 
     running = ' '.join("{}{}\u001b[0m".format("\u001b[32m" if p.proc.is_alive() else "\u001b[31m", p.name)
                        for p in managed_processes.values() if p.proc)
