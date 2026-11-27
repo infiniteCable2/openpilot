@@ -105,8 +105,10 @@ class DynamicSteeringLearnerGraph(Widget):
       has_preview = preview_corrections.shape == fit_corrections.shape and np.any(preview_corrections)
       if has_preview:
         self._cached_preview_curve = CurvatureDLookup.interp_curve_value(
-          preview_corrections, preview_valid, v_ego, abs_curvatures
+          preview_corrections, preview_valid, v_ego, abs_curvatures, apply=False
         )
+      else:
+        self._cached_preview_curve.fill(0.0)
       self._cached_min_y, self._cached_max_y = self._compute_y_bounds(self._cached_preview_curve, self._cached_fit_curve)
       self._cached_lcp_frame = lcp_frame
 

@@ -64,6 +64,8 @@ class Controls(ControlsExt):
     self.roll_compensation = 0.0
     self.model_desired_curvature = 0.0
     self.desired_curvature = 0.0
+    self.curvature_correction = 0.0
+    self.curvature_learning_valid = False
 
     self.enable_curvature_controller = self.params.get_bool("EnableCurvatureController")
     self.enable_curvatured = self.params.get_bool("EnableCurvatureD")
@@ -145,13 +147,6 @@ class Controls(ControlsExt):
 
       self.LaC.extension.update_lateral_lag(self.lat_delay)
 
-    if self.CP.steerControlType == car.CarParams.SteerControlType.curvature:
-      curvature_params = self.sm['lateralCurvatureParameters']
-      if self.sm.all_checks(['lateralCurvatureParameters']) and curvature_params.useParams:
-        self.curvatured.update_live_params(curvature_params)
-      else:
-        self.curvatured.reset()
-
     long_plan = self.sm['longitudinalPlan']
     model_v2 = self.sm['modelV2']
 
@@ -197,15 +192,14 @@ class Controls(ControlsExt):
     self.model_desired_curvature = float(model_v2.action.desiredCurvature)
     if self.enable_smooth_steer:
       new_desired_curvature = self.smooth_steer.update(new_desired_curvature)
-    if self.CP.steerControlType == car.CarParams.SteerControlType.curvature:
-      self.LaC.set_steering_slightly_pressed(CS_IC.steeringSlightlyPressed)
-      # CurvatureD correction routed as additive term on the controller output (not setpoint shift)
-      if CC.latActive and self.enable_curvatured and self.sm.all_checks(['lateralCurvatureParameters']):
-        correction = self.curvatured.get_correction(self.desired_curvature, CS.vEgo)
-      else:
-        correction = 0.0
-      self.LaC.set_curvature_correction(correction)
     self.desired_curvature, curvature_limited = clip_curvature(CS.vEgo, self.desired_curvature, new_desired_curvature, lp.roll)
+    if self.CP.steerControlType == car.CarParams.SteerControlType.curvature:
+      self.curvatured.update_from_submaster(self.sm)
+      self.LaC.set_steering_slightly_pressed(CS_IC.steeringSlightlyPressed)
+      apply_correction = CC.latActive and self.enable_curvatured
+      self.curvature_correction = self.curvatured.get_correction(self.desired_curvature, CS.vEgo) if apply_correction else 0.0
+      self.LaC.set_curvature_correction(self.curvature_correction)
+      self.curvature_learning_valid = CC.latActive and not curvature_limited and not self.sm.valid['lateralManeuverPlan']
     lat_delay = self.sm["lateralDelay"].lateralDelay + LAT_SMOOTH_SECONDS
 
     actuators.curvature = self.desired_curvature
@@ -323,7 +317,13 @@ class Controls(ControlsExt):
     # controlsStateIC
     cs_ic_send = messaging.new_message('controlsStateIC')
     cs_ic_send.valid = CS.canValid
-    cs_ic_send.controlsStateIC.modelDesiredCurvature = self.model_desired_curvature
+    cs_ic = cs_ic_send.controlsStateIC
+    cs_ic.modelDesiredCurvature = self.model_desired_curvature
+    if self.curvature_learning_valid and self.enable_curvatured and math.isfinite(lac_log.output) and not lac_log.saturated:
+      learning = cs_ic.init('curvatureLearning')
+      learning.valid = True
+      learning.desiredCurvature = self.desired_curvature
+      learning.correction = self.curvature_correction
     self.pm.send('controlsStateIC', cs_ic_send)
 
     # carControl

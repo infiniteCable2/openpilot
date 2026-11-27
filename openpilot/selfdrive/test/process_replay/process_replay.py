@@ -457,7 +457,7 @@ CONFIGS = [
     proc_name="controlsd",
     pubs=["vehicleParameters", "lateralTorqueParameters", "lateralCurvatureParameters", "modelV2", "selfdriveState",
           "extrinsicsCalibration", "deviceMotion", "longitudinalPlan", "longitudinalPlanIC", "carState", "carOutput",
-          "driverMonitoringState", "onroadEvents", "driverAssistance"],
+          "driverMonitoringState", "onroadEvents", "driverAssistance", "carStateIC"],
     subs=["carControl", "carControlIC", "controlsState", "controlsStateIC"],
     ignore=["logMonoTime", ],
     init_callback=get_car_params_callback,
@@ -556,7 +556,7 @@ CONFIGS = [
   ),
   ProcessConfig(
     proc_name="curvatured",
-    pubs=["deviceMotion", "extrinsicsCalibration", "lateralDelay", "carState", "carStateIC", "carControl", "carControlIC", "controlsStateIC"],
+    pubs=["deviceMotion", "extrinsicsCalibration", "lateralDelay", "carState", "carStateIC", "carControl", "controlsStateIC"],
     subs=["lateralCurvatureParameters"],
     ignore=["logMonoTime"],
     init_callback=get_car_params_callback,

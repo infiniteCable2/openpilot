@@ -508,6 +508,13 @@ struct CustomReserved13 @0xcd96dafb67a082d0 {
 
 struct ControlsStateIC @0xb057204d7deadf3f {
   modelDesiredCurvature @0 :Float32;
+  curvatureLearning @1 :CurvatureLearning;
+
+  struct CurvatureLearning {
+    valid @0 :Bool;
+    desiredCurvature @1 :Float32;
+    correction @2 :Float32;  # additive correction requested before actuator limits
+  }
 }
 
 struct LongitudinalPlanIC @0xbd443b539493bc68 {

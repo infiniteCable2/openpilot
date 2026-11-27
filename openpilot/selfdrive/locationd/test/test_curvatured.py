@@ -1,6 +1,6 @@
 import numpy as np
 
-from openpilot.cereal import custom
+from openpilot.cereal import custom, log
 from openpilot.common.test import OpenpilotTestCase
 from opendbc.car.structs import car
 
@@ -88,7 +88,7 @@ class TestCurvatureEstimator(OpenpilotTestCase):
     idx = CurvatureDLookup.indices(desired_curvature, v_ego)
     assert idx is not None
     speed_idx, curvature_idx = idx
-    assert estimator.bias[idx] > CurvatureDLookup.correction_cap(desired_curvature, v_ego)
+    assert estimator.bias[idx] > CurvatureDLookup.interp_curve_value(estimator.fit_corrections, estimator.fit_valid, v_ego, desired_curvature)
     assert estimator.preview_valid[speed_idx, curvature_idx]
     assert estimator.preview_corrections[speed_idx, curvature_idx] > estimator.fit_corrections[speed_idx, curvature_idx]
 
@@ -123,23 +123,49 @@ class TestCurvatureEstimator(OpenpilotTestCase):
     assert estimator.preview_valid[idx]
     assert estimator.preview_corrections[idx] > 0.0
 
-  def test_relative_correction_cap_envelope_fades_after_last_supported_bucket(self):
-    v_ego = float(CurvatureDLookup.SPEED_ANCHORS[5])
-    max_bucket_idx = CurvatureDLookup.max_supported_bucket_index(v_ego)
-    assert max_bucket_idx is not None
-    assert max_bucket_idx < len(CurvatureDLookup.CURVATURE_BUCKET_CENTERS)
+  def test_enabling_preview_refreshes_data_learned_while_hidden(self):
+    estimator = get_estimator()
+    k, v = float(estimator.CURVATURE_BUCKET_CENTERS[5]), float(estimator.SPEED_ANCHORS[3])
+    estimator.add_measurement(k, 0.75 * k, v, schedule_only=True)
+    estimator.refresh_curve_lookups(20)
+    assert not estimator.preview_valid.any()
 
-    inner_idx = 0
-    supported_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[max_bucket_idx])
-    fade_end_curvature = float(CurvatureDLookup.cap_zero_curvature(v_ego))
-    beyond_curvature = min(fade_end_curvature * 1.05, CurvatureDLookup.CURVATURE_MAX)
+    estimator.publish_preview_data = True
+    estimator.refresh_curve_lookups(21)
+    assert estimator.preview_valid[3, 5]
+    assert np.isclose(estimator.preview_corrections[3, 5], 0.25 * k)
 
-    inner_curvature = float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[inner_idx])
+  def test_apply_cap_is_continuous_and_bounded_between_anchors(self):
+    lut = CurvatureDLookup
+    counts = np.full(lut.bucket_shape(), lut.MAX_SAMPLES, dtype=np.float32)
+    bias = np.broadcast_to(lut.CURVATURE_BUCKET_CENTERS * 0.5, lut.bucket_shape())
+    fit, valid = lut.build_fit_corrections(bias, counts)
+    for v in (20.0, 33.0, 34.0):
+      limit = lut.MAX_LAT_ACCEL_APPLY / v ** 2
+      k = np.linspace(0.0, limit * 1.01, 301)
+      actual = lut.interp_curve_value(fit, valid, v, k)
+      scalar = [lut.interp_curve_value(fit, valid, v, float(point)) for point in k]
+      np.testing.assert_allclose(scalar, actual, atol=1e-10)
+      assert np.all(np.abs(actual) <= 0.5 * k)
+      assert actual[-1] == 0.0
+      assert abs(lut.interp_curve_value(fit, valid, v, limit - 1e-9)) < 1e-10
 
-    assert np.isclose(CurvatureDLookup.correction_cap_ratio(inner_curvature, v_ego), CurvatureDLookup.RELATIVE_CAP_FULL_RATIO)
-    assert np.isclose(CurvatureDLookup.correction_cap_ratio(supported_curvature, v_ego), CurvatureDLookup.RELATIVE_CAP_FULL_RATIO)
-    assert CurvatureDLookup.correction_cap_ratio(0.5 * (supported_curvature + fade_end_curvature), v_ego) < CurvatureDLookup.RELATIVE_CAP_FULL_RATIO
-    assert CurvatureDLookup.correction_cap_ratio(beyond_curvature, v_ego) == 0.0
+  def test_closed_loop_bias_converges_and_keeps_adapting_at_max_samples(self):
+    estimator = get_estimator()
+    v = float(estimator.SPEED_ANCHORS[0])
+    k = float(estimator.CURVATURE_BUCKET_CENTERS[0])
+    estimator.counts[0] = estimator.MAX_SAMPLES
+    for phase, (disturbance, gain) in enumerate(((0.2 * k, 1.0), (-0.1 * k, 0.8))):
+      for tick in range(phase * 1800, (phase + 1) * 1800):
+        correction = estimator.interp_curve_value(estimator.fit_corrections, estimator.fit_valid, v, k)
+        measured = k - disturbance + gain * correction
+        estimator.add_measurement(k, measured, v, schedule_only=True, commanded_correction=correction)
+        estimator.refresh_curve_lookups(tick, force_fit=tick % 1800 == 1799)
+      assert estimator.counts[0, 0] == estimator.MAX_SAMPLES
+      expected = disturbance / gain
+      np.testing.assert_allclose(estimator.bias[0, 0], expected, rtol=0.002)
+      np.testing.assert_allclose(estimator.interp_curve_value(estimator.fit_corrections, estimator.fit_valid, v, k),
+                                 expected, rtol=0.002)
 
   def test_calibration_percent_tracks_valid_speed_curves(self):
     estimator = get_estimator()
@@ -165,10 +191,7 @@ class TestCurvatureEstimator(OpenpilotTestCase):
     bias = np.zeros(CurvatureDLookup.bucket_shape(), dtype=np.float32)
 
     counts[speed_idx, bucket_idx] = float(CurvatureDLookup.MIN_BUCKET_POINTS[bucket_idx] + 1.0)
-    bias[speed_idx, bucket_idx] = float(0.5 * CurvatureDLookup.correction_cap(
-      float(CurvatureDLookup.CURVATURE_BUCKET_CENTERS[bucket_idx]),
-      float(CurvatureDLookup.SPEED_ANCHORS[speed_idx]),
-    ))
+    bias[speed_idx, bucket_idx] = float(0.25 * CurvatureDLookup.CURVATURE_BUCKET_CENTERS[bucket_idx])
 
     filler_idx = np.arange(CurvatureDLookup.required_support_bucket_count(speed_idx), dtype=int)
     filler_idx = filler_idx[filler_idx != bucket_idx]
@@ -326,15 +349,13 @@ class TestCurvatureEstimator(OpenpilotTestCase):
     assert estimator.roll_learning_allowed(float(small_roll))
     assert not estimator.roll_learning_allowed(float(large_roll))
 
-  def test_actual_curvature_subtracts_roll_compensation(self):
+  def test_actual_curvature_is_measured_in_path_coordinates(self):
     yaw_rate = 0.03
     v_ego = 20.0
-    roll_comp = 4.0e-4
-
     raw_curvature = yaw_rate / v_ego
-    corrected_curvature = CurvatureDLookup.actual_curvature_from_yaw_rate(yaw_rate, v_ego, roll_comp)
+    measured_curvature = CurvatureDLookup.actual_curvature_from_yaw_rate(yaw_rate, v_ego)
 
-    assert np.isclose(corrected_curvature, raw_curvature - roll_comp)
+    assert np.isclose(measured_curvature, raw_curvature)
 
   def test_slight_steering_press_blocks_learning_like_override(self):
     estimator = get_estimator()
@@ -356,12 +377,50 @@ class TestCurvatureEstimator(OpenpilotTestCase):
     estimator.use_params = True
 
     estimator.handle_log(10.0, "carControl", car.CarControl(latActive=True))
-    estimator.handle_log(10.01, "carControlIC", custom.CarControlIC(rollCompensation=4.0e-4))
+    cs_ic = custom.ControlsStateIC.new_message()
+    cs_ic.modelDesiredCurvature = 0.001
+    cs_ic.curvatureLearning.valid = True
+    cs_ic.curvatureLearning.desiredCurvature = 0.0008
+    cs_ic.curvatureLearning.correction = -0.0001
+    estimator.handle_log(10.01, "controlsStateIC", cs_ic)
 
     assert estimator.car_control_t[-1] == 10.0
-    assert estimator.car_control_ic_t[-1] == 10.01
-    assert estimator._sample_at_or_before(10.0, estimator.car_control_ic_t, estimator.roll_compensation) is None
-    assert np.isclose(estimator._sample_at_or_before(10.01, estimator.car_control_ic_t, estimator.roll_compensation), 4.0e-4)
+    assert estimator.controls_state_ic_t[-1] == 10.01
+    assert estimator._sample_at_or_before(10.0, estimator.controls_state_ic_t, estimator.learning_targets) is None
+    np.testing.assert_allclose(estimator.learning_targets[-1], (0.0008, -0.0001))
+    estimator.handle_log(10.02, "controlsStateIC", custom.ControlsStateIC(modelDesiredCurvature=0.001))
+    assert estimator.learning_targets[-1] is None
+
+  def test_motion_aligns_previous_command_and_uses_current_speed_for_measured_curvature(self):
+    estimator = get_estimator()
+    estimator.use_params = True
+    estimator.calibrator.calib_valid = True
+    estimator.lag = 0.2
+    estimator.hist_len = 2
+    command = custom.ControlsStateIC.new_message(modelDesiredCurvature=0.001)
+    command.curvatureLearning.valid = True
+    command.curvatureLearning.desiredCurvature = 90e-6
+    command.curvatureLearning.correction = 12e-6
+    for t, speed in ((9.79, 20.0), (9.99, 21.0)):
+      estimator.handle_log(t, "carControl", car.CarControl(latActive=True))
+      estimator.handle_log(t, "carState", car.CarState(vEgo=speed))
+      estimator.handle_log(t, "carStateIC", custom.CarStateIC())
+    estimator.handle_log(9.79, "controlsStateIC", command)
+    estimator.handle_log(9.99, "controlsStateIC", custom.ControlsStateIC())
+
+    motion = log.DeviceMotion.new_message(timestamp=10_000_000_000, posenetOK=True, inputsOK=True, sensorsOK=True)
+    motion.angularVelocityDevice.valid = True
+    motion.angularVelocityDevice.z = 85e-6 * 21.0
+    motion.orientationNED.valid = True
+    estimator.handle_log(10.02, "deviceMotion", motion)
+    idx = estimator.indices(90e-6, 20.0)
+    assert idx is not None
+    np.testing.assert_allclose(estimator.bias[idx], 17e-6, rtol=1e-5)
+    assert np.isclose(estimator.counts.sum(), 1.0)
+
+    motion.timestamp = 10_150_000_000
+    estimator.handle_log(10.17, "deviceMotion", motion)
+    assert np.isclose(estimator.counts.sum(), 1.0)
 
   def test_interp_curve_value_matches_interp_curve_samples(self):
     """Verifies the unified interp_curve_value API returns the same result for
@@ -411,7 +470,7 @@ class TestCurvatureEstimator(OpenpilotTestCase):
     fit_valid = np.zeros(CurvatureDLookup.bucket_shape(), dtype=bool)
 
     # Use a value per speed_idx that is easy to verify after blending.
-    per_speed_value = 1.0e-5 * np.arange(1, len(CurvatureDLookup.SPEED_ANCHORS) + 1, dtype=np.float32)
+    per_speed_value = 1.0e-6 * np.arange(1, len(CurvatureDLookup.SPEED_ANCHORS) + 1, dtype=np.float32)
     for s in range(len(CurvatureDLookup.SPEED_ANCHORS)):
       fit_valid[s, 5] = True
       fit_corrections[s, 5] = per_speed_value[s]
